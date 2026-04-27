@@ -22,22 +22,21 @@ const SERVICES = {
     title: "Urban Density",
     desc: "Estimate population density across an area.",
     inputs: [
-      { type: "file", id: "popData",   label: "Upload population data (CSV / GeoJSON)" },
-      { type: "file", id: "boundary",  label: "Upload boundary (GeoJSON / SHP)" },
+      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "public-transport": {
     title: "Public Transport Coverage",
     desc: "Analyze coverage of public transport stations.",
     inputs: [
-      { type: "file", id: "stations", label: "Upload station points (GeoJSON / CSV)" },
+      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "service-area": {
     title: "Service Area Analysis",
     desc: "Compute walkable service areas around facilities.",
     inputs: [
-      { type: "file",   id: "facilities",  label: "Upload service locations" },
+      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
       { type: "number", id: "walkingTime", label: "Walking time (minutes)", value: 10 },
     ],
   },
@@ -45,42 +44,41 @@ const SERVICES = {
     title: "Heat Index",
     desc: "Surface heat analysis from raster data.",
     inputs: [
-      { type: "file", id: "heatRaster", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "vegetation": {
     title: "Vegetation Density",
     desc: "Compute vegetation cover from satellite imagery.",
     inputs: [
-      { type: "file", id: "vegRaster", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "ndvi": {
     title: "NDVI",
     desc: "Normalized Difference Vegetation Index from raster.",
     inputs: [
-      { type: "file", id: "ndviRaster", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "crime": {
     title: "Safety / Crime Density",
     desc: "Hotspot analysis from incident points.",
     inputs: [
-      { type: "file", id: "crimePoints", label: "Upload incident points (CSV / GeoJSON)" },
+      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "traffic": {
     title: "Traffic Analysis",
     desc: "Analyze traffic flow and congestion.",
     inputs: [
-      { type: "file", id: "trafficData", label: "Upload traffic data" },
+      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "air-quality": {
     title: "Air Quality Index",
     desc: "Compute AQI for the selected area.",
     inputs: [
-      // Per spec: input area only, no upload
       { type: "text", id: "areaName", label: "Area name (e.g. Downtown)" },
     ],
   },
@@ -88,10 +86,9 @@ const SERVICES = {
     title: "Future Expansion Suitability",
     desc: "Combine multiple analyses to score expansion areas.",
     inputs: [
-      // Multi-select of which previous analyses to combine.
       { type: "text", id: "weights", label: "Analysis weights (comma list, e.g. 0.3,0.5,0.2)" },
     ],
-    isExpansion: true, // special flag — see renderExpansionPanel()
+    isExpansion: true,
   },
 };
 
@@ -165,6 +162,9 @@ function renderServicePanel(key) {
       </button>
     </div>
   `;
+
+  // Attach event listeners after HTML is rendered
+  attachFileInputListeners();
 }
 
 
@@ -200,6 +200,9 @@ function renderExpansionPanel(service) {
       </button>
     </div>
   `;
+
+  // Attach event listeners after HTML is rendered
+  attachFileInputListeners();
 }
 
 
@@ -369,6 +372,7 @@ let map;
 let currentBasemap;
 
 function initMap() {
+  console.log("Initializing map...");
   map = L.map("map").setView([31.2136, 29.8753], 11); // no const/let — assigns to outer variable
 
   currentBasemap = L.tileLayer(
@@ -425,101 +429,64 @@ document.addEventListener("click", function(e) {
 });
 
 
-// adding data to map
-document.getElementById("fileInput").addEventListener("change", function (e) {
-  const file = e.target.files[0];
+/* ---------- Attach file input listeners after DOM is updated ---------- */
+function attachFileInputListeners() {
+  // GeoTIFF file input handler
+  const tiffInput = document.getElementById("tiffInput");
+  if (tiffInput) {
+    tiffInput.addEventListener("change", async function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
 
-  if (!file) return;
+      const arrayBuffer = await file.arrayBuffer();
 
-  const reader = new FileReader();
+      const georaster = await parseGeoraster(arrayBuffer);
 
-  reader.onload = function (event) {
-    const geojsonData = JSON.parse(event.target.result);
+      console.log("GeoRaster loaded:", georaster);
 
-    console.log("Uploaded GeoJSON:", geojsonData);
+      const layer = new GeoRasterLayer({
+        georaster: georaster,
+        opacity: 0.7,
+        resolution: 128,
+      });
 
-    // ADD TO MAP
-    L.geoJSON(geojsonData).addTo(map);
-  };
+      layer.addTo(map);
 
-  reader.readAsText(file);
-});
+      map.fitBounds(layer.getBounds());
+    });
+  }
 
+  // GeoJSON file input handler
+  const fileInput = document.getElementById("fileInput");
+  if (fileInput) {
+    fileInput.addEventListener("change", function (e) {
+      const file = e.target.files[0];
 
+      if (!file) return;
 
+      const reader = new FileReader();
 
+      reader.onload = function (event) {
+        const geojsonData = JSON.parse(event.target.result);
 
-function ndvi(){
-  var roi = ee.Geometry.Polygon([[
-  [31.35, 30.12],
-  [31.35, 30.05],
-  [31.28, 30.05],
-  [31.28, 30.12]
-]]);
- 
-// 1. NDVI من Sentinel-2
-var ndvi = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-  .filterDate('2024-06-01','2024-08-31')
-  .filterBounds(roi)
-  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
-  .median()
-  .normalizedDifference(['B8','B4'])
-  .rename('NDVI')
-  .clip(roi);
- 
-// // 2. LST من Landsat-8 بالـ Celsius
-// var lst = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
-//   .filterDate('2024-06-01','2024-08-31')
-//   .filterBounds(roi)
-//   .filter(ee.Filter.lt('CLOUD_COVER', 20))
-//   .map(function(img){
-//     var temp = img.select('ST_B10')
-//       .multiply(0.00341802)
-//       .add(149.0)
-//       .subtract(273.15)
-//       .rename('LST');
-//     return temp.copyProperties(img, img.propertyNames());
-//   })
-//   .median()
-//   .clip(roi);
- 
-// عرض
-map.centerObject(roi, 13);
- 
-// map.addLayer(ndvi, {
-//   min: -0.2,
-//   max: 0.6,
-//   palette: ['brown', 'yellow', 'green']
-// }, 'NDVI');
-L.tileLayer(ndvi).addTo(map);
+        console.log("Uploaded GeoJSON:", geojsonData);
+
+        // ADD TO MAP
+        L.geoJSON(geojsonData).addTo(map);
+      };
+
+      reader.readAsText(file);
+    });
+  }
+}
 
 
- 
-// map.addLayer(lst, {
-//   min: 25,
-//   max: 50,
-//   palette: ['blue', 'cyan', 'yellow', 'orange', 'red']
-// }, 'LST Celsius');
- 
-// // Export NDVI
-// Export.image.toDrive({
-//   image: ndvi,
-//   description: 'Heliopolis_NDVI_2024',
-//   folder: 'GEE',
-//   fileNamePrefix: 'ndvi_heliopolis_2024',
-//   region: roi,
-//   scale: 10,
-//   maxPixels: 1e13
-// });
- 
-// // Export LST
-// Export.image.toDrive({
-//   image: lst,
-//   description: 'Heliopolis_LST_2024',
-//   folder: 'GEE',
-//   fileNamePrefix: 'lst_heliopolis_2024',
-//   region: roi,
-//   scale: 30,
-//   maxPixels: 1e13
-// })
+/* ============================================================
+   6. NDVI (placeholder - requires Google Earth Engine)
+   ============================================================ */
+function ndvi() {
+  // Note: This function requires Google Earth Engine API
+  // to be loaded. The actual NDVI computation would be
+  // done server-side with the GEE Python API.
+  console.log("NDVI analysis - backend integration required");
 }

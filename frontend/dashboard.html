@@ -15,7 +15,6 @@
   <title>Dashboard · Urban QOL Platform</title>
   <link type="image/png" sizes="16x16" rel="icon" href="https://img.icons8.com/isometric-line/50/ffffff/building.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://earthengine.googleapis.com/v1alpha/earthengine.js"></script>
 
   <!-- Bootstrap 5 (CDN) -->
   <link
@@ -199,8 +198,12 @@
     </div>
   </div>
 
-  <!-- Leaflet JS (loaded but not initialized — placeholder ready for backend wiring) -->
+  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- GeoTIFF libraries -->
+   <script src="https://unpkg.com/georaster"></script>
+  <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
 
   <!-- Shared (navbar, logout, etc.) -->
   <script src="js/app.js"></script>
