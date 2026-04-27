@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<!--
+  profile.html
+  ----------------------------------------------------------
+  User profile page. Lists past analyses (UI only).
+  Hook fetch + render to your backend in the marked spot.
+  ----------------------------------------------------------
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Profile · Urban QoL Platform</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- Top navbar (same component as dashboard) -->
+  <nav class="navbar-app">
+    <div class="brand">
+      <span>🌆</span>
+      <span>Urban QoL Platform</span>
+    </div>
+    <div class="nav-actions">
+      <a href="dashboard.html" class="btn btn-ghost">Dashboard</a>
+      <div class="user-menu" id="userMenu">
+        <button class="user-btn" onclick="toggleUserMenu()">
+          <span>👤</span>
+          <span>User</span>
+          <span>▾</span>
+        </button>
+        <div class="dropdown">
+          <a href="profile.html">Profile</a>
+          <a href="#" onclick="logout(); return false;">Logout</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Page body -->
+  <div class="page-container fade-in">
+    <div class="page-header">
+      <h1>My Profile</h1>
+      <p>Past analyses you've run on the platform.</p>
+    </div>
+
+    <!--
+      The list below is hard-coded for the UI demo.
+      Replace it with backend data once available.
+    -->
+    <div class="history-list" id="historyList">
+      <!-- Will be filled by profile.js -->
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script>
+    /* ----------------------------------------------------------
+       Profile page — render the analyses history list.
+       For now this uses a small in-memory array. Replace with
+       a real backend fetch as shown in the TODO below.
+       ---------------------------------------------------------- */
+
+    // TODO: fetch user history from backend
+    // Example:
+    //   fetch("http://localhost:8000/api/users/me/history")
+    //     .then(r => r.json())
+    //     .then(renderHistory);
+
+    const fakeHistory = [
+      { name: "Downtown Density Study",  date: "2025-04-12", type: "Urban Density" },
+      { name: "Metro Coverage Report",   date: "2025-04-08", type: "Public Transport" },
+      { name: "Park Vegetation Scan",    date: "2025-03-30", type: "NDVI" },
+      { name: "City Heat Survey",        date: "2025-03-21", type: "Heat Index" },
+      { name: "Expansion Score (North)", date: "2025-03-10", type: "Future Expansion" },
+    ];
+
+    function renderHistory(items) {
+      const list = document.getElementById("historyList");
+      if (!items.length) {
+        list.innerHTML = `<p class="text-muted">No analyses yet.</p>`;
+        return;
+      }
+      list.innerHTML = items.map(item => `
+        <div class="history-item">
+          <div>
+            <div style="font-weight:600;">${item.name}</div>
+            <div class="meta">${item.date}</div>
+          </div>
+          <span class="badge">${item.type}</span>
+        </div>
+      `).join("");
+    }
+
+    renderHistory(fakeHistory);
+  </script>
+</body>
+</html>

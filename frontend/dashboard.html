@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<!--
+  dashboard.html
+  ----------------------------------------------------------
+  Main GIS-style dashboard.
+  Layout (top to bottom):
+    [ Top navbar                                          ]
+    [ Left sidebar | Map area | Right analysis panel      ]
+  Plus a floating AI chatbot in the bottom-right corner.
+  ----------------------------------------------------------
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dashboard · Urban QOL Platform</title>
+  <link type="image/png" sizes="16x16" rel="icon" href="https://img.icons8.com/isometric-line/50/ffffff/building.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://earthengine.googleapis.com/v1alpha/earthengine.js"></script>
+
+  <!-- Bootstrap 5 (CDN) -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+
+  <!-- Leaflet CSS — required if you initialize a real Leaflet map later -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <!-- ===================== TOP NAVBAR ===================== -->
+    <nav class="navbar-app">
+      <div class="brand"><a href="">
+        <span><img width="45" height="45" src="https://img.icons8.com/isometric-line/50/4cc2ff/building.png" alt="building"/></span>
+        <span>Urban Quality of Life Analysis Platform</span>
+      </a></div>
+
+      <div class="nav-actions">
+        <button onclick="sharePortal()" class="btn btn-ghost"> <img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/share-rounded.png" alt="share-rounded"/>
+        Share</button>
+
+        <!-- User dropdown -->
+        <div class="user-menu" id="userMenu">
+          <button class="user-btn" onclick="toggleUserMenu()">
+            <img width="24" height="24" src="https://img.icons8.com/material-rounded/24/FFFFFF/name.png" alt="name"/>
+            <span>Profile</span>
+            <span>▾</span>
+          </button>
+          <div class="dropdown">
+            <a href="profile.html">Profile</a>
+            <a href="#" onclick="logout(); return false;">Logout</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ===================== MAIN BODY (3 columns) ===================== -->
+    <div class="dashboard-body">
+
+      <!-- ===== LEFT SIDEBAR — Analysis services ===== -->
+      <aside class="sidebar">
+        <h2>Analysis Services</h2>
+
+        <!--
+          Each <li> has a data-service attribute.
+          dashboard.js reads this and shows the matching
+          inputs in the right sidebar.
+        -->
+        <ul class="service-list" id="serviceList">
+          <li data-service="urban-density"><span class="dot"></span>
+            <img width="28" height="28" src="https://img.icons8.com/ios-filled/50/FFFFFF/demographics.png" alt="demographics"/>
+            Urban Density</li>
+            <p>Calculates population per unit area to assess concentration.</p>
+
+          <li data-service="public-transport"><span class="dot"></span>
+            <img width="28" height="28" src="https://img.icons8.com/ios-filled/50/FFFFFF/tram.png" alt="tram"/>
+            Public Transport Coverage</li>
+            <p>Evaluates how well public transport stations cover & serve the selected area.</p>
+
+          <li data-service="service-area"><span class="dot"></span>
+            <img width="28" height="28" src="https://img.icons8.com/ios/50/FFFFFF/radar-plot.png" alt="radar-plot"/>
+            Service Area Analysis</li>
+            <p>Determines accessibility to key services (e.g., schools, hospitals) based on travel time or distance.</p>
+
+          <li data-service="heat-index"><span class="dot"></span>
+            <img width="28" height="28" src="https://img.icons8.com/external-dreamcreateicons-mixed-dreamcreateicons/64/FFFFFF/external-heat-weather-dreamcreateicons-mixed-dreamcreateicons.png" alt="external-heat-weather-dreamcreateicons-mixed-dreamcreateicons"/>
+            Heat Index</li>
+            <p>Analyzes temperature raster data to identify heat intensity and hotspots.</p>
+
+          <li data-service="vegetation"><span class="dot"></span>
+            <img width="28" height="28" src="https://img.icons8.com/glyph-neue/64/FFFFFF/potted-plant.png" alt="potted-plant"/>
+            Vegetation Density</li>
+            <p>Measures the proportion of green areas relative to the total land area.</p>
+
+          <li data-service="ndvi"><span class="dot"></span>
+            <img width="28" height="28" src="https://img.icons8.com/ios-filled/50/FFFFFF/plant-under-sun.png" alt="plant-under-sun"/>
+            NDVI</li>
+            <p>Assesses the health and vitality of vegetation using satellite-derived indices.</p>
+
+          <li data-service="crime"><span class="dot"></span>
+            <img width="28" height="28" src="https://img.icons8.com/ios-filled/50/FFFFFF/warning-shield.png" alt="warning-shield"/>
+            Safety / Crime Density</li>
+            <p>Maps and analyzes the concentration of crime incidents across the area.</p>
+
+          <li data-service="traffic"><span class="dot"></span>
+            <img width="28" height="28" src="https://img.icons8.com/glyph-neue/64/FFFFFF/traffic-jam.png" alt="traffic-jam"/>
+            Traffic Analysis</li>
+            <p>Examines traffic patterns and congestion levels within the selected region.</p>
+
+          <li data-service="air-quality"><span class="dot"></span>
+            <img width="28" height="28" src="https://img.icons8.com/ios-filled/50/FFFFFF/air-quality.png" alt="air-quality"/>
+            Air Quality Index</li>
+            <p>Retrieves and evaluates air quality data for the defined area of interest.</p>
+
+          <li data-service="expansion"><span class="dot"></span>
+            <img width="30" height="30" src="https://img.icons8.com/external-glyph-silhouettes-icons-papa-vector/78/FFFFFF/external-Land-Selling-property-sale-glyph-silhouettes-icons-papa-vector.png" alt="external-Land-Selling-property-sale-glyph-silhouettes-icons-papa-vector"/>
+            Future Expansion Suitability</li>
+            <p>Identifies the most suitable areas for development by scoring and combining all prior analysis results.</p>
+        </ul>
+      </aside>
+
+      <!-- ===== CENTER — Map area ===== -->
+      <main class="map-wrapper">
+
+        <!-- Floating map controls (purely visual placeholders) -->
+        <div class="map-controls">
+
+          <div class="user-menu" id="basemapMenu">
+            <button class="btn" onclick="toggleBasemapMenu()">
+              <img width="20" height="20" src="https://img.icons8.com/cotton/64/map.png" alt="map"/>
+              <span>Basemap</span>
+              <span>▾</span>
+            </button>
+            <div class="dropdown">
+              <a href="#" onclick="changeBasemap('light');">☀️ Light</a>
+              <a href="#" onclick="changeBasemap('dark');   ">🌙 Dark</a>
+              <a href="#" onclick="changeBasemap('voyager');">🗺️ Voyager</a>
+            </div>
+          </div>
+
+          <button onclick="ndvi()" class="btn" title="measure"><img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Measure</button>  
+
+          <button class="btn" title="save"> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-save-fill" viewBox="0 0 16 16">
+          <path d="M8.5 1.5A1.5 1.5 0 0 1 10 0h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h6c-.314.418-.5.937-.5 1.5v7.793L4.854 6.646a.5.5 0 1 0-.708.708l3.5 3.5a.5.5 0 0 0 .708 0l3.5-3.5a.5.5 0 0 0-.708-.708L8.5 9.293z"/>
+        </svg>Save</button>
+        </div>
+
+        <!--
+          The actual map container.
+          // TODO: initialize Leaflet map here
+          See dashboard.js for the placeholder init function.
+        -->
+        <div id="map"></div>
+
+        <!-- Visible only until a real map is initialized -->
+        <div class="map-placeholder" id="mapPlaceholder">
+          <h3>🗺️ Map area</h3>
+          <p>Map will be rendered here.</p>
+        </div>
+      </main>
+
+      <!-- ===== RIGHT SIDEBAR — Analysis panel ===== -->
+      <aside class="sidebar right">
+        <div class="analysis-panel" id="analysisPanel">
+          <!-- Default empty state — replaced when a service is selected -->
+          <div class="empty-panel" id="emptyPanel">
+            ← Select a service from the left to begin.
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+    <!-- ===================== AI CHATBOT (floating) ===================== -->
+    <div class="chatbot" id="chatbot">
+      <button class="chatbot-toggle" onclick="toggleChatbot()" title="AI assistant"><img width="42" height="42" src="https://img.icons8.com/pulsar-line/48/FFFFFF/bot.png" alt="bot"/></button>
+
+      <div class="chatbot-window">
+        <div class="chatbot-header">Ask Hadary</div>
+
+        <div class="chatbot-messages" id="chatMessages">
+          <div class="chat-msg bot">
+            Hi! My name is Hadary and I'm here to help you with your urban analysis.
+          </div>
+        </div>
+
+        <div class="chatbot-input">
+          <input type="text" id="chatInput" placeholder="Type a message…" />
+          <button class="btn btn-primary" onclick="sendChatMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS (loaded but not initialized — placeholder ready for backend wiring) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Shared (navbar, logout, etc.) -->
+  <script src="js/app.js"></script>
+  <!-- Dashboard-specific logic (services, tabs, chatbot) -->
+  <script src="js/dashboard.js"></script>
+</body>
+
+<!-- <footer>
+    <a href="mailto:?" target="_blank">Contact us.</a>
+    <p>&copy;All rights reserved.</p>
+</footer> -->
+</html>
