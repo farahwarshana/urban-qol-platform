@@ -446,7 +446,7 @@ function attachFileInputListeners() {
 
       const layer = new GeoRasterLayer({
         georaster: georaster,
-        opacity: 0.7,
+        opacity: 0.9,
         resolution: 128,
       });
 
