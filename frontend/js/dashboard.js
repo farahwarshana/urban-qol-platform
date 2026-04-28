@@ -399,12 +399,12 @@ function changeBasemap(new_basemap) { // value passed directly
     );
   } else if (new_basemap === "voyager") {
     currentBasemap = L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png",
-      { attribution: "© CARTO © OpenStreetMap" }
+      "https://tiledbasemaps.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { attribution: "© Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community, © OpenStreetMap contributors © CARTO" }
     );
   } else {
     currentBasemap = L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png",
       { attribution: "© CARTO © OpenStreetMap" }
     );
   }
