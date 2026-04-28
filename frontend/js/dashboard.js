@@ -411,6 +411,8 @@ function changeBasemap(new_basemap) { // value passed directly
 
   currentBasemap.addTo(map);
 
+  currentBasemap.setZIndex(0);
+
   // Close the dropdown after selection
   document.getElementById("basemapMenu").classList.remove("open");
 }
@@ -428,6 +430,23 @@ document.addEventListener("click", function(e) {
   }
 });
 
+async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
+  const georaster = await parseGeoraster(arrayBuffer);
+
+  console.log("GeoRaster loaded:", georaster);
+
+  const layer = new GeoRasterLayer({
+    georaster: georaster,
+    opacity: options.opacity || 0.9,
+    resolution: options.resolution || 128,
+    pixelValuesToColorFn: options.colorFn || undefined,
+  });
+
+  layer.addTo(map);
+  map.fitBounds(layer.getBounds());
+
+  return layer; // useful later (removal, toggling, etc.)
+}
 
 /* ---------- Attach file input listeners after DOM is updated ---------- */
 function attachFileInputListeners() {
@@ -440,20 +459,8 @@ function attachFileInputListeners() {
 
       const arrayBuffer = await file.arrayBuffer();
 
-      const georaster = await parseGeoraster(arrayBuffer);
-
-      console.log("GeoRaster loaded:", georaster);
-
-      const layer = new GeoRasterLayer({
-        georaster: georaster,
-        opacity: 0.9,
-        resolution: 128,
-      });
-
-      layer.addTo(map);
-
-      map.fitBounds(layer.getBounds());
-    });
+      await renderGeoRasterFromArrayBuffer(arrayBuffer);
+    })
   }
 
   // GeoJSON file input handler
