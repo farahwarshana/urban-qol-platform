@@ -29,7 +29,7 @@ const SERVICES = {
     title: "Public Transport Coverage",
     desc: "Analyze coverage of public transport stations.",
     inputs: [
-      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "fileInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "service-area": {
@@ -59,6 +59,10 @@ const SERVICES = {
     desc: "Normalized Difference Vegetation Index from raster.",
     inputs: [
       { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
+      { type: "select", id: "satelliteType", label: "Satellite type", options: [
+        { value: "landsat", label: "Landsat 8/9 (Band 4 Red, Band 5 NIR)", selected: true },
+        { value: "sentinel2", label: "Sentinel-2 (Band 4 Red, Band 8 NIR)" },
+      ]},
     ],
   },
   "crime": {
@@ -126,6 +130,7 @@ function renderServicePanel(key) {
   // Build the input fields HTML from the SERVICES config
   const fieldsHtml = service.inputs.map(field => {
     if (field.type === "file") {
+      // TODO: We only want to accept certain file formats so we have to add them per service in the array
       return `
         <div class="form-group">
           <label for="${field.id}">${field.label}</label>
@@ -137,6 +142,18 @@ function renderServicePanel(key) {
         <div class="form-group">
           <label for="${field.id}">${field.label}</label>
           <input type="number" id="${field.id}" value="${field.value ?? ""}" />
+        </div>`;
+    }
+    if (field.type === "select") {
+      const optionsHtml = field.options.map(opt => 
+        `<option value="${opt.value}" ${opt.selected ? 'selected' : ''}>${opt.label}</option>`
+      ).join("");
+      return `
+        <div class="form-group">
+          <label for="${field.id}">${field.label}</label>
+          <select id="${field.id}" class="form-select">
+            ${optionsHtml}
+          </select>
         </div>`;
     }
     // default: text
@@ -212,6 +229,11 @@ function renderExpansionPanel(service) {
 function runAnalysis(key) {
   const service = SERVICES[key];
 
+  if (key === "ndvi") {
+    runNDVIAnalysis();
+    return;
+  }
+
   // TODO: send uploaded files to backend
   // TODO: trigger backend analysis API
   // Example:
@@ -223,6 +245,177 @@ function runAnalysis(key) {
 
   // For now, just render a fake "results" UI.
   renderResults(service);
+}
+
+
+/* ---------- NDVI Analysis - calls backend API ---------- */
+async function runNDVIAnalysis() {
+  const tiffInput = document.getElementById("tiffInput");
+  const satelliteSelect = document.getElementById("satelliteType");
+  
+  if (!tiffInput || !tiffInput.files[0]) {
+    alert("Please upload a GeoTIFF file first.");
+    return;
+  }
+
+  const file = tiffInput.files[0];
+  const satelliteType = satelliteSelect ? satelliteSelect.value : "landsat";
+  
+  const formData = new FormData();
+  formData.append("geotiff", file);
+
+  // Show loading state
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">NDVI — Processing</h3>
+      <p class="panel-desc">Calculating NDVI from uploaded raster...</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  try {
+    // Build URL with query parameter
+    const url = `http://localhost:8000/calculate-ndvi?satellite_type=${satelliteType}`;
+    
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    }
+
+    // Get NDVI stats from response headers
+    const ndviMin = response.headers.get("X-NDVI-Min");
+    const ndviMax = response.headers.get("X-NDVI-Max");
+    const ndviMean = response.headers.get("X-NDVI-Mean");
+    const validPixels = response.headers.get("X-Valid-Pixels");
+
+    // Convert response to array buffer
+    const arrayBuffer = await response.arrayBuffer();
+
+    // Render the NDVI result on the map (without custom color function to avoid projection issues)
+    await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+      opacity: 0.9,
+      resolution: 64,
+    });
+
+    
+    // Render results panel with NDVI stats
+    renderNDVIResults({
+      min: ndviMin,
+      max: ndviMax,
+      mean: ndviMean,
+      valid_pixels: validPixels,
+    });
+
+  } catch (error) {
+    console.error("NDVI calculation error:", error);
+    
+    // Try to get error details from response
+    let errorMessage = error.message;
+    
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">Failed to calculate NDVI: ${errorMessage}</p>
+        <div class="alert alert-warning mt-2">
+          <strong>Note:</strong> Make sure you're using the correct satellite type for your GeoTIFF.
+          <br>• Landsat: Band 4 (Red), Band 5 (NIR)
+          <br>• Sentinel-2: Band 4 (Red), Band 8 (NIR)
+        </div>
+        <button class="btn btn-ghost btn-block mt-3"
+                onclick="renderServicePanel('ndvi')">
+          ← Back to inputs
+        </button>
+      </div>
+    `;
+  }
+}
+
+
+/* ---------- Render NDVI Results with stats ---------- */
+function renderNDVIResults(stats) {
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">NDVI — Results</h3>
+      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+
+      <!-- Tab headers -->
+      <div class="tabs">
+        <div class="tab active" data-tab="raw">Raw Data</div>
+        <div class="tab"        data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+      </div>
+
+      <!-- Tab contents -->
+      <div class="tab-content active" id="tab-raw">
+        <p class="text-muted">NDVI layer rendered on map.</p>
+        <div class="insight-card">
+          <div class="label">Layers loaded</div>
+          <div class="value">1</div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-full">
+        <div class="insight-card">
+          <div class="label">Min NDVI</div>
+          <div class="value">${stats.min || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Max NDVI</div>
+          <div class="value">${stats.max || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Mean NDVI</div>
+          <div class="value">${stats.mean || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Valid Pixels</div>
+          <div class="value">${stats.valid_pixels || "N/A"}</div>
+        </div>
+        <ul class="bullet-list">
+          <li>NDVI range: -1 to 1</li>
+          <li>Values > 0.2 indicate healthy vegetation</li>
+          <li>Layer displayed with color gradient on map</li>
+        </ul>
+      </div>
+
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Grid analysis of NDVI values.</p>
+        <div class="insight-card">
+          <div class="label">High vegetation areas</div>
+          <div class="value">${((parseFloat(stats.mean) || 0) > 0.4 ? "Yes" : "Limited")}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Vegetation health</div>
+          <div class="value">${(parseFloat(stats.mean) || 0) > 0.6 ? "Excellent" : (parseFloat(stats.mean) || 0) > 0.4 ? "Good" : "Moderate"}</div>
+        </div>
+      </div>
+
+      <button class="btn btn-ghost btn-block mt-3"
+              onclick="renderServicePanel('ndvi')">
+        ← Back to inputs
+      </button>
+    </div>
+  `;
+
+  // Wire up tab switching
+  analysisPanel.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", function () {
+      const target = tab.getAttribute("data-tab");
+      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+      tab.classList.add("active");
+      analysisPanel.querySelector("#tab-" + target).classList.add("active");
+    });
+  });
 }
 
 
@@ -430,22 +623,90 @@ document.addEventListener("click", function(e) {
   }
 });
 
+// Renders a GeoRaster (e.g. from a GeoTIFF) onto the map using georaster-layer-for-leaflet
 async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
-  const georaster = await parseGeoraster(arrayBuffer);
+  let georaster;
+  try {
+    georaster = await parseGeoraster(arrayBuffer);
+  } catch (parseError) {
+    console.error("Failed to parse GeoRaster:", parseError);
+    throw new Error("Could not parse the GeoTIFF file. Make sure it's a valid GeoTIFF.");
+  }
 
   console.log("GeoRaster loaded:", georaster);
+  console.log("CRS:", georaster.crs);
+  console.log("Projection:", georaster.projection);
 
-  const layer = new GeoRasterLayer({
+  // Add common CRS definitions if not present
+  if (typeof proj4 !== "undefined") {
+    // WGS84 (EPSG:4326)
+    proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
+    // Web Mercator (EPSG:3857)
+    proj4.defs("EPSG:3857", "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs");
+    // UTM zones commonly used in Egypt
+    proj4.defs("EPSG:32636", "+proj=utm +zone=36 +datum=WGS84 +units=m +no_defs");
+    proj4.defs("EPSG:32637", "+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs");
+    proj4.defs("EPSG:32638", "+proj=utm +zone=38 +datum=WGS84 +units=m +no_defs");
+
+    // 32767 = "user-defined" in the GeoTIFF spec — georaster can't reproject it.
+    // If the pixel coordinates are already in lat/lng, alias it to WGS84
+    // so the library skips reprojection and places pixels directly on the map.
+    const { xmin, xmax, ymin, ymax } = georaster;
+    const pixelsAreLatLng = xmin >= -180 && xmax <= 180 && ymin >= -90 && ymax <= 90;
+    if (pixelsAreLatLng) {
+      proj4.defs("32767", "+proj=longlat +datum=WGS84 +no_defs");
+      console.warn("Projection 32767 detected — coordinates are lat/lng, aliased to WGS84.");
+    }
+  }
+
+  // Check if georaster has bounds and CRS
+  const hasBounds = georaster.bounds && georaster.bounds.length === 4;
+  const hasCrs = georaster.crs || georaster.projection;
+  
+  console.log("Has bounds:", hasBounds, "Has CRS:", hasCrs);
+
+  let layerOptions = {
     georaster: georaster,
     opacity: options.opacity || 0.9,
-    resolution: options.resolution || 128,
-    pixelValuesToColorFn: options.colorFn || undefined,
-  });
+    resolution: options.resolution || 64,
+  };
 
-  layer.addTo(map);
-  map.fitBounds(layer.getBounds());
+  // Only add color function if we have CRS (to avoid projection issues)
+  if (hasCrs && options.colorFn) {
+    layerOptions.pixelValuesToColorFn = options.colorFn;
+  }
 
-  return layer; // useful later (removal, toggling, etc.)
+  // 32767 = unknown projection — georaster-layer-for-leaflet crashes hard on it.
+  // If the pixel extents are valid lat/lng, override the georaster's projection
+  // field directly so the library treats it as already-projected WGS84.
+  if (georaster.projection === 32767) {
+    const { xmin, xmax, ymin, ymax } = georaster;
+    if (xmin >= -180 && xmax <= 180 && ymin >= -90 && ymax <= 90) {
+      georaster.projection = 4326;
+      console.warn("Overrode projection 32767 → 4326 (pixel extents confirm lat/lng).");
+    }
+  }
+
+  try {
+    const layer = new GeoRasterLayer(layerOptions);
+
+    layer.addTo(map);
+    
+    // Fit bounds with padding
+    try {
+      const bounds = layer.getBounds();
+      if (bounds && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
+    } catch (boundsError) {
+      console.warn("Could not fit bounds:", boundsError);
+    }
+
+    return layer;
+  } catch (layerError) {
+    console.error("GeoRasterLayer error:", layerError);
+    throw new Error("Could not render the raster on the map. The file may have coordinate system issues.");
+  }
 }
 
 /* ---------- Attach file input listeners after DOM is updated ---------- */
@@ -492,8 +753,5 @@ function attachFileInputListeners() {
    6. NDVI (placeholder - requires Google Earth Engine)
    ============================================================ */
 function ndvi() {
-  // Note: This function requires Google Earth Engine API
-  // to be loaded. The actual NDVI computation would be
-  // done server-side with the GEE Python API.
   console.log("NDVI analysis - backend integration required");
 }
