@@ -30,6 +30,10 @@ OUTPUT_DIR = BASE_DIR / "outputs"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+def get_output_subdir(name):
+    path = OUTPUT_DIR / name
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -63,9 +67,10 @@ def calculate_ndvi_endpoint(
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
+    ndvi_dir = get_output_subdir("ndvi")
 
-    input_path  = tmp_dir / "input.tif"
-    output_path = OUTPUT_DIR / f"ndvi_{job_id}.tif"
+    input_path  = tmp_dir / "input.tif"    
+    output_path = ndvi_dir / f"ndvi_{job_id}.tif"
 
     try:
         # Save uploaded file to disk
