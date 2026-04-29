@@ -654,6 +654,7 @@ async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
     const { xmin, xmax, ymin, ymax } = georaster;
     const pixelsAreLatLng = xmin >= -180 && xmax <= 180 && ymin >= -90 && ymax <= 90;
     if (pixelsAreLatLng) {
+      console.log("Pixel extents suggest lat/lng coordinates. Aliasing projection 32767 to EPSG:4326.");
       proj4.defs("32767", "+proj=longlat +datum=WGS84 +no_defs");
       console.warn("Projection 32767 detected — coordinates are lat/lng, aliased to WGS84.");
     }
