@@ -186,6 +186,7 @@ function renderServicePanel(key) {
 
 function clearMap() {
   map.eachLayer(function (layer) {
+    console.log("layer:" , layer)
     if (layer !== currentBasemap) {
       map.removeLayer(layer);
     }
@@ -309,11 +310,11 @@ async function runNDVIAnalysis() {
     const arrayBuffer = await response.arrayBuffer();
 
     // Render the NDVI result on the map (without custom color function to avoid projection issues)
-    await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+    let resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
       opacity: 0.9,
       resolution: 256,
     });
-
+    
     
     // Render results panel with NDVI stats
     renderNDVIResults({
@@ -633,6 +634,11 @@ document.addEventListener("click", function(e) {
 
 // Renders a GeoRaster (e.g. from a GeoTIFF) onto the map using georaster-layer-for-leaflet
 async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
+  if (inputLayer) {
+    console.log("Removing previous layer from map...");
+    map.removeLayer(inputLayer);
+  }
+
   clearMap()
   let georaster;
   try {
@@ -719,6 +725,8 @@ async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
   }
 }
 
+let inputLayer = null; // Store reference to the currently displayed input layer so we can remove it when loading a new one
+
 /* ---------- Attach file input listeners after DOM is updated ---------- */
 function attachFileInputListeners() {
   // GeoTIFF file input handler
@@ -730,7 +738,7 @@ function attachFileInputListeners() {
 
       const arrayBuffer = await file.arrayBuffer();
 
-      await renderGeoRasterFromArrayBuffer(arrayBuffer);
+      inputLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer);
     })
   }
 
