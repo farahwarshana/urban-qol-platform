@@ -184,9 +184,17 @@ function renderServicePanel(key) {
   attachFileInputListeners();
 }
 
-
+function clearMap() {
+  map.eachLayer(function (layer) {
+    if (layer !== currentBasemap) {
+      map.removeLayer(layer);
+    }
+  });
+}
 /* ---------- Special panel: Future Expansion Suitability ---------- */
 function renderExpansionPanel(service) {
+  clearMap();
+
   // Provide checkboxes for combining multiple previous analyses.
   const otherKeys = Object.keys(SERVICES).filter(k => k !== "expansion");
   const checkboxes = otherKeys.map(k => `
@@ -303,7 +311,7 @@ async function runNDVIAnalysis() {
     // Render the NDVI result on the map (without custom color function to avoid projection issues)
     await renderGeoRasterFromArrayBuffer(arrayBuffer, {
       opacity: 0.9,
-      resolution: 64,
+      resolution: 256,
     });
 
     
@@ -625,6 +633,7 @@ document.addEventListener("click", function(e) {
 
 // Renders a GeoRaster (e.g. from a GeoTIFF) onto the map using georaster-layer-for-leaflet
 async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
+  clearMap()
   let georaster;
   try {
     georaster = await parseGeoraster(arrayBuffer);
@@ -669,7 +678,7 @@ async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
   let layerOptions = {
     georaster: georaster,
     opacity: options.opacity || 0.9,
-    resolution: options.resolution || 64,
+    resolution: options.resolution || 256,
   };
 
   // Only add color function if we have CRS (to avoid projection issues)
@@ -741,10 +750,20 @@ function attachFileInputListeners() {
         console.log("Uploaded GeoJSON:", geojsonData);
 
         // ADD TO MAP
-        L.geoJSON(geojsonData).addTo(map);
-      };
+        let geojsonLayer = L.geoJSON(geojsonData).addTo(map);
 
-      reader.readAsText(file);
+        // FIT BOUNDS
+        try {
+          const bounds = geojsonLayer.getBounds();
+          if (bounds && bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [50, 50] });
+          }
+        } catch (boundsError) {
+          console.warn("Could not fit bounds:", boundsError);
+        }
+      }
+
+        reader.readAsText(file);
     });
   }
 }
