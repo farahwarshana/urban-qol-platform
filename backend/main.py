@@ -172,3 +172,8 @@ def calculate_crime_density_endpoint(
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Crime density calculation failed: {e}")
+    
+@app.post("/calculate-heat-index", tags=["Heat Index"])
+def calculate_heat_index_endpoint(
+    lst_geotiff: UploadFile = File(..., description="LST GeoTIFF file")
+):
