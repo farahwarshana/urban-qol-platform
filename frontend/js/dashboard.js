@@ -29,7 +29,7 @@ const SERVICES = {
     title: "Public Transport Coverage",
     desc: "Analyze coverage of public transport stations.",
     inputs: [
-      { type: "file", id: "fileInput", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "geoJsonInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "service-area": {
@@ -69,7 +69,8 @@ const SERVICES = {
     title: "Safety / Crime Density",
     desc: "Hotspot analysis from incident points.",
     inputs: [
-      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "csvInput", label: "Upload crime data (CSV)" },
+      { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" }
     ],
   },
   "traffic": {
@@ -743,7 +744,7 @@ function attachFileInputListeners() {
   }
 
   // GeoJSON file input handler
-  const fileInput = document.getElementById("fileInput");
+  const fileInput = document.getElementById("geoJsonInput");
   if (fileInput) {
     fileInput.addEventListener("change", function (e) {
       const file = e.target.files[0];
@@ -774,12 +775,117 @@ function attachFileInputListeners() {
         reader.readAsText(file);
     });
   }
-}
 
+  // CSV file input handler
+  const csvInput = document.getElementById("csvInput");
+  if (csvInput) {
+    csvInput.addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
 
-/* ============================================================
-   6. NDVI (placeholder - requires Google Earth Engine)
-   ============================================================ */
-function ndvi() {
-  console.log("NDVI analysis - backend integration required");
+      const reader = new FileReader();
+
+      reader.onload = function (event) {
+        const csvText = event.target.result;
+        console.log("Uploaded CSV:", csvText.substring(0, 500) + "...");
+
+        // Parse CSV to get column names
+        const lines = csvText.trim().split('\n');
+        if (lines.length < 1) {
+          alert("CSV file is empty");
+          return;
+        }
+
+        // Parse header row to get column names
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        console.log("CSV Headers:", headers);
+
+        // Ask user for longitude and latitude column names
+        const lonCol = prompt(`Enter the longitude column name from: ${headers.join(', ')}`);
+        if (!lonCol) return;
+
+        const latCol = prompt(`Enter the latitude column name from: ${headers.join(', ')}`);
+        if (!latCol) return;
+
+        // Find matching column names (case-insensitive)
+        const lonHeader = headers.find(h => h.toLowerCase() === lonCol.toLowerCase());
+        const latHeader = headers.find(h => h.toLowerCase() === latCol.toLowerCase());
+
+        if (!lonHeader || !latHeader) {
+          alert("Could not find the specified column names. Please check and try again.");
+          return;
+        }
+
+        const lonIndex = headers.indexOf(lonHeader);
+        const latIndex = headers.indexOf(latHeader);
+
+        console.log(`Using columns: ${lonHeader} (index ${lonIndex}) and ${latHeader} (index ${latIndex})`);
+
+        // Parse data rows and create GeoJSON points
+        const features = [];
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+          if (values.length > Math.max(lonIndex, latIndex)) {
+            const lon = parseFloat(values[lonIndex]);
+            const lat = parseFloat(values[latIndex]);
+            if (!isNaN(lon) && !isNaN(lat)) {
+              features.push({
+                type: "Feature",
+                geometry: {
+                  type: "Point",
+                  coordinates: [lon, lat]
+                },
+                properties: {
+                  row: i
+                }
+              });
+            }
+          }
+        }
+
+        if (features.length === 0) {
+          alert("No valid coordinate points found in the CSV.");
+          return;
+        }
+
+        const geojsonData = {
+          type: "FeatureCollection",
+          features: features
+        };
+
+        console.log("Converted GeoJSON:", geojsonData);
+
+        // ADD TO MAP
+        let csvLayer = L.geoJSON(geojsonData, {
+          pointToLayer: function (feature, latlng) {
+            return L.circleMarker(latlng, {
+              radius: 6,
+              fillColor: "#ff7800",
+              color: "#000",
+              weight: 1,
+              opacity: 1,
+              fillOpacity: 0.8
+            });
+          }
+        }).addTo(map);
+
+        // Store reference to remove later
+        inputLayer = csvLayer;
+
+        // FIT BOUNDS
+        try {
+          const bounds = csvLayer.getBounds();
+          if (bounds && bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [50, 50] });
+          }
+        } catch (boundsError) {
+          console.warn("Could not fit bounds:", boundsError);
+        }
+
+        alert(`Successfully added ${features.length} points from CSV to the map.`);
+      };
+
+      reader.readAsText(file);
+    });
+  }
 }
