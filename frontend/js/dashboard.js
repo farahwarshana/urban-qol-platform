@@ -800,16 +800,21 @@ function attachFileInputListeners() {
         const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
         console.log("CSV Headers:", headers);
 
-        // Ask user for longitude and latitude column names
-        const lonCol = prompt(`Enter the longitude column name from: ${headers.join(', ')}`);
-        if (!lonCol) return;
+         // Find matching column names (case-insensitive)
+        let lonHeader = headers.find(h => h.toLowerCase() === "lon");
+        let latHeader = headers.find(h => h.toLowerCase() === "lat");
 
-        const latCol = prompt(`Enter the latitude column name from: ${headers.join(', ')}`);
-        if (!latCol) return;
+        if(!lonHeader) {
+          let lonCol = prompt(`Enter the longitude column name from: ${headers.join(', ')}`);
+          if (!lonCol) return;
+          lonHeader = headers.find(h => h.toLowerCase() === lonCol.toLowerCase());
+        }
 
-        // Find matching column names (case-insensitive)
-        const lonHeader = headers.find(h => h.toLowerCase() === lonCol.toLowerCase());
-        const latHeader = headers.find(h => h.toLowerCase() === latCol.toLowerCase());
+        if(!latHeader) {
+          let latCol = prompt(`Enter the latitude column name from: ${headers.join(', ')}`);
+          if (!latCol) return;
+          latHeader = headers.find(h => h.toLowerCase() === latCol.toLowerCase());
+        }
 
         if (!lonHeader || !latHeader) {
           alert("Could not find the specified column names. Please check and try again.");
