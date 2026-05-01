@@ -172,8 +172,51 @@ def calculate_crime_density_endpoint(
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Crime density calculation failed: {e}")
-    
+
+
+
 @app.post("/calculate-heat-index", tags=["Heat Index"])
 def calculate_heat_index_endpoint(
     lst_geotiff: UploadFile = File(..., description="LST GeoTIFF file")
 ):
+    """
+    Upload a single LST GeoTIFF.
+    The API calculates Heat Index from the raster data
+    and returns the result GeoTIFF directly — no polling needed.
+    """
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    hi_dir = get_output_subdir("heat_index")
+
+    input_path  = tmp_dir / "input.tif"
+    output_path = hi_dir / f"heat_index_{job_id}.tif"
+
+    try:
+        # Save uploaded file to disk
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(lst_geotiff.file, f)
+
+        # Run Heat Index calculation (replace with your real logic)
+        stats = calculate_heat_index_4326(
+            geotiff_path = str(input_path),
+            output_path  = str(output_path),
+        )
+
+        # Return the Heat Index GeoTIFF directly with stats in headers
+        return FileResponse(
+            path=str(output_path),
+            media_type="image/tiff",
+            filename=f"heat_index_{job_id}.tif",
+            headers={
+                "X-HeatIndex-Min":     str(stats.get("min", "")),
+                "X-HeatIndex-Max":     str(stats.get("max", "")),
+                "X-HeatIndex-Mean":    str(stats.get("mean", "")),
+                "X-Valid-Pixels":      str(stats.get("valid_pixels", "")),
+            },
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Heat Index calculation failed: {e}")
