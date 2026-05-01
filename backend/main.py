@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from ndvi import calculate_ndvi_from_bands
-
+from crimedensity import calculate_crime_density
 app = FastAPI(
     title="NDVI Calculator API",
     description="Upload a multi-band Landsat GeoTIFF. Bands 4 (Red) and Band 5 (NIR) are extracted and NDVI is returned.",
