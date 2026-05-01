@@ -427,9 +427,10 @@ async function runCrimeAnalysis() {
         const density = feature.properties.crime_density || 0;
         // Color gradient from green (low crime) to red (high crime)
         let color = '#2ecc71'; // green
-        if (density > 10) color = '#f1c40f'; // yellow
-        if (density > 30) color = '#e67e22'; // orange
-        if (density > 50) color = '#e74c3c'; // red
+        if (density > 5) color = '#f1c40f'; // yellow
+        if (density > 10) color = '#e67e22'; // orange
+        if (density > 15) color = '#e74c3c'; // red
+        if (density > 20) color = '#891508'; // dark red
         return {
           fillColor: color,
           fillOpacity: 0.6,
