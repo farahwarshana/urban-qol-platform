@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from ndvi import calculate_ndvi_from_bands
@@ -104,3 +104,71 @@ def calculate_ndvi_endpoint(
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"NDVI calculation failed: {e}")
+
+
+@app.post("/calculate-crime-density", tags=["Crime Density"])
+def calculate_crime_density_endpoint(
+    csv: UploadFile = File(..., description="CSV file with crime incident locations"),
+    geojson: UploadFile = File(..., description="GeoJSON file with boundary polygons"),
+    lat_field: str = Query(..., description="Name of latitude field in CSV"),
+    lon_field: str = Query(..., description="Name of longitude field in CSV"),
+):
+    """
+    Upload CSV crime data and GeoJSON boundary polygons.
+    The API calculates crime density per area unit and returns the result GeoJSON.
+    """
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    crime_dir = get_output_subdir("crime")
+
+    csv_path = tmp_dir / "input.csv"
+    geojson_path = tmp_dir / "input.geojson"
+    output_path = crime_dir / f"crime_density_{job_id}.geojson"
+
+    try:
+        # Save uploaded CSV file to disk
+        with csv_path.open("wb") as f:
+            shutil.copyfileobj(csv.file, f)
+
+        # Save uploaded GeoJSON file to disk
+        with geojson_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        print("Files saved, starting crime density calculation...")  # Debug log
+
+        # Run crime density calculation
+        result_gdf = calculate_crime_density(
+            crime_csv=str(csv_path),
+            area_shapefile=str(geojson_path),
+            lat_field=lat_field,
+            lon_field=lon_field,
+            output_path=str(output_path),
+        )
+
+        # Calculate stats
+        total_crimes = int(result_gdf['crime_count'].sum()) if 'crime_count' in result_gdf.columns else 0
+        area_count = len(result_gdf)
+        avg_density = float(result_gdf['crime_density'].mean()) if 'crime_density' in result_gdf.columns else 0
+        max_density = float(result_gdf['crime_density'].max()) if 'crime_density' in result_gdf.columns else 0
+
+        # Read the output GeoJSON and return as JSON
+        with open(str(output_path), 'r') as f:
+            import json
+            geojson_data = json.load(f)
+
+        # Return the crime density GeoJSON as JSON with stats in headers
+        return JSONResponse(
+            content=geojson_data,
+            headers={
+                "X-Crime-Count":   str(total_crimes),
+                "X-Area-Count":    str(area_count),
+                "X-Avg-Density":   str(round(avg_density, 2)),
+                "X-Max-Density":   str(round(max_density, 2)),
+            },
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Crime density calculation failed: {e}")

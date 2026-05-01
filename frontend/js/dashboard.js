@@ -70,7 +70,9 @@ const SERVICES = {
     desc: "Hotspot analysis from incident points.",
     inputs: [
       { type: "file", id: "csvInput", label: "Upload crime data (CSV)" },
-      { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" }
+      { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" },
+      { type: "text", id: "latField", label: "Latitude column name", placeholder: "e.g. latitude, lat" },
+      { type: "text", id: "lonField", label: "Longitude column name", placeholder: "e.g. longitude, lon" }
     ],
   },
   "traffic": {
@@ -244,16 +246,11 @@ function runAnalysis(key) {
     return;
   }
 
-  // TODO: send uploaded files to backend
-  // TODO: trigger backend analysis API
-  // Example:
-  //   const formData = new FormData();
-  //   formData.append("file", document.getElementById("popData").files[0]);
-  //   fetch("http://localhost:8000/api/analysis/" + key, {
-  //     method: "POST", body: formData
-  //   }).then(r => r.json()).then(renderResults);
+  if (key === "crime") {
+    runCrimeAnalysis();
+    return;
+  }
 
-  // For now, just render a fake "results" UI.
   renderResults(service);
 }
 
@@ -347,6 +344,229 @@ async function runNDVIAnalysis() {
       </div>
     `;
   }
+}
+
+
+/* ---------- Crime Analysis - calls backend API ---------- */
+async function runCrimeAnalysis() {
+  const csvInput = document.getElementById("csvInput");
+  const geoJsonInput = document.getElementById("geoJsonInput");
+  const latField = document.getElementById("latField");
+  const lonField = document.getElementById("lonField");
+  
+  if (!csvInput || !csvInput.files[0]) {
+    alert("Please upload a CSV file with crime data first.");
+    return;
+  }
+
+  if (!geoJsonInput || !geoJsonInput.files[0]) {
+    alert("Please upload a GeoJSON file with boundary data first.");
+    return;
+  }
+
+  const latFieldValue = latField ? latField.value.trim() : "";
+  const lonFieldValue = lonField ? lonField.value.trim() : "";
+
+  if (!latFieldValue || !lonFieldValue) {
+    alert("Please enter the latitude and longitude column names.");
+    return;
+  }
+
+  const csvFile = csvInput.files[0];
+  const geoJsonFile = geoJsonInput.files[0];
+  
+  const formData = new FormData();
+  formData.append("csv", csvFile);
+  formData.append("geojson", geoJsonFile);
+  formData.append("lat_field", latFieldValue);
+  formData.append("lon_field", lonFieldValue);
+
+  // Show loading state
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Crime Density — Processing</h3>
+      <p class="panel-desc">Calculating crime density from uploaded data...</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const url = `http://localhost:8000/calculate-crime-density?lat_field=${encodeURIComponent(latFieldValue)}&lon_field=${encodeURIComponent(lonFieldValue)}`;
+    
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    }
+
+    // Get crime density stats from response headers
+    const crimeCount = response.headers.get("X-Crime-Count");
+    const areaCount = response.headers.get("X-Area-Count");
+    const avgDensity = response.headers.get("X-Avg-Density");
+    const maxDensity = response.headers.get("X-Max-Density");
+
+    // Render the crime density result on the map as GeoJSON
+    const geojsonData = await response.json();
+
+    // Render the crime density result on the map as GeoJSON
+    if (inputLayer) {
+      map.removeLayer(inputLayer);
+    }
+    clearMap();
+
+    inputLayer = L.geoJSON(geojsonData, {
+      style: function(feature) {
+        const density = feature.properties.crime_density || 0;
+        // Color gradient from green (low crime) to red (high crime)
+        let color = '#2ecc71'; // green
+        if (density > 10) color = '#f1c40f'; // yellow
+        if (density > 30) color = '#e67e22'; // orange
+        if (density > 50) color = '#e74c3c'; // red
+        return {
+          fillColor: color,
+          fillOpacity: 0.6,
+          color: '#333',
+          weight: 1
+        };
+      },
+      onEachFeature: function(feature, layer) {
+        const props = feature.properties;
+        const info = `
+          <strong>Area:</strong> ${props.NBHD_NAME || props.name || 'Unknown'}<br>
+          <strong>Crime Count:</strong> ${props.crime_count || 0}<br>
+          <strong>Crime Density:</strong> ${props.crime_density?.toFixed(2) || 0} /km²
+        `;
+        layer.bindPopup(info);
+      }
+    }).addTo(map);
+    
+    // Fit bounds
+    try {
+      const bounds = inputLayer.getBounds();
+      if (bounds && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
+    } catch (boundsError) {
+      console.warn("Could not fit bounds:", boundsError);
+    }
+    
+    // Render results panel with crime density stats
+    renderCrimeResults({
+      crime_count: crimeCount,
+      area_count: areaCount,
+      avg_density: avgDensity,
+      max_density: maxDensity,
+    });
+
+  } catch (error) {
+    console.error("Crime density calculation error:", error);
+    
+    // Try to get error details from response
+    let errorMessage = error.message;
+    
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">Failed to calculate crime density: ${errorMessage}</p>
+        <div class="alert alert-warning mt-2">
+          <strong>Note:</strong> Make sure your CSV has columns for latitude and longitude.
+          <br>• Latitude column: ${latFieldValue}
+          <br>• Longitude column: ${lonFieldValue}
+        </div>
+        <button class="btn btn-ghost btn-block mt-3"
+                onclick="renderServicePanel('crime')">
+          ← Back to inputs
+        </button>
+      </div>
+    `;
+  }
+}
+
+
+/* ---------- Render Crime Results with stats ---------- */
+function renderCrimeResults(stats) {
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Crime Density — Results</h3>
+      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+
+      <!-- Tab headers -->
+      <div class="tabs">
+        <div class="tab active" data-tab="raw">Raw Data</div>
+        <div class="tab"        data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+      </div>
+
+      <!-- Tab contents -->
+      <div class="tab-content active" id="tab-raw">
+        <p class="text-muted">Crime density layer rendered on map.</p>
+        <div class="insight-card">
+          <div class="label">Layers loaded</div>
+          <div class="value">1</div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-full">
+        <div class="insight-card">
+          <div class="label">Total Crimes</div>
+          <div class="value">${stats.crime_count || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Areas Analyzed</div>
+          <div class="value">${stats.area_count || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Avg Density</div>
+          <div class="value">${stats.avg_density || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Max Density</div>
+          <div class="value">${stats.max_density || "N/A"}</div>
+        </div>
+        <ul class="bullet-list">
+          <li>Crime density = crimes per km²</li>
+          <li>Higher values indicate more crime incidents</li>
+          <li>Layer displayed with color gradient on map</li>
+        </ul>
+      </div>
+
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Grid analysis of crime density values.</p>
+        <div class="insight-card">
+          <div class="label">High crime areas</div>
+          <div class="value">${((parseFloat(stats.max_density) || 0) > 50 ? "Yes" : "Limited")}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Safety rating</div>
+          <div class="value">${(parseFloat(stats.avg_density) || 0) < 10 ? "Good" : (parseFloat(stats.avg_density) || 0) < 30 ? "Moderate" : "Poor"}</div>
+        </div>
+      </div>
+
+      <button class="btn btn-ghost btn-block mt-3"
+              onclick="renderServicePanel('crime')">
+        ← Back to inputs
+      </button>
+    </div>
+  `;
+
+  // Wire up tab switching
+  analysisPanel.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", function () {
+      const target = tab.getAttribute("data-tab");
+      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+      tab.classList.add("active");
+      analysisPanel.querySelector("#tab-" + target).classList.add("active");
+    });
+  });
 }
 
 
