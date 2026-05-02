@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ndvi import calculate_ndvi_from_bands
 from crimedensity import calculate_crime_density
+from Heat_Index import calculate_heat_index_4326
 
 app = FastAPI(
     title="Urban QOL API",
