@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ndvi import calculate_ndvi_from_bands
 from crimedensity import calculate_crime_density
-from Heat_Index import calculate_heat_index_4326
+from heat_index import calculate_heat_index_4326
 
 app = FastAPI(
     title="Urban QOL API",
@@ -201,9 +201,9 @@ def calculate_heat_index_endpoint(
 
         # Run Heat Index calculation (replace with your real logic)
         stats = calculate_heat_index_4326(
-            geotiff_path = str(input_path),
-            output_path  = str(output_path),
-        )
+          str(input_path),
+          str(output_path)
+       )
 
         # Return the Heat Index GeoTIFF directly with stats in headers
         return FileResponse(
