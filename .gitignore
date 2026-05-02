@@ -219,3 +219,5 @@ __marimo__/
 
 backend/outputs/
 backend/temp_uploads/
+outputs/
+ai_agent/outputs/
