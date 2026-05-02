@@ -211,9 +211,9 @@ def calculate_heat_index_endpoint(
             media_type="image/tiff",
             filename=f"heat_index_{job_id}.tif",
             headers={
-                "X-HeatIndex-Min":     str(stats.get("min", "")),
-                "X-HeatIndex-Max":     str(stats.get("max", "")),
-                "X-HeatIndex-Mean":    str(stats.get("mean", "")),
+                "X-HeatIndex-Min":     str(stats.get("min_lst_c", "")),
+                "X-HeatIndex-Max":     str(stats.get("max_lst_c", "")),
+                "X-HeatIndex-Mean":    str(stats.get("mean_lst_c", "")),
                 "X-Valid-Pixels":      str(stats.get("valid_pixels", "")),
             },
         )
