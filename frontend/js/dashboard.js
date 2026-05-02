@@ -1495,22 +1495,97 @@ function exportMap(format) {
 // ── STEP 2: Build composite canvas ───────────────────────────────────────────
 
 /**
+ * getElementOffsetInContainer(el, containerRect)
+ * Returns {x, y} of el's top-left corner relative to containerRect,
+ * accounting for any CSS transform: translate() on the element itself.
+ */
+function getElementOffsetInContainer(el, containerRect) {
+  const rect = el.getBoundingClientRect();
+  let x = rect.left - containerRect.left;
+  let y = rect.top  - containerRect.top;
+
+  const transform = window.getComputedStyle(el).transform;
+  if (transform && transform !== 'none') {
+    const m = transform.match(/matrix\(([^)]+)\)/);
+    if (m) {
+      const parts = m[1].split(',');
+      x += parseFloat(parts[4]) || 0;
+      y += parseFloat(parts[5]) || 0;
+    }
+  }
+  return { x, y };
+}
+
+/**
+ * drawTilesOntoCanvas(mapContainer, containerRect, ctx, done)
+ * Reloads every tile <img> in .leaflet-tile-pane with crossOrigin='anonymous'
+ * and composites them onto ctx at the correct map-relative position.
+ * Falls back gracefully for tiles that block CORS (e.g. Esri satellite).
+ */
+function drawTilesOntoCanvas(mapContainer, containerRect, ctx, done) {
+  const tileImgs = Array.from(
+    mapContainer.querySelectorAll('.leaflet-tile-pane img.leaflet-tile')
+  ).filter(img => !img.classList.contains('leaflet-tile-loaded') === false || img.complete);
+
+  if (tileImgs.length === 0) { done(false); return; }
+
+  let pending  = tileImgs.length;
+  let anyDrawn = false;
+
+  tileImgs.forEach(function(srcImg) {
+    // Compute where this tile sits inside the map container.
+    // Tile positions come from inline style (left/top) on the <img>,
+    // but the containing pane (.leaflet-map-pane) itself is also translated.
+    const tileRect = srcImg.getBoundingClientRect();
+    const dx = tileRect.left - containerRect.left;
+    const dy = tileRect.top  - containerRect.top;
+    const dw = tileRect.width  || 256;
+    const dh = tileRect.height || 256;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = function() {
+      try {
+        ctx.drawImage(img, dx, dy, dw, dh);
+        anyDrawn = true;
+      } catch (e) {
+        console.warn('[drawTiles] Could not draw tile:', e.message);
+      }
+      if (--pending === 0) done(anyDrawn);
+    };
+    img.onerror = function() {
+      // CORS blocked or network error — try drawing the already-loaded img directly
+      try {
+        ctx.drawImage(srcImg, dx, dy, dw, dh);
+        anyDrawn = true;
+      } catch (e) {
+        console.warn('[drawTiles] Tile CORS blocked, skipping:', srcImg.src.slice(0, 80));
+      }
+      if (--pending === 0) done(anyDrawn);
+    };
+
+    // Append a cache-bust only for Esri (which ignores crossOrigin anyway)
+    img.src = srcImg.src;
+  });
+}
+
+/**
  * buildCompositeCanvas(callback)
  * Collects ALL rendered layers from the Leaflet map container and
- * flattens them into a single HTMLCanvasElement.
+ * flattens them into a single HTMLCanvasElement matching the current
+ * visible map extent exactly.
  *
  * Layer order (bottom → top):
- *   [1] All <canvas> elements inside .leaflet-pane (tile layers, georaster, etc.)
- *   [2] All SVG <path> elements (GeoJSON polygons, polylines)
- *   [3] All Canvas-rendered Leaflet vector layers (L.Canvas renderer)
- *   [4] Marker icons (HTML img elements inside .leaflet-marker-pane)
+ *   [1] Basemap tile <img> elements (.leaflet-tile-pane)
+ *   [2] All <canvas> elements (georaster WebGL canvases, etc.)
+ *   [3] SVG vector layers (GeoJSON polygons / polylines)
+ *   [4] Marker icons
  *
  * @param {function} callback — called with the finished canvas (or null on error)
  */
 function buildCompositeCanvas(callback) {
 
-  // Find the map's root DOM element
-  // We look for the container Leaflet actually uses (.leaflet-container)
   const mapContainer = document.querySelector('.leaflet-container');
   if (!mapContainer) {
     console.error('[buildCompositeCanvas] .leaflet-container not found in DOM');
@@ -1518,7 +1593,7 @@ function buildCompositeCanvas(callback) {
     return;
   }
 
-  // The export canvas matches the map's pixel size exactly
+  // Use the map container's visible pixel size — this is the exact export extent.
   const mapWidth  = mapContainer.offsetWidth;
   const mapHeight = mapContainer.offsetHeight;
 
@@ -1527,91 +1602,55 @@ function buildCompositeCanvas(callback) {
   exportCanvas.height = mapHeight;
   const ctx = exportCanvas.getContext('2d');
 
-  // Fill with white background (important for JPG and TIFF which have no alpha)
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, mapWidth, mapHeight);
 
+  // Clip all drawing to the map container bounds so panned-out tiles don't bleed
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, mapWidth, mapHeight);
+  ctx.clip();
 
-  // ── Layer 1: All <canvas> elements inside the map panes ─────────────────
-  // This captures: tile layers (basemap), georaster WebGL canvases,
-  // and any other canvas-based overlays.
-  //
-  // Leaflet renders tiles into .leaflet-tile-pane > canvas
-  // georaster-layer-for-leaflet renders into its own canvas inside .leaflet-overlay-pane
-  //
-  // We iterate ALL canvases in z-index order (DOM order = render order).
+  const containerRect = mapContainer.getBoundingClientRect();
 
-  const allCanvases = mapContainer.querySelectorAll('canvas');
-
-  allCanvases.forEach(function(sourceCanvas) {
-    // Skip zero-size canvases (sometimes Leaflet creates empty placeholders)
-    if (sourceCanvas.width === 0 || sourceCanvas.height === 0) return;
-
-    try {
-      // Each canvas may be offset/transformed inside the map container.
-      // We need to account for its position relative to the map root.
-      const canvasRect    = sourceCanvas.getBoundingClientRect();
-      const containerRect = mapContainer.getBoundingClientRect();
-
-      const offsetX = canvasRect.left - containerRect.left;
-      const offsetY = canvasRect.top  - containerRect.top;
-
-      // Also check for CSS transform: translate() applied by Leaflet
-      // (Leaflet shifts tile canvases during pan animations)
-      const style     = window.getComputedStyle(sourceCanvas);
-      const transform = style.transform || style.webkitTransform;
-
-      let txX = 0, txY = 0;
-      if (transform && transform !== 'none') {
-        // Parse matrix(a,b,c,d,e,f) — e=translateX, f=translateY
-        const matrixMatch = transform.match(/matrix\(([^)]+)\)/);
-        if (matrixMatch) {
-          const parts = matrixMatch[1].split(',');
-          txX = parseFloat(parts[4]) || 0;
-          txY = parseFloat(parts[5]) || 0;
-        }
-      }
-
-      ctx.drawImage(sourceCanvas, offsetX + txX, offsetY + txY);
-
-    } catch (e) {
-      // Tainted canvas (CORS) — draw a hatched placeholder so the user knows
-      console.warn('[buildCompositeCanvas] Canvas is tainted (CORS):', e.message);
-      ctx.fillStyle = 'rgba(200,200,200,0.3)';
+  // ── Layer 1: Basemap tiles ──────────────────────────────────────────────
+  drawTilesOntoCanvas(mapContainer, containerRect, ctx, function(tilesDrawn) {
+    if (!tilesDrawn) {
+      ctx.fillStyle = 'rgba(200,200,200,0.4)';
       ctx.fillRect(0, 0, mapWidth, mapHeight);
-      ctx.font      = '13px monospace';
-      ctx.fillStyle = '#888';
-      ctx.fillText('⚠ Basemap tiles blocked by CORS (try a different basemap)', 20, 30);
+      ctx.font      = '12px sans-serif';
+      ctx.fillStyle = '#666';
+      ctx.fillText('⚠ Basemap blocked by CORS — layers still exported', 10, 20);
     }
-  });
 
+    // ── Layer 2: Canvas elements (georaster / WebGL raster layers) ────────
+    mapContainer.querySelectorAll('canvas').forEach(function(sourceCanvas) {
+      if (sourceCanvas.width === 0 || sourceCanvas.height === 0) return;
+      try {
+        const off = getElementOffsetInContainer(sourceCanvas, containerRect);
+        ctx.drawImage(sourceCanvas, off.x, off.y);
+      } catch (e) {
+        console.warn('[buildCompositeCanvas] Canvas tainted:', e.message);
+      }
+    });
 
-  // ── Layer 2: SVG vector layers (GeoJSON polygons, polylines, circles) ────
-  // Leaflet renders GeoJSON into an SVG element inside .leaflet-overlay-pane.
-  // We serialize it to an image and draw it on top.
-
-  const svgElement = mapContainer.querySelector('.leaflet-overlay-pane svg');
-
-  if (svgElement) {
-    drawSvgOntoCanvas(svgElement, mapContainer, ctx, mapWidth, mapHeight, function() {
-
-      // ── Layer 3: Leaflet Canvas renderer vector layers ─────────────────
-      // Some layers use L.Canvas instead of SVG (e.g. large point datasets).
-      // These appear as <canvas> inside .leaflet-overlay-pane — already
-      // captured in Layer 1 above, so nothing extra needed here.
-
-      // ── Layer 4: Marker icons ──────────────────────────────────────────
+    // ── Layer 3: SVG vector layers ─────────────────────────────────────────
+    const svgElement = mapContainer.querySelector('.leaflet-overlay-pane svg');
+    if (svgElement) {
+      drawSvgOntoCanvas(svgElement, mapContainer, ctx, mapWidth, mapHeight, function() {
+        // ── Layer 4: Marker icons ───────────────────────────────────────────
+        drawMarkersOntoCanvas(mapContainer, ctx, function() {
+          ctx.restore();
+          callback(exportCanvas);
+        });
+      });
+    } else {
       drawMarkersOntoCanvas(mapContainer, ctx, function() {
+        ctx.restore();
         callback(exportCanvas);
       });
-    });
-
-  } else {
-    // No SVG overlay — skip straight to markers
-    drawMarkersOntoCanvas(mapContainer, ctx, function() {
-      callback(exportCanvas);
-    });
-  }
+    }
+  });
 }
 
 
