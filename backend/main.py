@@ -25,6 +25,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[
+        "X-NDVI-Min", "X-NDVI-Max", "X-NDVI-Mean", "X-Valid-Pixels",
+        "X-Crime-Count", "X-Area-Count", "X-Avg-Density", "X-Max-Density",
+        "X-Total-Population", "X-Total-Area",
+        "X-HeatIndex-Min", "X-HeatIndex-Max", "X-HeatIndex-Mean",
+    ],
 )
 
 # ── Directories ───────────────────────────────────────────────────────────────

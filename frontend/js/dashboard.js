@@ -125,6 +125,10 @@ function renderServicePanel(key) {
   const service = SERVICES[key];
   if (!service) return;
 
+  clearMap();
+  inputLayer = null;
+  resultLayer = null;
+
   // Special case for the "Future Expansion Suitability" flow
   if (service.isExpansion) {
     renderExpansionPanel(service);
@@ -273,7 +277,11 @@ async function runNDVIAnalysis() {
 
   const file = tiffInput.files[0];
   const satelliteType = satelliteSelect ? satelliteSelect.value : "landsat";
-  
+  const inputs = {
+    fileName: file.name,
+    satelliteLabel: satelliteSelect ? satelliteSelect.options[satelliteSelect.selectedIndex].text : satelliteType,
+  };
+
   const formData = new FormData();
   formData.append("geotiff", file);
 
@@ -314,7 +322,7 @@ async function runNDVIAnalysis() {
     const arrayBuffer = await response.arrayBuffer();
 
     // Render the NDVI result on the map (without custom color function to avoid projection issues)
-    let resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+    resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
       opacity: 0.9,
       resolution: 256,
     });
@@ -326,7 +334,7 @@ async function runNDVIAnalysis() {
       max: ndviMax,
       mean: ndviMean,
       valid_pixels: validPixels,
-    });
+    }, inputs);
 
   } catch (error) {
     console.error("NDVI calculation error:", error);
@@ -380,7 +388,13 @@ async function runCrimeAnalysis() {
 
   const csvFile = csvInput.files[0];
   const geoJsonFile = geoJsonInput.files[0];
-  
+  const inputs = {
+    csvFileName: csvFile.name,
+    geoJsonFileName: geoJsonFile.name,
+    latField: latFieldValue,
+    lonField: lonFieldValue,
+  };
+
   const formData = new FormData();
   formData.append("csv", csvFile);
   formData.append("geojson", geoJsonFile);
@@ -428,7 +442,7 @@ async function runCrimeAnalysis() {
     }
     clearMap();
 
-    inputLayer = L.geoJSON(geojsonData, {
+    resultLayer = L.geoJSON(geojsonData, {
       style: function(feature) {
         const density = feature.properties.crime_density || 0;
         // Color gradient from green (low crime) to red (high crime)
@@ -454,24 +468,24 @@ async function runCrimeAnalysis() {
         layer.bindPopup(info);
       }
     }).addTo(map);
-    
+
     // Fit bounds
     try {
-      const bounds = inputLayer.getBounds();
+      const bounds = resultLayer.getBounds();
       if (bounds && bounds.isValid()) {
         map.fitBounds(bounds, { padding: [50, 50] });
       }
     } catch (boundsError) {
       console.warn("Could not fit bounds:", boundsError);
     }
-    
+
     // Render results panel with crime density stats
     renderCrimeResults({
       crime_count: crimeCount,
       area_count: areaCount,
       avg_density: avgDensity,
       max_density: maxDensity,
-    });
+    }, inputs);
 
   } catch (error) {
     console.error("Crime density calculation error:", error);
@@ -516,7 +530,11 @@ async function runUrbanDensityAnalysis() {
   }
 
   const geoJsonFile = geoJsonInput.files[0];
-  
+  const inputs = {
+    geoJsonFileName: geoJsonFile.name,
+    populationField: populationFieldValue,
+  };
+
   const formData = new FormData();
   formData.append("geojson", geoJsonFile);
   formData.append("population_field", populationFieldValue);
@@ -563,7 +581,7 @@ async function runUrbanDensityAnalysis() {
     }
     clearMap();
 
-    inputLayer = L.geoJSON(geojsonData, {
+    resultLayer = L.geoJSON(geojsonData, {
       style: function(feature) {
         const density = feature.properties.urban_density || 0;
         // Color gradient from light blue (low density) to dark blue (high density)
@@ -590,17 +608,17 @@ async function runUrbanDensityAnalysis() {
         layer.bindPopup(info);
       }
     }).addTo(map);
-    
+
     // Fit bounds
     try {
-      const bounds = inputLayer.getBounds();
+      const bounds = resultLayer.getBounds();
       if (bounds && bounds.isValid()) {
         map.fitBounds(bounds, { padding: [50, 50] });
       }
     } catch (boundsError) {
       console.warn("Could not fit bounds:", boundsError);
     }
-    
+
     // Render results panel with urban density stats
     renderUrbanDensityResults({
       total_population: totalPopulation,
@@ -608,7 +626,7 @@ async function runUrbanDensityAnalysis() {
       area_count: areaCount,
       avg_density: avgDensity,
       max_density: maxDensity,
-    });
+    }, inputs);
 
   } catch (error) {
     console.error("Urban density calculation error:", error);
@@ -635,7 +653,26 @@ async function runUrbanDensityAnalysis() {
 
 
 /* ---------- Render Crime Results with stats ---------- */
-function renderCrimeResults(stats) {
+function renderCrimeResults(stats, inputs) {
+  const inputsHtml = inputs ? `
+    <div class="insight-card">
+      <div class="label">Crime data (CSV)</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.csvFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Boundary data (GeoJSON)</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.geoJsonFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Latitude field</div>
+      <div class="value">${inputs.latField}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Longitude field</div>
+      <div class="value">${inputs.lonField}</div>
+    </div>
+  ` : `<p class="text-muted">No input info available.</p>`;
+
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Crime Density — Results</h3>
@@ -643,21 +680,18 @@ function renderCrimeResults(stats) {
 
       <!-- Tab headers -->
       <div class="tabs">
-        <div class="tab active" data-tab="raw">Raw Data</div>
-        <div class="tab"        data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
       <!-- Tab contents -->
-      <div class="tab-content active" id="tab-raw">
-        <p class="text-muted">Crime density layer rendered on map.</p>
-        <div class="insight-card">
-          <div class="label">Layers loaded</div>
-          <div class="value">1</div>
-        </div>
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
       </div>
 
-      <div class="tab-content" id="tab-full">
+      <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Total Crimes</div>
           <div class="value">${stats.crime_count || "N/A"}</div>
@@ -700,21 +734,23 @@ function renderCrimeResults(stats) {
     </div>
   `;
 
-  // Wire up tab switching
-  analysisPanel.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", function () {
-      const target = tab.getAttribute("data-tab");
-      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-      tab.classList.add("active");
-      analysisPanel.querySelector("#tab-" + target).classList.add("active");
-    });
-  });
+  wireTabSwitching();
 }
 
 
 /* ---------- Render Urban Density Results with stats ---------- */
-function renderUrbanDensityResults(stats) {
+function renderUrbanDensityResults(stats, inputs) {
+  const inputsHtml = inputs ? `
+    <div class="insight-card">
+      <div class="label">Boundary data (GeoJSON)</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.geoJsonFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Population field</div>
+      <div class="value">${inputs.populationField}</div>
+    </div>
+  ` : `<p class="text-muted">No input info available.</p>`;
+
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Urban Density — Results</h3>
@@ -722,21 +758,18 @@ function renderUrbanDensityResults(stats) {
 
       <!-- Tab headers -->
       <div class="tabs">
-        <div class="tab active" data-tab="raw">Raw Data</div>
-        <div class="tab"        data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
       <!-- Tab contents -->
-      <div class="tab-content active" id="tab-raw">
-        <p class="text-muted">Urban density layer rendered on map.</p>
-        <div class="insight-card">
-          <div class="label">Layers loaded</div>
-          <div class="value">1</div>
-        </div>
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
       </div>
 
-      <div class="tab-content" id="tab-full">
+      <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Total Population</div>
           <div class="value">${stats.total_population || "N/A"}</div>
@@ -784,21 +817,23 @@ function renderUrbanDensityResults(stats) {
     </div>
   `;
 
-  // Wire up tab switching
-  analysisPanel.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", function () {
-      const target = tab.getAttribute("data-tab");
-      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-      tab.classList.add("active");
-      analysisPanel.querySelector("#tab-" + target).classList.add("active");
-    });
-  });
+  wireTabSwitching();
 }
 
 
 /* ---------- Render NDVI Results with stats ---------- */
-function renderNDVIResults(stats) {
+function renderNDVIResults(stats, inputs) {
+  const inputsHtml = inputs ? `
+    <div class="insight-card">
+      <div class="label">GeoTIFF file</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Satellite type</div>
+      <div class="value">${inputs.satelliteLabel}</div>
+    </div>
+  ` : `<p class="text-muted">No input info available.</p>`;
+
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">NDVI — Results</h3>
@@ -806,21 +841,18 @@ function renderNDVIResults(stats) {
 
       <!-- Tab headers -->
       <div class="tabs">
-        <div class="tab active" data-tab="raw">Raw Data</div>
-        <div class="tab"        data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
       <!-- Tab contents -->
-      <div class="tab-content active" id="tab-raw">
-        <p class="text-muted">NDVI layer rendered on map.</p>
-        <div class="insight-card">
-          <div class="label">Layers loaded</div>
-          <div class="value">1</div>
-        </div>
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
       </div>
 
-      <div class="tab-content" id="tab-full">
+      <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Min NDVI</div>
           <div class="value">${stats.min || "N/A"}</div>
@@ -863,16 +895,7 @@ function renderNDVIResults(stats) {
     </div>
   `;
 
-  // Wire up tab switching
-  analysisPanel.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", function () {
-      const target = tab.getAttribute("data-tab");
-      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-      tab.classList.add("active");
-      analysisPanel.querySelector("#tab-" + target).classList.add("active");
-    });
-  });
+  wireTabSwitching();
 }
 
 
@@ -885,22 +908,21 @@ function renderResults(service) {
 
       <!-- Tab headers -->
       <div class="tabs">
-        <div class="tab active" data-tab="raw">Raw Data</div>
-        <div class="tab"        data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
       <!-- Tab contents -->
-      <div class="tab-content active" id="tab-raw">
-        <p class="text-muted">Uploaded layers preview.</p>
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
         <div class="insight-card">
-          <div class="label">Layers loaded</div>
-          <div class="value">2</div>
+          <div class="label">Files submitted</div>
+          <div class="value">1</div>
         </div>
-        <!-- TODO: populate with real raw data from backend -->
       </div>
 
-      <div class="tab-content" id="tab-full">
+      <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Mean value</div>
           <div class="value">72.4</div>
@@ -937,16 +959,7 @@ function renderResults(service) {
     </div>
   `;
 
-  // Wire up tab switching
-  analysisPanel.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", function () {
-      const target = tab.getAttribute("data-tab");
-      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-      tab.classList.add("active");
-      analysisPanel.querySelector("#tab-" + target).classList.add("active");
-    });
-  });
+  wireTabSwitching();
 }
 
 
@@ -954,6 +967,40 @@ function renderResults(service) {
 function getActiveServiceKey() {
   const active = serviceList.querySelector("li.active");
   return active ? active.getAttribute("data-service") : null;
+}
+
+
+/* ---------- Helper: wire up tab switching + map layer toggle ---------- */
+function wireTabSwitching() {
+  analysisPanel.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", function () {
+      const target = tab.getAttribute("data-tab");
+      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+      tab.classList.add("active");
+      analysisPanel.querySelector("#tab-" + target).classList.add("active");
+
+      if (target === "raw") {
+        if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+        if (inputLayer && !map.hasLayer(inputLayer)) {
+          try {
+            inputLayer.addTo(map);
+            const b = inputLayer.getBounds ? inputLayer.getBounds() : null;
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch (e) { console.warn("Could not restore input layer:", e); }
+        }
+      } else if (target === "full") {
+        if (inputLayer && map.hasLayer(inputLayer)) map.removeLayer(inputLayer);
+        if (resultLayer && !map.hasLayer(resultLayer)) {
+          try {
+            resultLayer.addTo(map);
+            const b = resultLayer.getBounds ? resultLayer.getBounds() : null;
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch (e) { console.warn("Could not restore result layer:", e); }
+        }
+      }
+    });
+  });
 }
 
 
@@ -1173,7 +1220,8 @@ async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
   }
 }
 
-let inputLayer = null; // Store reference to the currently displayed input layer so we can remove it when loading a new one
+let inputLayer = null;  // pre-analysis layer — shown when Raw Data tab is active
+let resultLayer = null; // analysis result layer — shown when Full Area tab is active
 
 /* ---------- Attach file input listeners after DOM is updated ---------- */
 function attachFileInputListeners() {
@@ -1205,12 +1253,13 @@ function attachFileInputListeners() {
 
         console.log("Uploaded GeoJSON:", geojsonData);
 
-        // ADD TO MAP
-        let geojsonLayer = L.geoJSON(geojsonData).addTo(map);
+        // ADD TO MAP (track as inputLayer so tab switching can restore it)
+        if (inputLayer) map.removeLayer(inputLayer);
+        inputLayer = L.geoJSON(geojsonData).addTo(map);
 
         // FIT BOUNDS
         try {
-          const bounds = geojsonLayer.getBounds();
+          const bounds = inputLayer.getBounds();
           if (bounds && bounds.isValid()) {
             map.fitBounds(bounds, { padding: [50, 50] });
           }
