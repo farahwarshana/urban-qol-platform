@@ -251,6 +251,11 @@ function runAnalysis(key) {
     return;
   }
 
+  if (key === "heat-index") {
+  runHeatIndexAnalysis();
+  return;
+  }
+
   if (key === "crime") {
     runCrimeAnalysis();
     return;
@@ -650,8 +655,71 @@ async function runUrbanDensityAnalysis() {
     `;
   }
 }
+/*---------------------heat index-------------------------*/
+async function runHeatIndexAnalysis() {
+  const tiffInput = document.getElementById("tiffInput");
 
+  if (!tiffInput || !tiffInput.files[0]) {
+    alert("Please upload GeoTIFF file first.");
+    return;
+  }
 
+  const file = tiffInput.files[0];
+
+  const formData = new FormData();
+  formData.append("lst_geotiff", file);
+
+  // loading UI
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Heat Index — Processing</h3>
+      <p class="panel-desc">Calculating heat index...</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary"></div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const response = await fetch("http://localhost:8000/calculate-heat-index", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail);
+    }
+
+    // 🟢 نقرأ الصورة
+    const arrayBuffer = await response.arrayBuffer();
+
+    resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+      opacity: 0.9,
+      resolution: 256,
+    });
+
+    // 🟢 نعرض النتائج
+    renderResults({
+      title: "Heat Index",
+      desc: "Heat analysis completed"
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">${error.message}</p>
+        <button class="btn btn-ghost"
+                onclick="renderServicePanel('heat-index')">
+          ← Back
+        </button>
+      </div>
+    `;
+  }
+}
 /* ---------- Render Crime Results with stats ---------- */
 function renderCrimeResults(stats, inputs) {
   const inputsHtml = inputs ? `
