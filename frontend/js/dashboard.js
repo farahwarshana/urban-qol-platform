@@ -22,7 +22,8 @@ const SERVICES = {
     title: "Urban Density",
     desc: "Estimate population density across an area.",
     inputs: [
-      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" },
+      { type: "text", id: "populationField", label: "Population field name", placeholder: "e.g. population, pop" }
     ],
   },
   "public-transport": {
@@ -123,6 +124,10 @@ serviceList.addEventListener("click", function (e) {
 function renderServicePanel(key) {
   const service = SERVICES[key];
   if (!service) return;
+
+  clearMap();
+  inputLayer = null;
+  resultLayer = null;
 
   // Special case for the "Future Expansion Suitability" flow
   if (service.isExpansion) {
@@ -251,6 +256,11 @@ function runAnalysis(key) {
     return;
   }
 
+  if (key === "urban-density") {
+    runUrbanDensityAnalysis();
+    return;
+  }
+
   renderResults(service);
 }
 
@@ -267,7 +277,11 @@ async function runNDVIAnalysis() {
 
   const file = tiffInput.files[0];
   const satelliteType = satelliteSelect ? satelliteSelect.value : "landsat";
-  
+  const inputs = {
+    fileName: file.name,
+    satelliteLabel: satelliteSelect ? satelliteSelect.options[satelliteSelect.selectedIndex].text : satelliteType,
+  };
+
   const formData = new FormData();
   formData.append("geotiff", file);
 
@@ -308,7 +322,7 @@ async function runNDVIAnalysis() {
     const arrayBuffer = await response.arrayBuffer();
 
     // Render the NDVI result on the map (without custom color function to avoid projection issues)
-    let resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+    resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
       opacity: 0.9,
       resolution: 256,
     });
@@ -320,7 +334,7 @@ async function runNDVIAnalysis() {
       max: ndviMax,
       mean: ndviMean,
       valid_pixels: validPixels,
-    });
+    }, inputs);
 
   } catch (error) {
     console.error("NDVI calculation error:", error);
@@ -374,7 +388,13 @@ async function runCrimeAnalysis() {
 
   const csvFile = csvInput.files[0];
   const geoJsonFile = geoJsonInput.files[0];
-  
+  const inputs = {
+    csvFileName: csvFile.name,
+    geoJsonFileName: geoJsonFile.name,
+    latField: latFieldValue,
+    lonField: lonFieldValue,
+  };
+
   const formData = new FormData();
   formData.append("csv", csvFile);
   formData.append("geojson", geoJsonFile);
@@ -422,7 +442,7 @@ async function runCrimeAnalysis() {
     }
     clearMap();
 
-    inputLayer = L.geoJSON(geojsonData, {
+    resultLayer = L.geoJSON(geojsonData, {
       style: function(feature) {
         const density = feature.properties.crime_density || 0;
         // Color gradient from green (low crime) to red (high crime)
@@ -448,24 +468,24 @@ async function runCrimeAnalysis() {
         layer.bindPopup(info);
       }
     }).addTo(map);
-    
+
     // Fit bounds
     try {
-      const bounds = inputLayer.getBounds();
+      const bounds = resultLayer.getBounds();
       if (bounds && bounds.isValid()) {
         map.fitBounds(bounds, { padding: [50, 50] });
       }
     } catch (boundsError) {
       console.warn("Could not fit bounds:", boundsError);
     }
-    
+
     // Render results panel with crime density stats
     renderCrimeResults({
       crime_count: crimeCount,
       area_count: areaCount,
       avg_density: avgDensity,
       max_density: maxDensity,
-    });
+    }, inputs);
 
   } catch (error) {
     console.error("Crime density calculation error:", error);
@@ -492,8 +512,167 @@ async function runCrimeAnalysis() {
 }
 
 
+/* ---------- Urban Density Analysis - calls backend API ---------- */
+async function runUrbanDensityAnalysis() {
+  const geoJsonInput = document.getElementById("geoJsonInput");
+  const populationField = document.getElementById("populationField");
+  
+  if (!geoJsonInput || !geoJsonInput.files[0]) {
+    alert("Please upload a GeoJSON file with boundary data first.");
+    return;
+  }
+
+  const populationFieldValue = populationField ? populationField.value.trim() : "";
+
+  if (!populationFieldValue) {
+    alert("Please enter the population field name.");
+    return;
+  }
+
+  const geoJsonFile = geoJsonInput.files[0];
+  const inputs = {
+    geoJsonFileName: geoJsonFile.name,
+    populationField: populationFieldValue,
+  };
+
+  const formData = new FormData();
+  formData.append("geojson", geoJsonFile);
+  formData.append("population_field", populationFieldValue);
+
+  // Show loading state
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Urban Density — Processing</h3>
+      <p class="panel-desc">Calculating urban density from uploaded data...</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const url = `http://localhost:8000/calculate-urban-density?population_field=${encodeURIComponent(populationFieldValue)}`;
+    
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    }
+
+    // Get urban density stats from response headers
+    const totalPopulation = response.headers.get("X-Total-Population");
+    const totalArea = response.headers.get("X-Total-Area");
+    const areaCount = response.headers.get("X-Area-Count");
+    const avgDensity = response.headers.get("X-Avg-Density");
+    const maxDensity = response.headers.get("X-Max-Density");
+
+    // Render the urban density result on the map as GeoJSON
+    const geojsonData = await response.json();
+
+    // Render the urban density result on the map as GeoJSON
+    if (inputLayer) {
+      map.removeLayer(inputLayer);
+    }
+    clearMap();
+
+    resultLayer = L.geoJSON(geojsonData, {
+      style: function(feature) {
+        const density = feature.properties.urban_density || 0;
+        // Color gradient from light blue (low density) to dark blue (high density)
+        let color = '#add8e6'; // light blue
+        if (density > 100) color = '#87ceeb'; // sky blue
+        if (density > 500) color = '#4682b4'; // steel blue
+        if (density > 1000) color = '#4169e1'; // royal blue
+        if (density > 2000) color = '#000080'; // navy
+        return {
+          fillColor: color,
+          fillOpacity: 0.6,
+          color: '#333',
+          weight: 1
+        };
+      },
+      onEachFeature: function(feature, layer) {
+        const props = feature.properties;
+        const info = `
+          <strong>Area:</strong> ${props.NBHD_NAME || props.name || 'Unknown'}<br>
+          <strong>Population:</strong> ${props[populationFieldValue] || 0}<br>
+          <strong>Area:</strong> ${props.area_km2?.toFixed(2) || 0} km²<br>
+          <strong>Urban Density:</strong> ${props.urban_density?.toFixed(2) || 0} /km²
+        `;
+        layer.bindPopup(info);
+      }
+    }).addTo(map);
+
+    // Fit bounds
+    try {
+      const bounds = resultLayer.getBounds();
+      if (bounds && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
+    } catch (boundsError) {
+      console.warn("Could not fit bounds:", boundsError);
+    }
+
+    // Render results panel with urban density stats
+    renderUrbanDensityResults({
+      total_population: totalPopulation,
+      total_area: totalArea,
+      area_count: areaCount,
+      avg_density: avgDensity,
+      max_density: maxDensity,
+    }, inputs);
+
+  } catch (error) {
+    console.error("Urban density calculation error:", error);
+    
+    // Try to get error details from response
+    let errorMessage = error.message;
+    
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">Failed to calculate urban density: ${errorMessage}</p>
+        <div class="alert alert-warning mt-2">
+          <strong>Note:</strong> Make sure your GeoJSON has a column for population.
+          <br>• Population column: ${populationFieldValue}
+        </div>
+        <button class="btn btn-ghost btn-block mt-3"
+                onclick="renderServicePanel('urban-density')">
+          ← Back to inputs
+        </button>
+      </div>
+    `;
+  }
+}
+
+
 /* ---------- Render Crime Results with stats ---------- */
-function renderCrimeResults(stats) {
+function renderCrimeResults(stats, inputs) {
+  const inputsHtml = inputs ? `
+    <div class="insight-card">
+      <div class="label">Crime data (CSV)</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.csvFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Boundary data (GeoJSON)</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.geoJsonFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Latitude field</div>
+      <div class="value">${inputs.latField}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Longitude field</div>
+      <div class="value">${inputs.lonField}</div>
+    </div>
+  ` : `<p class="text-muted">No input info available.</p>`;
+
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Crime Density — Results</h3>
@@ -501,21 +680,18 @@ function renderCrimeResults(stats) {
 
       <!-- Tab headers -->
       <div class="tabs">
-        <div class="tab active" data-tab="raw">Raw Data</div>
-        <div class="tab"        data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
       <!-- Tab contents -->
-      <div class="tab-content active" id="tab-raw">
-        <p class="text-muted">Crime density layer rendered on map.</p>
-        <div class="insight-card">
-          <div class="label">Layers loaded</div>
-          <div class="value">1</div>
-        </div>
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
       </div>
 
-      <div class="tab-content" id="tab-full">
+      <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Total Crimes</div>
           <div class="value">${stats.crime_count || "N/A"}</div>
@@ -558,21 +734,106 @@ function renderCrimeResults(stats) {
     </div>
   `;
 
-  // Wire up tab switching
-  analysisPanel.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", function () {
-      const target = tab.getAttribute("data-tab");
-      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-      tab.classList.add("active");
-      analysisPanel.querySelector("#tab-" + target).classList.add("active");
-    });
-  });
+  wireTabSwitching();
+}
+
+
+/* ---------- Render Urban Density Results with stats ---------- */
+function renderUrbanDensityResults(stats, inputs) {
+  const inputsHtml = inputs ? `
+    <div class="insight-card">
+      <div class="label">Boundary data (GeoJSON)</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.geoJsonFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Population field</div>
+      <div class="value">${inputs.populationField}</div>
+    </div>
+  ` : `<p class="text-muted">No input info available.</p>`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Urban Density — Results</h3>
+      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+
+      <!-- Tab headers -->
+      <div class="tabs">
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+      </div>
+
+      <!-- Tab contents -->
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
+      </div>
+
+      <div class="tab-content active" id="tab-full">
+        <div class="insight-card">
+          <div class="label">Total Population</div>
+          <div class="value">${stats.total_population || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Total Area</div>
+          <div class="value">${stats.total_area || "N/A"} km²</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Areas Analyzed</div>
+          <div class="value">${stats.area_count || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Avg Density</div>
+          <div class="value">${stats.avg_density || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Max Density</div>
+          <div class="value">${stats.max_density || "N/A"}</div>
+        </div>
+        <ul class="bullet-list">
+          <li>Urban density = population per km²</li>
+          <li>Areas are automatically calculated from polygon geometries</li>
+          <li>Higher values indicate more densely populated areas</li>
+          <li>Layer displayed with blue color gradient on map</li>
+        </ul>
+      </div>
+
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Grid analysis of urban density values.</p>
+        <div class="insight-card">
+          <div class="label">High density areas</div>
+          <div class="value">${((parseFloat(stats.max_density) || 0) > 1000 ? "Yes" : "Limited")}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Urbanization level</div>
+          <div class="value">${(parseFloat(stats.avg_density) || 0) < 100 ? "Low" : (parseFloat(stats.avg_density) || 0) < 500 ? "Medium" : "High"}</div>
+        </div>
+      </div>
+
+      <button class="btn btn-ghost btn-block mt-3"
+              onclick="renderServicePanel('urban-density')">
+        ← Back to inputs
+      </button>
+    </div>
+  `;
+
+  wireTabSwitching();
 }
 
 
 /* ---------- Render NDVI Results with stats ---------- */
-function renderNDVIResults(stats) {
+function renderNDVIResults(stats, inputs) {
+  const inputsHtml = inputs ? `
+    <div class="insight-card">
+      <div class="label">GeoTIFF file</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Satellite type</div>
+      <div class="value">${inputs.satelliteLabel}</div>
+    </div>
+  ` : `<p class="text-muted">No input info available.</p>`;
+
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">NDVI — Results</h3>
@@ -580,21 +841,18 @@ function renderNDVIResults(stats) {
 
       <!-- Tab headers -->
       <div class="tabs">
-        <div class="tab active" data-tab="raw">Raw Data</div>
-        <div class="tab"        data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
       <!-- Tab contents -->
-      <div class="tab-content active" id="tab-raw">
-        <p class="text-muted">NDVI layer rendered on map.</p>
-        <div class="insight-card">
-          <div class="label">Layers loaded</div>
-          <div class="value">1</div>
-        </div>
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
       </div>
 
-      <div class="tab-content" id="tab-full">
+      <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Min NDVI</div>
           <div class="value">${stats.min || "N/A"}</div>
@@ -637,16 +895,7 @@ function renderNDVIResults(stats) {
     </div>
   `;
 
-  // Wire up tab switching
-  analysisPanel.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", function () {
-      const target = tab.getAttribute("data-tab");
-      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-      tab.classList.add("active");
-      analysisPanel.querySelector("#tab-" + target).classList.add("active");
-    });
-  });
+  wireTabSwitching();
 }
 
 
@@ -659,22 +908,21 @@ function renderResults(service) {
 
       <!-- Tab headers -->
       <div class="tabs">
-        <div class="tab active" data-tab="raw">Raw Data</div>
-        <div class="tab"        data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
       <!-- Tab contents -->
-      <div class="tab-content active" id="tab-raw">
-        <p class="text-muted">Uploaded layers preview.</p>
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
         <div class="insight-card">
-          <div class="label">Layers loaded</div>
-          <div class="value">2</div>
+          <div class="label">Files submitted</div>
+          <div class="value">1</div>
         </div>
-        <!-- TODO: populate with real raw data from backend -->
       </div>
 
-      <div class="tab-content" id="tab-full">
+      <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Mean value</div>
           <div class="value">72.4</div>
@@ -711,16 +959,7 @@ function renderResults(service) {
     </div>
   `;
 
-  // Wire up tab switching
-  analysisPanel.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", function () {
-      const target = tab.getAttribute("data-tab");
-      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-      tab.classList.add("active");
-      analysisPanel.querySelector("#tab-" + target).classList.add("active");
-    });
-  });
+  wireTabSwitching();
 }
 
 
@@ -728,6 +967,40 @@ function renderResults(service) {
 function getActiveServiceKey() {
   const active = serviceList.querySelector("li.active");
   return active ? active.getAttribute("data-service") : null;
+}
+
+
+/* ---------- Helper: wire up tab switching + map layer toggle ---------- */
+function wireTabSwitching() {
+  analysisPanel.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", function () {
+      const target = tab.getAttribute("data-tab");
+      analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+      tab.classList.add("active");
+      analysisPanel.querySelector("#tab-" + target).classList.add("active");
+
+      if (target === "raw") {
+        if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+        if (inputLayer && !map.hasLayer(inputLayer)) {
+          try {
+            inputLayer.addTo(map);
+            const b = inputLayer.getBounds ? inputLayer.getBounds() : null;
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch (e) { console.warn("Could not restore input layer:", e); }
+        }
+      } else if (target === "full") {
+        if (inputLayer && map.hasLayer(inputLayer)) map.removeLayer(inputLayer);
+        if (resultLayer && !map.hasLayer(resultLayer)) {
+          try {
+            resultLayer.addTo(map);
+            const b = resultLayer.getBounds ? resultLayer.getBounds() : null;
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch (e) { console.warn("Could not restore result layer:", e); }
+        }
+      }
+    });
+  });
 }
 
 
@@ -947,7 +1220,8 @@ async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
   }
 }
 
-let inputLayer = null; // Store reference to the currently displayed input layer so we can remove it when loading a new one
+let inputLayer = null;  // pre-analysis layer — shown when Raw Data tab is active
+let resultLayer = null; // analysis result layer — shown when Full Area tab is active
 
 /* ---------- Attach file input listeners after DOM is updated ---------- */
 function attachFileInputListeners() {
@@ -979,12 +1253,13 @@ function attachFileInputListeners() {
 
         console.log("Uploaded GeoJSON:", geojsonData);
 
-        // ADD TO MAP
-        let geojsonLayer = L.geoJSON(geojsonData).addTo(map);
+        // ADD TO MAP (track as inputLayer so tab switching can restore it)
+        if (inputLayer) map.removeLayer(inputLayer);
+        inputLayer = L.geoJSON(geojsonData).addTo(map);
 
         // FIT BOUNDS
         try {
-          const bounds = geojsonLayer.getBounds();
+          const bounds = inputLayer.getBounds();
           if (bounds && bounds.isValid()) {
             map.fitBounds(bounds, { padding: [50, 50] });
           }

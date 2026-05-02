@@ -25,6 +25,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[
+        "X-NDVI-Min", "X-NDVI-Max", "X-NDVI-Mean", "X-Valid-Pixels",
+        "X-Crime-Count", "X-Area-Count", "X-Avg-Density", "X-Max-Density",
+        "X-Total-Population", "X-Total-Area",
+        "X-HeatIndex-Min", "X-HeatIndex-Max", "X-HeatIndex-Mean",
+    ],
 )
 
 # ── Directories ───────────────────────────────────────────────────────────────
@@ -175,6 +181,66 @@ def calculate_crime_density_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Crime density calculation failed: {e}")
 
+
+@app.post("/calculate-urban-density", tags=["Urban Density"])
+def calculate_urban_density_endpoint(
+    geojson: UploadFile = File(..., description="GeoJSON file with area polygons and population data"),
+    population_field: str = Query(..., description="Name of population field in GeoJSON"),
+):
+    """
+    Upload a GeoJSON file with area polygons and population data.
+    The API calculates urban density (population per unit area) and returns the result GeoJSON.
+    """
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    urban_dir = get_output_subdir("urban_density")
+
+    geojson_path = tmp_dir / "input.geojson"
+    output_path = urban_dir / f"urban_density_{job_id}.geojson"
+
+    try:
+        # Save uploaded GeoJSON file to disk
+        with geojson_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        print("Files saved, starting urban density calculation...")  # Debug log
+
+        # Run urban density calculation
+        result_gdf = calculate_urban_density(
+            population_geojson=str(geojson_path),
+            population_field=population_field,
+            output_path=str(output_path),
+        )
+
+        # Calculate stats
+        total_population = int(result_gdf[population_field].sum()) if population_field in result_gdf.columns else 0
+        total_area = float(result_gdf['area_km2'].sum()) if 'area_km2' in result_gdf.columns else 0
+        area_count = len(result_gdf)
+        avg_density = float(result_gdf['urban_density'].mean()) if 'urban_density' in result_gdf.columns else 0
+        max_density = float(result_gdf['urban_density'].max()) if 'urban_density' in result_gdf.columns else 0
+
+        # Read the output GeoJSON and return as JSON
+        with open(str(output_path), 'r') as f:
+            import json
+            geojson_data = json.load(f)
+
+        # Return the urban density GeoJSON as JSON with stats in headers
+        return JSONResponse(
+            content=geojson_data,
+            headers={
+                "X-Total-Population": str(total_population),
+                "X-Total-Area":       str(round(total_area, 2)),
+                "X-Area-Count":       str(area_count),
+                "X-Avg-Density":      str(round(avg_density, 2)),
+                "X-Max-Density":      str(round(max_density, 2)),
+            },
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Urban density calculation failed: {e}")
 
 
 @app.post("/calculate-heat-index", tags=["Heat Index"])

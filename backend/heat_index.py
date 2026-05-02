@@ -11,11 +11,9 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
     and export result as GeoTIFF in EPSG:4326.
     """
 
-    # Check input file
     if not os.path.exists(geotiff_path):
         raise FileNotFoundError(f"File not found: {geotiff_path}")
 
-    # Open raster
     with rasterio.open(geotiff_path) as src:
         src_crs = src.crs
 
@@ -25,8 +23,9 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
         lst = src.read(1).astype("float32")
         meta = src.meta.copy()
         src_transform = src.transform
+        src_bounds = src.bounds
 
-    # Clean data
+    # ── Clean NoData ───────────────────────────
     nodata = meta.get("nodata")
 
     if nodata is not None:
@@ -34,17 +33,34 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
 
     lst[lst == 0] = np.nan
 
+    valid_raw = lst[~np.isnan(lst)]
+
+    if valid_raw.size == 0:
+        raise ValueError("No valid raster pixels found.")
+
+    raw_min = np.nanmin(valid_raw)
+    raw_max = np.nanmax(valid_raw)
+
+    # ── Normalize values to Celsius ────────────
+    # Case 1: Landsat Collection 2 Thermal DN
+    if raw_max > 1000:
+        lst = lst * 0.00341802 + 149.0   # DN → Kelvin
+        lst = lst - 273.15               # Kelvin → Celsius
+
+    # Case 2: Kelvin
+    elif raw_min > 100:
+        lst = lst - 273.15               # Kelvin → Celsius
+
+    # Case 3: Already Celsius
+    else:
+        lst = lst
+
     valid_lst = lst[~np.isnan(lst)]
 
     if valid_lst.size == 0:
         raise ValueError("No valid LST pixels found.")
 
-    # Kelvin to Celsius if needed
-    if np.nanmin(valid_lst) > 100:
-        lst = lst - 273.15
-        valid_lst = lst[~np.isnan(lst)]
-
-    # Heat Index classification
+    # ── Heat Index classification ──────────────
     heat_index = np.full(lst.shape, -9999, dtype="int16")
 
     heat_index[lst < 27] = 0
@@ -54,7 +70,7 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
 
     heat_index[np.isnan(lst)] = -9999
 
-    # Reproject to EPSG:4326
+    # ── Reproject to EPSG:4326 ─────────────────
     dst_crs = "EPSG:4326"
 
     transform_4326, width_4326, height_4326 = calculate_default_transform(
@@ -62,7 +78,7 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
         dst_crs,
         meta["width"],
         meta["height"],
-        *src.bounds
+        *src_bounds
     )
 
     heat_4326 = np.full(
@@ -83,7 +99,7 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
         dst_nodata=-9999
     )
 
-    # Save output
+    # ── Save output ────────────────────────────
     output_dir = os.path.dirname(output_heat_path)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
@@ -103,7 +119,7 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
     with rasterio.open(output_heat_path, "w", **meta) as dst:
         dst.write(heat_4326, 1)
 
-    # Stats
+    # ── Stats ──────────────────────────────────
     valid_heat = heat_4326[heat_4326 != -9999]
 
     if valid_heat.size == 0:
@@ -121,5 +137,9 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
         "extreme_caution_percent": round(float(np.sum(valid_heat == 2) / valid_heat.size * 100), 1),
         "danger_percent": round(float(np.sum(valid_heat == 3) / valid_heat.size * 100), 1),
     }
+
+    print("MIN:", np.nanmin(valid_lst))
+    print("MAX:", np.nanmax(valid_lst))
+    print("UNIQUE HEAT:", np.unique(heat_4326))
 
     return stats
