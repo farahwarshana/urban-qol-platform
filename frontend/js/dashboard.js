@@ -1118,122 +1118,580 @@ function attachFileInputListeners() {
 // ============================================================
 
 
+// 
 // ============================================================
-// MAP EXPORT FUNCTION
-// Captures the current map view (basemap + all layers) and
-// downloads it in the user's chosen format.
+// mapExport.js
+// Full map export — captures basemap + GeoTIFF raster layers
+// + GeoJSON polygons + CSV-converted layers all in one image.
 //
-// Uses the leaflet-image library to composite all map canvases
-// and SVG layers into a single image.
+// Strategy:
+//   1. Collect every canvas in the map container (tile layers,
+//      georaster WebGL canvases, etc.)
+//   2. Manually redraw all Leaflet SVG/Canvas vector layers
+//      (GeoJSON polygons, polylines, points) on top
+//   3. Flatten everything into one export canvas
+//   4. Download in the chosen format (PNG / JPG / JPEG / TIFF)
 //
-// Call this from the Export button: onclick="exportMap('png')"
+// Dependencies (add to your HTML before this script):
+//   <script src="https://unpkg.com/leaflet-image@0.4.0/leaflet-image.js"></script>
+//
+// Usage (HTML):
+//   <div class="user-menu" id="exportMenu">
+//     <button class="btn" id="export-btn" onclick="toggleExportMenu()">
+//       💾 Export ▾
+//     </button>
+//     <div class="dropdown">
+//       <a href="#" onclick="exportMap('png');  toggleExportMenu(); return false;">🖼️ PNG</a>
+//       <a href="#" onclick="exportMap('jpg');  toggleExportMenu(); return false;">📷 JPG</a>
+//       <a href="#" onclick="exportMap('jpeg'); toggleExportMenu(); return false;">📷 JPEG</a>
+//       <a href="#" onclick="exportMap('tiff'); toggleExportMenu(); return false;">🗺️ TIFF</a>
+//     </div>
+//   </div>
 // ============================================================
+
+
+// ── STEP 1: Master export entry point ────────────────────────────────────────
 
 /**
  * exportMap(format)
- * Captures the current Leaflet map extent including all visible layers
- * and downloads the result as an image file.
+ * Main export function. Call from your Export dropdown buttons.
  *
  * @param {string} format — 'png' | 'jpg' | 'jpeg' | 'tiff'
  */
 function exportMap(format) {
-  if (!map) {
+
+  // Guard: map must be initialized
+  // 'map' is the global Leaflet map variable from your dashboard.js
+  if (typeof map === 'undefined' || !map) {
     showToast('Map is not initialized yet.', 'warning');
     return;
   }
 
   format = format.toLowerCase();
 
-  // Validate format
   const supported = ['png', 'jpg', 'jpeg', 'tiff'];
   if (!supported.includes(format)) {
     showToast(`Unsupported format: ${format}`, 'warning');
     return;
   }
 
-  showToast(`Preparing ${format.toUpperCase()} export...`, 'info');
-
-  // Disable the export button while processing to prevent double-clicks
+  // Disable export button and show loading state
   const exportBtn = document.getElementById('export-btn');
   if (exportBtn) {
-    exportBtn.disabled    = true;
-    exportBtn.textContent = '⏳ Exporting...';
+    exportBtn.disabled     = true;
+    exportBtn.innerHTML    = '⏳ Exporting...';
   }
 
-  // leaflet-image composites all tile layers + vector/raster overlays
-  // into a single HTMLCanvasElement
-  leafletImage(map, function (err, canvas) {
+  showToast(`Preparing ${format.toUpperCase()} export — please wait...`, 'info');
 
-    // Re-enable the button regardless of outcome
-    if (exportBtn) {
-      exportBtn.disabled    = false;
-      exportBtn.textContent = '💾 Export';
-    }
+  // Give Leaflet a frame to finish rendering any pending redraws
+  // before we start reading canvases
+  setTimeout(() => {
+    try {
+      buildCompositeCanvas(function(compositeCanvas) {
 
-    if (err) {
-      console.error('leaflet-image error:', err);
-      showToast('Export failed — see console for details.', 'warning');
-      return;
-    }
+        // Re-enable button
+        if (exportBtn) {
+          exportBtn.disabled  = false;
+          exportBtn.innerHTML = '💾 Export ▾';
+        }
 
-    // ── For PNG / JPG / JPEG: use canvas directly ──────────────────────────
-    if (format === 'png' || format === 'jpg' || format === 'jpeg') {
+        if (!compositeCanvas) {
+          showToast('Export failed — could not read map canvas.', 'warning');
+          return;
+        }
 
-      // Canvas toDataURL needs 'image/jpeg' not 'image/jpg'
-      const mimeType = (format === 'png') ? 'image/png' : 'image/jpeg';
+        // Hand off to format-specific encoder
+        encodeAndDownload(compositeCanvas, format);
+      });
 
-      // JPG doesn't support transparency — fill background white first
-      if (format === 'jpg' || format === 'jpeg') {
-        const ctx = canvas.getContext('2d');
-        // Draw white rect behind existing content
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const bgCanvas  = document.createElement('canvas');
-        bgCanvas.width  = canvas.width;
-        bgCanvas.height = canvas.height;
-        const bgCtx     = bgCanvas.getContext('2d');
-        bgCtx.fillStyle = '#ffffff';
-        bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
-        bgCtx.drawImage(canvas, 0, 0);
-        triggerDownload(bgCanvas.toDataURL(mimeType, 0.95), `map_export.${format}`);
-      } else {
-        triggerDownload(canvas.toDataURL(mimeType), `map_export.${format}`);
-      }
-
-      showToast(`Map exported as ${format.toUpperCase()}!`, 'success');
-    }
-
-    // ── For TIFF: encode manually as a minimal uncompressed TIFF ──────────
-    // Note: this produces a plain RGB TIFF without georeference metadata.
-    // For a georeferenced GeoTIFF you would need a backend endpoint.
-    else if (format === 'tiff') {
-      try {
-        const tiffBlob = canvasToTiff(canvas);
-        const url      = URL.createObjectURL(tiffBlob);
-        triggerDownload(url, 'map_export.tiff');
-        // Revoke the object URL after the download starts
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-        showToast('Map exported as TIFF!', 'success');
-      } catch (tiffErr) {
-        console.error('TIFF encoding error:', tiffErr);
-        showToast('TIFF export failed — falling back to PNG.', 'warning');
-        triggerDownload(canvas.toDataURL('image/png'), 'map_export.png');
+    } catch (err) {
+      console.error('[exportMap] Unexpected error:', err);
+      showToast('Export failed — see console.', 'warning');
+      if (exportBtn) {
+        exportBtn.disabled  = false;
+        exportBtn.innerHTML = '💾 Export ▾';
       }
     }
+  }, 250); // 250 ms is enough for georaster tiles to finish painting
+}
+
+
+// ── STEP 2: Build composite canvas ───────────────────────────────────────────
+
+/**
+ * buildCompositeCanvas(callback)
+ * Collects ALL rendered layers from the Leaflet map container and
+ * flattens them into a single HTMLCanvasElement.
+ *
+ * Layer order (bottom → top):
+ *   [1] All <canvas> elements inside .leaflet-pane (tile layers, georaster, etc.)
+ *   [2] All SVG <path> elements (GeoJSON polygons, polylines)
+ *   [3] All Canvas-rendered Leaflet vector layers (L.Canvas renderer)
+ *   [4] Marker icons (HTML img elements inside .leaflet-marker-pane)
+ *
+ * @param {function} callback — called with the finished canvas (or null on error)
+ */
+function buildCompositeCanvas(callback) {
+
+  // Find the map's root DOM element
+  // We look for the container Leaflet actually uses (.leaflet-container)
+  const mapContainer = document.querySelector('.leaflet-container');
+  if (!mapContainer) {
+    console.error('[buildCompositeCanvas] .leaflet-container not found in DOM');
+    callback(null);
+    return;
+  }
+
+  // The export canvas matches the map's pixel size exactly
+  const mapWidth  = mapContainer.offsetWidth;
+  const mapHeight = mapContainer.offsetHeight;
+
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width  = mapWidth;
+  exportCanvas.height = mapHeight;
+  const ctx = exportCanvas.getContext('2d');
+
+  // Fill with white background (important for JPG and TIFF which have no alpha)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, mapWidth, mapHeight);
+
+
+  // ── Layer 1: All <canvas> elements inside the map panes ─────────────────
+  // This captures: tile layers (basemap), georaster WebGL canvases,
+  // and any other canvas-based overlays.
+  //
+  // Leaflet renders tiles into .leaflet-tile-pane > canvas
+  // georaster-layer-for-leaflet renders into its own canvas inside .leaflet-overlay-pane
+  //
+  // We iterate ALL canvases in z-index order (DOM order = render order).
+
+  const allCanvases = mapContainer.querySelectorAll('canvas');
+
+  allCanvases.forEach(function(sourceCanvas) {
+    // Skip zero-size canvases (sometimes Leaflet creates empty placeholders)
+    if (sourceCanvas.width === 0 || sourceCanvas.height === 0) return;
+
+    try {
+      // Each canvas may be offset/transformed inside the map container.
+      // We need to account for its position relative to the map root.
+      const canvasRect    = sourceCanvas.getBoundingClientRect();
+      const containerRect = mapContainer.getBoundingClientRect();
+
+      const offsetX = canvasRect.left - containerRect.left;
+      const offsetY = canvasRect.top  - containerRect.top;
+
+      // Also check for CSS transform: translate() applied by Leaflet
+      // (Leaflet shifts tile canvases during pan animations)
+      const style     = window.getComputedStyle(sourceCanvas);
+      const transform = style.transform || style.webkitTransform;
+
+      let txX = 0, txY = 0;
+      if (transform && transform !== 'none') {
+        // Parse matrix(a,b,c,d,e,f) — e=translateX, f=translateY
+        const matrixMatch = transform.match(/matrix\(([^)]+)\)/);
+        if (matrixMatch) {
+          const parts = matrixMatch[1].split(',');
+          txX = parseFloat(parts[4]) || 0;
+          txY = parseFloat(parts[5]) || 0;
+        }
+      }
+
+      ctx.drawImage(sourceCanvas, offsetX + txX, offsetY + txY);
+
+    } catch (e) {
+      // Tainted canvas (CORS) — draw a hatched placeholder so the user knows
+      console.warn('[buildCompositeCanvas] Canvas is tainted (CORS):', e.message);
+      ctx.fillStyle = 'rgba(200,200,200,0.3)';
+      ctx.fillRect(0, 0, mapWidth, mapHeight);
+      ctx.font      = '13px monospace';
+      ctx.fillStyle = '#888';
+      ctx.fillText('⚠ Basemap tiles blocked by CORS (try a different basemap)', 20, 30);
+    }
+  });
+
+
+  // ── Layer 2: SVG vector layers (GeoJSON polygons, polylines, circles) ────
+  // Leaflet renders GeoJSON into an SVG element inside .leaflet-overlay-pane.
+  // We serialize it to an image and draw it on top.
+
+  const svgElement = mapContainer.querySelector('.leaflet-overlay-pane svg');
+
+  if (svgElement) {
+    drawSvgOntoCanvas(svgElement, mapContainer, ctx, mapWidth, mapHeight, function() {
+
+      // ── Layer 3: Leaflet Canvas renderer vector layers ─────────────────
+      // Some layers use L.Canvas instead of SVG (e.g. large point datasets).
+      // These appear as <canvas> inside .leaflet-overlay-pane — already
+      // captured in Layer 1 above, so nothing extra needed here.
+
+      // ── Layer 4: Marker icons ──────────────────────────────────────────
+      drawMarkersOntoCanvas(mapContainer, ctx, function() {
+        callback(exportCanvas);
+      });
+    });
+
+  } else {
+    // No SVG overlay — skip straight to markers
+    drawMarkersOntoCanvas(mapContainer, ctx, function() {
+      callback(exportCanvas);
+    });
+  }
+}
+
+
+// ── STEP 3: SVG drawing helper ────────────────────────────────────────────────
+
+/**
+ * drawSvgOntoCanvas(svgEl, mapContainer, ctx, w, h, done)
+ * Serialize a Leaflet SVG overlay to a data URL and paint it onto ctx.
+ *
+ * Key fix for missing polygons:
+ *   Leaflet SVG paths often have fill-opacity:0 in their inline style
+ *   when first created. We temporarily set them to visible before
+ *   serializing, then restore the original values.
+ *
+ * @param {SVGElement}  svgEl        — The SVG element from Leaflet
+ * @param {HTMLElement} mapContainer — The .leaflet-container div
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} w  — Canvas width
+ * @param {number} h  — Canvas height
+ * @param {function} done — Callback when finished
+ */
+function drawSvgOntoCanvas(svgEl, mapContainer, ctx, w, h, done) {
+
+  // ── Fix invisible polygons ─────────────────────────────────────────────────
+  // Leaflet polygon paths default fill-opacity to 0.2 but sometimes
+  // the computed style comes through as 0. We force them visible here.
+  const allPaths     = svgEl.querySelectorAll('path, polygon, rect, circle, ellipse');
+  const savedStyles  = [];
+
+  allPaths.forEach(function(path) {
+    const computed = window.getComputedStyle(path);
+    savedStyles.push({
+      el:              path,
+      fillOpacity:     path.style.fillOpacity,
+      strokeOpacity:   path.style.strokeOpacity,
+    });
+
+    // Only override if currently invisible
+    // Don't override intentionally transparent layers (opacity < 0.01)
+    const fo = parseFloat(computed.fillOpacity);
+    const so = parseFloat(computed.strokeOpacity);
+
+    if (fo === 0 && path.getAttribute('fill') !== 'none') {
+      path.style.fillOpacity = '0.5'; // reasonable default for polygons
+    }
+    if (so === 0) {
+      path.style.strokeOpacity = '1';
+    }
+  });
+
+  // ── Serialize SVG to string ────────────────────────────────────────────────
+  // We need to clone the SVG and set explicit width/height on it,
+  // because the Leaflet SVG uses viewBox but no explicit dimensions.
+  const svgClone = svgEl.cloneNode(true);
+
+  // Position the SVG at the correct offset within the map
+  const svgRect       = svgEl.getBoundingClientRect();
+  const containerRect = mapContainer.getBoundingClientRect();
+  const svgOffsetX    = svgRect.left - containerRect.left;
+  const svgOffsetY    = svgRect.top  - containerRect.top;
+
+  // Set explicit dimensions so the browser can render it
+  svgClone.setAttribute('width',  svgRect.width  || w);
+  svgClone.setAttribute('height', svgRect.height || h);
+
+  // Inline all computed styles on paths so they survive serialization
+  // (SVG serialized to <img> loses external stylesheet styles)
+  const clonedPaths = svgClone.querySelectorAll('path, polygon, circle, ellipse, polyline');
+  const livePaths   = svgEl.querySelectorAll('path, polygon, circle, ellipse, polyline');
+
+  livePaths.forEach(function(livePath, i) {
+    if (!clonedPaths[i]) return;
+    const computed = window.getComputedStyle(livePath);
+
+    // Copy the visual properties that matter for export
+    const props = [
+      'fill', 'fill-opacity', 'stroke', 'stroke-width',
+      'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin'
+    ];
+    props.forEach(function(prop) {
+      const val = computed.getPropertyValue(prop);
+      if (val) clonedPaths[i].style.setProperty(prop, val);
+    });
+  });
+
+  // Serialize to XML string
+  const serializer = new XMLSerializer();
+  const svgString  = serializer.serializeToString(svgClone);
+  const svgBlob    = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+  const svgUrl     = URL.createObjectURL(svgBlob);
+
+  // Restore original opacity values on live paths
+  savedStyles.forEach(function(s) {
+    s.el.style.fillOpacity   = s.fillOpacity;
+    s.el.style.strokeOpacity = s.strokeOpacity;
+  });
+
+  // Draw SVG image onto our export canvas at the correct offset
+  const svgImg  = new Image();
+  svgImg.onload = function() {
+    ctx.drawImage(svgImg, svgOffsetX, svgOffsetY);
+    URL.revokeObjectURL(svgUrl);
+    done();
+  };
+  svgImg.onerror = function(e) {
+    console.warn('[drawSvgOntoCanvas] SVG render failed:', e);
+    URL.revokeObjectURL(svgUrl);
+    done(); // Continue anyway — don't block the export
+  };
+  svgImg.src = svgUrl;
+}
+
+
+// ── STEP 4: Marker drawing helper ────────────────────────────────────────────
+
+/**
+ * drawMarkersOntoCanvas(mapContainer, ctx, done)
+ * Draws all Leaflet marker icons (standard pin markers and DivIcons)
+ * onto the export canvas.
+ *
+ * Standard markers are <img> elements in .leaflet-marker-pane.
+ * DivIcons are <div> elements — we draw a fallback dot for those.
+ *
+ * @param {HTMLElement} mapContainer
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {function} done
+ */
+function drawMarkersOntoCanvas(mapContainer, ctx, done) {
+
+  const markerPane    = mapContainer.querySelector('.leaflet-marker-pane');
+  if (!markerPane) { done(); return; }
+
+  const containerRect = mapContainer.getBoundingClientRect();
+  const markerImgs    = markerPane.querySelectorAll('img.leaflet-marker-icon');
+
+  // If no img markers, check for DivIcon markers
+  if (markerImgs.length === 0) {
+    // DivIcons: draw a circle dot at each marker's position
+    const divMarkers = markerPane.querySelectorAll('.leaflet-marker-icon');
+    divMarkers.forEach(function(div) {
+      const rect = div.getBoundingClientRect();
+      const cx   = rect.left - containerRect.left + rect.width  / 2;
+      const cy   = rect.top  - containerRect.top  + rect.height / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+      ctx.fillStyle   = '#3388ff';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth   = 1.5;
+      ctx.stroke();
+    });
+    done();
+    return;
+  }
+
+  // Load and draw each marker image
+  let loaded = 0;
+  markerImgs.forEach(function(imgEl) {
+    const rect    = imgEl.getBoundingClientRect();
+    const offsetX = rect.left - containerRect.left;
+    const offsetY = rect.top  - containerRect.top;
+
+    const img   = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload  = function() {
+      ctx.drawImage(img, offsetX, offsetY, rect.width, rect.height);
+      loaded++;
+      if (loaded === markerImgs.length) done();
+    };
+    img.onerror = function() {
+      // Draw a fallback dot if the marker image fails to load
+      ctx.beginPath();
+      ctx.arc(offsetX + rect.width / 2, offsetY + rect.height / 2, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#3388ff';
+      ctx.fill();
+      loaded++;
+      if (loaded === markerImgs.length) done();
+    };
+    img.src = imgEl.src;
   });
 }
 
 
+// ── STEP 5: Format encoding and download ─────────────────────────────────────
+
 /**
- * triggerDownload(dataUrlOrObjectUrl, filename)
- * Programmatically click an invisible <a> tag to start a file download.
+ * encodeAndDownload(canvas, format)
+ * Encodes the final composite canvas in the requested format and
+ * triggers a browser download.
  *
- * @param {string} dataUrlOrObjectUrl — data: URL or blob: URL
- * @param {string} filename           — the suggested filename
+ * @param {HTMLCanvasElement} canvas
+ * @param {string} format — 'png' | 'jpg' | 'jpeg' | 'tiff'
  */
-function triggerDownload(dataUrlOrObjectUrl, filename) {
-  const a    = document.createElement('a');
-  a.href     = dataUrlOrObjectUrl;
-  a.download = filename;
+function encodeAndDownload(canvas, format) {
+
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const filename  = `map_export_${timestamp}.${format}`;
+
+  if (format === 'png') {
+    triggerDownload(canvas.toDataURL('image/png'), filename);
+    showToast('Map exported as PNG!', 'success');
+    return;
+  }
+
+  if (format === 'jpg' || format === 'jpeg') {
+    // JPG has no alpha channel — composite onto white background first
+    const jpgCanvas        = document.createElement('canvas');
+    jpgCanvas.width        = canvas.width;
+    jpgCanvas.height       = canvas.height;
+    const jpgCtx           = jpgCanvas.getContext('2d');
+    jpgCtx.fillStyle       = '#ffffff';
+    jpgCtx.fillRect(0, 0, jpgCanvas.width, jpgCanvas.height);
+    jpgCtx.drawImage(canvas, 0, 0);
+    triggerDownload(jpgCanvas.toDataURL('image/jpeg', 0.95), filename);
+    showToast('Map exported as JPG!', 'success');
+    return;
+  }
+
+  if (format === 'tiff') {
+    try {
+      const tiffBlob = canvasToTiff(canvas);
+      const url      = URL.createObjectURL(tiffBlob);
+      triggerDownload(url, filename);
+      setTimeout(() => URL.revokeObjectURL(url), 8000);
+      showToast('Map exported as TIFF!', 'success');
+    } catch (err) {
+      console.error('[encodeAndDownload] TIFF encode failed:', err);
+      // Fallback to PNG
+      showToast('TIFF encode failed — falling back to PNG.', 'warning');
+      triggerDownload(canvas.toDataURL('image/png'), filename.replace('.tiff', '.png'));
+    }
+    return;
+  }
+}
+
+
+// ── TIFF encoder ──────────────────────────────────────────────────────────────
+
+/**
+ * canvasToTiff(canvas)
+ * Encodes an HTMLCanvasElement as an uncompressed 24-bit RGB TIFF blob.
+ *
+ * Structure written:
+ *   [8 bytes]  TIFF header  (little-endian magic + IFD offset)
+ *   [2 bytes]  IFD entry count
+ *   [132 bytes] 11 × IFD entries (12 bytes each)
+ *   [4 bytes]  Next IFD pointer (0)
+ *   [6 bytes]  BitsPerSample values [8, 8, 8]
+ *   [N bytes]  Raw RGB pixel rows (no compression)
+ *
+ * NOTE: This is a visual TIFF only — it does NOT embed georeferencing.
+ * For a proper GeoTIFF with coordinates, send this image + map bounds
+ * to your Python backend and use rasterio to write the GeoTIFF there.
+ *
+ * @param  {HTMLCanvasElement} canvas
+ * @returns {Blob}
+ */
+function canvasToTiff(canvas) {
+
+  const ctx    = canvas.getContext('2d');
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data; // RGBA
+  const width  = canvas.width;
+  const height = canvas.height;
+
+  // Convert RGBA → RGB (drop alpha channel)
+  const rgbData = new Uint8Array(width * height * 3);
+  for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
+    rgbData[j]     = pixels[i];       // R
+    rgbData[j + 1] = pixels[i + 1];   // G
+    rgbData[j + 2] = pixels[i + 2];   // B
+  }
+
+  // ── File layout ────────────────────────────────────────────────────────────
+  const NUM_TAGS     = 11;
+  const headerSize   = 8;
+  const ifdOffset    = headerSize;
+  const ifdSize      = 2 + NUM_TAGS * 12 + 4;  // count + entries + next-pointer
+  const bpsOffset    = ifdOffset + ifdSize;      // where BitsPerSample [8,8,8] lives
+  const dataOffset   = bpsOffset + 6;            // where pixel bytes start
+  const dataSize     = rgbData.byteLength;
+  const totalSize    = dataOffset + dataSize;
+
+  const buf  = new ArrayBuffer(totalSize);
+  const view = new DataView(buf);
+  let   p    = 0; // write cursor
+
+  const w8  = (v) => { view.setUint8(p,  v);           p += 1; };
+  const w16 = (v) => { view.setUint16(p, v, true);     p += 2; }; // LE
+  const w32 = (v) => { view.setUint32(p, v, true);     p += 4; };
+
+  /**
+   * writeTag(tag, type, count, value)
+   * Write one 12-byte IFD entry.
+   *   type 3 = SHORT (uint16), type 4 = LONG (uint32)
+   * For SHORT count=1 the value is packed into the 4-byte value field (padded).
+   * For everything else the value field holds an offset to the actual data.
+   */
+  function writeTag(tag, type, count, value) {
+    w16(tag);
+    w16(type);
+    w32(count);
+    if (type === 3 && count === 1) {
+      w16(value);
+      w16(0); // padding to fill 4 bytes
+    } else {
+      w32(value);
+    }
+  }
+
+  // ── TIFF Header ────────────────────────────────────────────────────────────
+  w8(0x49); w8(0x49); // 'II' = Intel byte order (little-endian)
+  w16(42);            // TIFF magic number
+  w32(ifdOffset);     // Offset to first IFD (immediately after header = 8)
+
+  // ── IFD ───────────────────────────────────────────────────────────────────
+  // Tags MUST be in ascending numeric order per the TIFF spec.
+  w16(NUM_TAGS); // number of entries
+
+  writeTag(256, 4, 1, width);          // ImageWidth
+  writeTag(257, 4, 1, height);         // ImageLength (height)
+  writeTag(258, 3, 3, bpsOffset);      // BitsPerSample → [8,8,8] at bpsOffset
+  writeTag(259, 3, 1, 1);              // Compression: 1 = none
+  writeTag(262, 3, 1, 2);              // PhotometricInterpretation: 2 = RGB
+  writeTag(273, 4, 1, dataOffset);     // StripOffsets: pixel data starts here
+  writeTag(277, 3, 1, 3);              // SamplesPerPixel: 3
+  writeTag(278, 4, 1, height);         // RowsPerStrip: all rows in one strip
+  writeTag(279, 4, 1, dataSize);       // StripByteCounts: total bytes of pixel data
+  writeTag(282, 4, 1, bpsOffset);      // XResolution (rational placeholder)
+  writeTag(283, 4, 1, bpsOffset);      // YResolution (rational placeholder)
+
+  w32(0); // NextIFD = 0 (no more IFDs)
+
+  // ── BitsPerSample values ──────────────────────────────────────────────────
+  w16(8); // Red channel:   8 bits
+  w16(8); // Green channel: 8 bits
+  w16(8); // Blue channel:  8 bits
+
+  // ── Pixel data ─────────────────────────────────────────────────────────────
+  new Uint8Array(buf, p).set(rgbData);
+
+  return new Blob([buf], { type: 'image/tiff' });
+}
+
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * triggerDownload(url, filename)
+ * Creates an invisible <a> and clicks it to download a file.
+ * Works for both data: URLs and blob: URLs.
+ */
+function triggerDownload(url, filename) {
+  const a      = document.createElement('a');
+  a.href       = url;
+  a.download   = filename;
   a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
@@ -1242,189 +1700,84 @@ function triggerDownload(dataUrlOrObjectUrl, filename) {
 
 
 /**
- * showToast(message, type)
- * Displays a temporary notification in the lower-right corner.
- */
-function showToast(message, type = 'info') {
-  let container = document.getElementById('toastContainer');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'toastContainer';
-    container.style.position = 'fixed';
-    container.style.bottom = '16px';
-    container.style.right = '16px';
-    container.style.zIndex = '9999';
-    container.style.display = 'flex';
-    container.style.flexDirection = 'column';
-    container.style.gap = '10px';
-    document.body.appendChild(container);
-  }
-
-  const toast = document.createElement('div');
-  toast.textContent = message;
-  toast.style.minWidth = '220px';
-  toast.style.padding = '12px 14px';
-  toast.style.borderRadius = '10px';
-  toast.style.color = '#fff';
-  toast.style.fontSize = '14px';
-  toast.style.boxShadow = '0 6px 18px rgba(0,0,0,0.2)';
-  toast.style.opacity = '1';
-  toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-  toast.style.transform = 'translateY(0)';
-  toast.style.cursor = 'default';
-
-  const colors = {
-    info:    '#0d6efd',
-    success: '#198754',
-    warning: '#ffc107',
-    danger:  '#dc3545',
-  };
-  toast.style.backgroundColor = colors[type] || colors.info;
-
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateY(10px)';
-    setTimeout(() => toast.remove(), 300);
-  }, 3200);
-}
-
-
-/**
- * canvasToTiff(canvas)
- * Encode an HTMLCanvasElement as an uncompressed RGB TIFF blob.
- *
- * Writes a minimal TIFF file structure:
- *   - 8-byte TIFF header
- *   - One Image File Directory (IFD) with required tags
- *   - Raw RGB pixel data (no compression)
- *
- * This is a plain visual TIFF — NOT a GeoTIFF.
- * For georeferenced export, send the canvas data to your Python backend
- * and use rasterio to write a proper GeoTIFF with the map bounds.
- *
- * @param  {HTMLCanvasElement} canvas
- * @returns {Blob} TIFF file as a Blob
- */
-function canvasToTiff(canvas) {
-  const ctx       = canvas.getContext('2d');
-  const imgData   = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const width     = canvas.width;
-  const height    = canvas.height;
-  const pixels    = imgData.data; // RGBA Uint8ClampedArray
-
-  // Convert RGBA → RGB (TIFF doesn't need alpha channel here)
-  const rgbData = new Uint8Array(width * height * 3);
-  for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
-    rgbData[j]     = pixels[i];     // R
-    rgbData[j + 1] = pixels[i + 1]; // G
-    rgbData[j + 2] = pixels[i + 2]; // B
-    // Alpha (pixels[i+3]) is dropped
-  }
-
-  // ── Build the TIFF binary structure ────────────────────────────────────────
-  // Reference: https://www.awaresystems.be/imaging/tiff/faq.html
-
-  const IFD_ENTRY_SIZE  = 12;
-  const NUM_IFD_ENTRIES = 11;  // we write 11 IFD tags
-
-  // Offsets (all relative to start of file)
-  const headerSize    = 8;
-  const ifdCountSize  = 2;
-  const ifdSize       = NUM_IFD_ENTRIES * IFD_ENTRY_SIZE;
-  const ifdNextSize   = 4;
-  // BitsPerSample stores 3 SHORTs (R, G, B) — too big for inline IFD value
-  const bpsOffset     = headerSize + ifdCountSize + ifdSize + ifdNextSize;
-  const bpsSize       = 6; // 3 × 2 bytes
-  const dataOffset    = bpsOffset + bpsSize;
-  const dataSize      = rgbData.byteLength;
-  const totalSize     = dataOffset + dataSize;
-
-  const buffer = new ArrayBuffer(totalSize);
-  const view   = new DataView(buffer);
-  let   pos    = 0;
-
-  // Helper writers
-  const writeUint8  = (v)      => { view.setUint8(pos, v);              pos += 1; };
-  const writeUint16 = (v)      => { view.setUint16(pos, v, true);       pos += 2; }; // little-endian
-  const writeUint32 = (v)      => { view.setUint32(pos, v, true);       pos += 4; };
-  const writeBytes  = (arr)    => { arr.forEach(b => writeUint8(b)); };
-
-  // IFD entry: tag, type, count, value/offset
-  // type 3 = SHORT (2 bytes), type 4 = LONG (4 bytes)
-  const writeIFDEntry = (tag, type, count, value) => {
-    writeUint16(tag);
-    writeUint16(type);
-    writeUint32(count);
-    // Value fits in 4 bytes inline for SHORT with count=1
-    if (type === 3 && count === 1) {
-      writeUint16(value);
-      writeUint16(0); // padding
-    } else {
-      writeUint32(value); // offset to value elsewhere in file
-    }
-  };
-
-  // ── TIFF Header ────────────────────────────────────────────────────────────
-  writeBytes([0x49, 0x49]); // 'II' = little-endian
-  writeUint16(42);          // TIFF magic number
-  writeUint32(headerSize);  // Offset to first IFD
-
-  // ── IFD ────────────────────────────────────────────────────────────────────
-  writeUint16(NUM_IFD_ENTRIES);
-
-  // Tags (must be in ascending numeric order)
-  writeIFDEntry(256, 4, 1, width);           // ImageWidth
-  writeIFDEntry(257, 4, 1, height);          // ImageLength
-  writeIFDEntry(258, 3, 3, bpsOffset);       // BitsPerSample (offset → [8,8,8])
-  writeIFDEntry(259, 3, 1, 1);               // Compression: 1 = none
-  writeIFDEntry(262, 3, 1, 2);               // PhotometricInterpretation: 2 = RGB
-  writeIFDEntry(273, 4, 1, dataOffset);      // StripOffsets
-  writeIFDEntry(277, 3, 1, 3);               // SamplesPerPixel: 3 (RGB)
-  writeIFDEntry(278, 4, 1, height);          // RowsPerStrip
-  writeIFDEntry(279, 4, 1, dataSize);        // StripByteCounts
-  writeIFDEntry(282, 4, 1, dataOffset - 4); // XResolution (reuse any LONG offset — placeholder)
-  writeIFDEntry(283, 4, 1, dataOffset - 4); // YResolution
-
-  writeUint32(0); // Next IFD offset = 0 (no more IFDs)
-
-  // ── BitsPerSample data: [8, 8, 8] ─────────────────────────────────────────
-  writeUint16(8); // R
-  writeUint16(8); // G
-  writeUint16(8); // B
-
-  // ── Pixel data ─────────────────────────────────────────────────────────────
-  const u8view = new Uint8Array(buffer, pos);
-  u8view.set(rgbData);
-
-  return new Blob([buffer], { type: 'image/tiff' });
-}
-
-
-// ============================================================
-// EXPORT FORMAT PICKER
-// Shows a small dropdown under the Export button so the user
-// can pick the format before downloading.
-// ============================================================
-
-/**
  * toggleExportMenu()
- * Open / close the export format picker dropdown.
+ * Opens / closes the export format picker dropdown.
+ * Closes automatically when the user clicks outside.
  */
 function toggleExportMenu() {
   const menu = document.getElementById('exportMenu');
   if (!menu) return;
-  menu.classList.toggle('open');
 
-  // Close when clicking anywhere outside
-  const closeOnOutside = (e) => {
-    if (!menu.contains(e.target)) {
-      menu.classList.remove('open');
-      document.removeEventListener('click', closeOnOutside);
-    }
-  };
-  if (menu.classList.contains('open')) {
-    setTimeout(() => document.addEventListener('click', closeOnOutside), 10);
+  const isOpen = menu.classList.toggle('open');
+
+  if (isOpen) {
+    // Attach a one-time outside-click listener
+    const closeHandler = function(e) {
+      if (!menu.contains(e.target)) {
+        menu.classList.remove('open');
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    // Delay so the current click doesn't immediately close the menu
+    setTimeout(() => document.addEventListener('click', closeHandler), 10);
   }
 }
-// ============================================================
+
+
+/**
+ * showToast(message, type)
+ * Displays a temporary notification toast in the lower-right corner.
+ * Reuses an existing #toastContainer if present (from app.js),
+ * otherwise creates one.
+ *
+ * @param {string} message
+ * @param {string} type — 'info' | 'success' | 'warning' | 'danger'
+ */
+function showToast(message, type = 'info') {
+
+  // Reuse app.js container if it exists
+  let container = document.getElementById('toastContainer')
+                || document.getElementById('toast-container');
+
+  if (!container) {
+    container    = document.createElement('div');
+    container.id = 'toastContainer';
+    Object.assign(container.style, {
+      position:       'fixed',
+      bottom:         '80px',
+      right:          '20px',
+      zIndex:         '9999',
+      display:        'flex',
+      flexDirection:  'column',
+      gap:            '8px',
+      pointerEvents:  'none',
+    });
+    document.body.appendChild(container);
+  }
+
+  const colors = { info:'#0d6efd', success:'#198754', warning:'#ffc107', danger:'#dc3545' };
+
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  Object.assign(toast.style, {
+    minWidth:        '220px',
+    padding:         '10px 14px',
+    borderRadius:    '8px',
+    color:           '#fff',
+    fontSize:        '13px',
+    backgroundColor: colors[type] || colors.info,
+    boxShadow:       '0 4px 14px rgba(0,0,0,0.25)',
+    opacity:         '1',
+    transition:      'opacity 0.3s ease, transform 0.3s ease',
+    transform:       'translateY(0)',
+    pointerEvents:   'auto',
+  });
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity   = '0';
+    toast.style.transform = 'translateY(8px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
