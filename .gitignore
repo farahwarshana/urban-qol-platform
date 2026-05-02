@@ -221,3 +221,15 @@ backend/outputs/
 backend/temp_uploads/
 outputs/
 ai_agent/outputs/
+
+
+# Environment variables
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Outputs (optional)
+ai_agent/outputs/
+outputs/
