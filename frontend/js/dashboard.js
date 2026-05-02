@@ -1115,3 +1115,316 @@ function attachFileInputListeners() {
     });
   }
 }
+// ============================================================
+
+
+// ============================================================
+// MAP EXPORT FUNCTION
+// Captures the current map view (basemap + all layers) and
+// downloads it in the user's chosen format.
+//
+// Uses the leaflet-image library to composite all map canvases
+// and SVG layers into a single image.
+//
+// Call this from the Export button: onclick="exportMap('png')"
+// ============================================================
+
+/**
+ * exportMap(format)
+ * Captures the current Leaflet map extent including all visible layers
+ * and downloads the result as an image file.
+ *
+ * @param {string} format — 'png' | 'jpg' | 'jpeg' | 'tiff'
+ */
+function exportMap(format) {
+  if (!map) {
+    showToast('Map is not initialized yet.', 'warning');
+    return;
+  }
+
+  format = format.toLowerCase();
+
+  // Validate format
+  const supported = ['png', 'jpg', 'jpeg', 'tiff'];
+  if (!supported.includes(format)) {
+    showToast(`Unsupported format: ${format}`, 'warning');
+    return;
+  }
+
+  showToast(`Preparing ${format.toUpperCase()} export...`, 'info');
+
+  // Disable the export button while processing to prevent double-clicks
+  const exportBtn = document.getElementById('export-btn');
+  if (exportBtn) {
+    exportBtn.disabled    = true;
+    exportBtn.textContent = '⏳ Exporting...';
+  }
+
+  // leaflet-image composites all tile layers + vector/raster overlays
+  // into a single HTMLCanvasElement
+  leafletImage(map, function (err, canvas) {
+
+    // Re-enable the button regardless of outcome
+    if (exportBtn) {
+      exportBtn.disabled    = false;
+      exportBtn.textContent = '💾 Export';
+    }
+
+    if (err) {
+      console.error('leaflet-image error:', err);
+      showToast('Export failed — see console for details.', 'warning');
+      return;
+    }
+
+    // ── For PNG / JPG / JPEG: use canvas directly ──────────────────────────
+    if (format === 'png' || format === 'jpg' || format === 'jpeg') {
+
+      // Canvas toDataURL needs 'image/jpeg' not 'image/jpg'
+      const mimeType = (format === 'png') ? 'image/png' : 'image/jpeg';
+
+      // JPG doesn't support transparency — fill background white first
+      if (format === 'jpg' || format === 'jpeg') {
+        const ctx = canvas.getContext('2d');
+        // Draw white rect behind existing content
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const bgCanvas  = document.createElement('canvas');
+        bgCanvas.width  = canvas.width;
+        bgCanvas.height = canvas.height;
+        const bgCtx     = bgCanvas.getContext('2d');
+        bgCtx.fillStyle = '#ffffff';
+        bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+        bgCtx.drawImage(canvas, 0, 0);
+        triggerDownload(bgCanvas.toDataURL(mimeType, 0.95), `map_export.${format}`);
+      } else {
+        triggerDownload(canvas.toDataURL(mimeType), `map_export.${format}`);
+      }
+
+      showToast(`Map exported as ${format.toUpperCase()}!`, 'success');
+    }
+
+    // ── For TIFF: encode manually as a minimal uncompressed TIFF ──────────
+    // Note: this produces a plain RGB TIFF without georeference metadata.
+    // For a georeferenced GeoTIFF you would need a backend endpoint.
+    else if (format === 'tiff') {
+      try {
+        const tiffBlob = canvasToTiff(canvas);
+        const url      = URL.createObjectURL(tiffBlob);
+        triggerDownload(url, 'map_export.tiff');
+        // Revoke the object URL after the download starts
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        showToast('Map exported as TIFF!', 'success');
+      } catch (tiffErr) {
+        console.error('TIFF encoding error:', tiffErr);
+        showToast('TIFF export failed — falling back to PNG.', 'warning');
+        triggerDownload(canvas.toDataURL('image/png'), 'map_export.png');
+      }
+    }
+  });
+}
+
+
+/**
+ * triggerDownload(dataUrlOrObjectUrl, filename)
+ * Programmatically click an invisible <a> tag to start a file download.
+ *
+ * @param {string} dataUrlOrObjectUrl — data: URL or blob: URL
+ * @param {string} filename           — the suggested filename
+ */
+function triggerDownload(dataUrlOrObjectUrl, filename) {
+  const a    = document.createElement('a');
+  a.href     = dataUrlOrObjectUrl;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+
+/**
+ * showToast(message, type)
+ * Displays a temporary notification in the lower-right corner.
+ */
+function showToast(message, type = 'info') {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.style.position = 'fixed';
+    container.style.bottom = '16px';
+    container.style.right = '16px';
+    container.style.zIndex = '9999';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '10px';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  toast.style.minWidth = '220px';
+  toast.style.padding = '12px 14px';
+  toast.style.borderRadius = '10px';
+  toast.style.color = '#fff';
+  toast.style.fontSize = '14px';
+  toast.style.boxShadow = '0 6px 18px rgba(0,0,0,0.2)';
+  toast.style.opacity = '1';
+  toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+  toast.style.transform = 'translateY(0)';
+  toast.style.cursor = 'default';
+
+  const colors = {
+    info:    '#0d6efd',
+    success: '#198754',
+    warning: '#ffc107',
+    danger:  '#dc3545',
+  };
+  toast.style.backgroundColor = colors[type] || colors.info;
+
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 3200);
+}
+
+
+/**
+ * canvasToTiff(canvas)
+ * Encode an HTMLCanvasElement as an uncompressed RGB TIFF blob.
+ *
+ * Writes a minimal TIFF file structure:
+ *   - 8-byte TIFF header
+ *   - One Image File Directory (IFD) with required tags
+ *   - Raw RGB pixel data (no compression)
+ *
+ * This is a plain visual TIFF — NOT a GeoTIFF.
+ * For georeferenced export, send the canvas data to your Python backend
+ * and use rasterio to write a proper GeoTIFF with the map bounds.
+ *
+ * @param  {HTMLCanvasElement} canvas
+ * @returns {Blob} TIFF file as a Blob
+ */
+function canvasToTiff(canvas) {
+  const ctx       = canvas.getContext('2d');
+  const imgData   = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const width     = canvas.width;
+  const height    = canvas.height;
+  const pixels    = imgData.data; // RGBA Uint8ClampedArray
+
+  // Convert RGBA → RGB (TIFF doesn't need alpha channel here)
+  const rgbData = new Uint8Array(width * height * 3);
+  for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
+    rgbData[j]     = pixels[i];     // R
+    rgbData[j + 1] = pixels[i + 1]; // G
+    rgbData[j + 2] = pixels[i + 2]; // B
+    // Alpha (pixels[i+3]) is dropped
+  }
+
+  // ── Build the TIFF binary structure ────────────────────────────────────────
+  // Reference: https://www.awaresystems.be/imaging/tiff/faq.html
+
+  const IFD_ENTRY_SIZE  = 12;
+  const NUM_IFD_ENTRIES = 11;  // we write 11 IFD tags
+
+  // Offsets (all relative to start of file)
+  const headerSize    = 8;
+  const ifdCountSize  = 2;
+  const ifdSize       = NUM_IFD_ENTRIES * IFD_ENTRY_SIZE;
+  const ifdNextSize   = 4;
+  // BitsPerSample stores 3 SHORTs (R, G, B) — too big for inline IFD value
+  const bpsOffset     = headerSize + ifdCountSize + ifdSize + ifdNextSize;
+  const bpsSize       = 6; // 3 × 2 bytes
+  const dataOffset    = bpsOffset + bpsSize;
+  const dataSize      = rgbData.byteLength;
+  const totalSize     = dataOffset + dataSize;
+
+  const buffer = new ArrayBuffer(totalSize);
+  const view   = new DataView(buffer);
+  let   pos    = 0;
+
+  // Helper writers
+  const writeUint8  = (v)      => { view.setUint8(pos, v);              pos += 1; };
+  const writeUint16 = (v)      => { view.setUint16(pos, v, true);       pos += 2; }; // little-endian
+  const writeUint32 = (v)      => { view.setUint32(pos, v, true);       pos += 4; };
+  const writeBytes  = (arr)    => { arr.forEach(b => writeUint8(b)); };
+
+  // IFD entry: tag, type, count, value/offset
+  // type 3 = SHORT (2 bytes), type 4 = LONG (4 bytes)
+  const writeIFDEntry = (tag, type, count, value) => {
+    writeUint16(tag);
+    writeUint16(type);
+    writeUint32(count);
+    // Value fits in 4 bytes inline for SHORT with count=1
+    if (type === 3 && count === 1) {
+      writeUint16(value);
+      writeUint16(0); // padding
+    } else {
+      writeUint32(value); // offset to value elsewhere in file
+    }
+  };
+
+  // ── TIFF Header ────────────────────────────────────────────────────────────
+  writeBytes([0x49, 0x49]); // 'II' = little-endian
+  writeUint16(42);          // TIFF magic number
+  writeUint32(headerSize);  // Offset to first IFD
+
+  // ── IFD ────────────────────────────────────────────────────────────────────
+  writeUint16(NUM_IFD_ENTRIES);
+
+  // Tags (must be in ascending numeric order)
+  writeIFDEntry(256, 4, 1, width);           // ImageWidth
+  writeIFDEntry(257, 4, 1, height);          // ImageLength
+  writeIFDEntry(258, 3, 3, bpsOffset);       // BitsPerSample (offset → [8,8,8])
+  writeIFDEntry(259, 3, 1, 1);               // Compression: 1 = none
+  writeIFDEntry(262, 3, 1, 2);               // PhotometricInterpretation: 2 = RGB
+  writeIFDEntry(273, 4, 1, dataOffset);      // StripOffsets
+  writeIFDEntry(277, 3, 1, 3);               // SamplesPerPixel: 3 (RGB)
+  writeIFDEntry(278, 4, 1, height);          // RowsPerStrip
+  writeIFDEntry(279, 4, 1, dataSize);        // StripByteCounts
+  writeIFDEntry(282, 4, 1, dataOffset - 4); // XResolution (reuse any LONG offset — placeholder)
+  writeIFDEntry(283, 4, 1, dataOffset - 4); // YResolution
+
+  writeUint32(0); // Next IFD offset = 0 (no more IFDs)
+
+  // ── BitsPerSample data: [8, 8, 8] ─────────────────────────────────────────
+  writeUint16(8); // R
+  writeUint16(8); // G
+  writeUint16(8); // B
+
+  // ── Pixel data ─────────────────────────────────────────────────────────────
+  const u8view = new Uint8Array(buffer, pos);
+  u8view.set(rgbData);
+
+  return new Blob([buffer], { type: 'image/tiff' });
+}
+
+
+// ============================================================
+// EXPORT FORMAT PICKER
+// Shows a small dropdown under the Export button so the user
+// can pick the format before downloading.
+// ============================================================
+
+/**
+ * toggleExportMenu()
+ * Open / close the export format picker dropdown.
+ */
+function toggleExportMenu() {
+  const menu = document.getElementById('exportMenu');
+  if (!menu) return;
+  menu.classList.toggle('open');
+
+  // Close when clicking anywhere outside
+  const closeOnOutside = (e) => {
+    if (!menu.contains(e.target)) {
+      menu.classList.remove('open');
+      document.removeEventListener('click', closeOnOutside);
+    }
+  };
+  if (menu.classList.contains('open')) {
+    setTimeout(() => document.addEventListener('click', closeOnOutside), 10);
+  }
+}
+// ============================================================

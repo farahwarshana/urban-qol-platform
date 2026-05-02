@@ -146,9 +146,24 @@
 
           <button onclick="ndvi()" class="btn" title="measure"><img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Measure</button>  
 
-          <button class="btn" title="save"> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-save-fill" viewBox="0 0 16 16">
-          <path d="M8.5 1.5A1.5 1.5 0 0 1 10 0h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h6c-.314.418-.5.937-.5 1.5v7.793L4.854 6.646a.5.5 0 1 0-.708.708l3.5 3.5a.5.5 0 0 0 .708 0l3.5-3.5a.5.5 0 0 0-.708-.708L8.5 9.293z"/>
-        </svg>Save</button>
+          <!-- Export button with format picker dropdown -->
+          <div class="user-menu" id="exportMenu">
+            <button class="btn" id="export-btn" onclick="toggleExportMenu()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                  class="bi bi-save-fill" viewBox="0 0 16 16">
+                <path d="M8.5 1.5A1.5 1.5 0 0 1 10 0h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0
+                        1-2-2V2a2 2 0 0 1 2-2h6c-.314.418-.5.937-.5 1.5v7.793L4.854 6.646a.5.5 0 1
+                        0-.708.708l3.5 3.5a.5.5 0 0 0 .708 0l3.5-3.5a.5.5 0 0 0-.708-.708L8.5 9.293z"/>
+              </svg>
+              Export ▾
+            </button>
+            <div class="dropdown">
+              <a href="#" onclick="exportMap('png');  toggleExportMenu(); return false;">🖼️ PNG</a>
+              <a href="#" onclick="exportMap('jpg');  toggleExportMenu(); return false;">📷 JPG</a>
+              <a href="#" onclick="exportMap('jpeg'); toggleExportMenu(); return false;">📷 JPEG</a>
+              <a href="#" onclick="exportMap('tiff'); toggleExportMenu(); return false;">🗺️ TIFF</a>
+            </div>
+          </div>  
         </div>
 
         <!--
@@ -200,6 +215,9 @@
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Leaflet Image -->
+<script src="https://unpkg.com/leaflet-image@0.4.0/leaflet-image.js"></script>
 
   <!-- Proj4 for coordinate transformations -->
   <script src="https://unpkg.com/proj4@2.9.0/dist/proj4.js"></script>
