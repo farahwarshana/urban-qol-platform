@@ -10,10 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ndvi import calculate_ndvi_from_bands
 from crimedensity import calculate_crime_density
+
 app = FastAPI(
-    title="NDVI Calculator API",
-    description="Upload a multi-band Landsat GeoTIFF. Bands 4 (Red) and Band 5 (NIR) are extracted and NDVI is returned.",
-    version="2.0.0",
+    title="Urban QOL API",
+    description="Platform analyzes multiple aspects of urban quality of life in order to identify opportunities for enhancement.",
+    version="1.0.0",
 )
 
 # ── CORS Middleware ───────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ def get_output_subdir(name):
 
 @app.get("/", tags=["Health"])
 def root():
-    return {"status": "ok", "message": "NDVI Calculator API is running."}
+    return {"status": "ok", "message": "Urban QOL API is running."}
 
 
 @app.post("/calculate-ndvi", tags=["NDVI"])
