@@ -21,6 +21,11 @@ from crimedensity import calculate_crime_density
 from heat_index import calculate_heat_index_4326
 from urbandensity import calculate_urban_density
 from facility_Accessibility_index import calculate_facility_accessibility
+from grid_analysis import (
+    grid_from_raster,
+    grid_from_vector,
+    grid_from_facility_accessibility,
+)
 
 app = FastAPI(
     title="Urban QOL API",
@@ -338,3 +343,110 @@ def calculate_facility_accessibility_endpoint(
             status_code=500,
             detail=f"Facility Accessibility failed: {e}"
         )
+
+
+# ── Grid / Cell Analysis endpoints ───────────────────────────────────────────
+
+@app.post("/calculate-grid/ndvi", tags=["Grid Analysis"])
+def grid_ndvi_endpoint(
+    geotiff: UploadFile = File(..., description="NDVI result GeoTIFF"),
+):
+    """Divide the NDVI raster into 200 m cells and score each cell for QoL."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "ndvi_result.tif"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geotiff.file, f)
+
+        grid_geojson = grid_from_raster(str(input_path), "ndvi")
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid NDVI failed: {e}")
+
+
+@app.post("/calculate-grid/heat-index", tags=["Grid Analysis"])
+def grid_heat_index_endpoint(
+    geotiff: UploadFile = File(..., description="Heat Index result GeoTIFF"),
+):
+    """Divide the Heat Index raster into 200 m cells and score each cell for QoL."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "heat_result.tif"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geotiff.file, f)
+
+        grid_geojson = grid_from_raster(str(input_path), "heat-index")
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Heat Index failed: {e}")
+
+
+@app.post("/calculate-grid/crime", tags=["Grid Analysis"])
+def grid_crime_endpoint(
+    geojson: UploadFile = File(..., description="Crime density result GeoJSON"),
+):
+    """Divide the crime density GeoJSON into 200 m cells and score each cell for QoL."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "crime_result.geojson"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        grid_geojson = grid_from_vector(str(input_path), "crime", "crime_density")
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Crime failed: {e}")
+
+
+@app.post("/calculate-grid/urban-density", tags=["Grid Analysis"])
+def grid_urban_density_endpoint(
+    geojson: UploadFile = File(..., description="Urban density result GeoJSON"),
+):
+    """Divide the urban density GeoJSON into 200 m cells and score each cell for QoL."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "urban_result.geojson"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        grid_geojson = grid_from_vector(str(input_path), "urban-density", "urban_density")
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Urban Density failed: {e}")
+
+
+@app.post("/calculate-grid/facility-accessibility", tags=["Grid Analysis"])
+def grid_facility_accessibility_endpoint(
+    geojson: UploadFile = File(..., description="Facility accessibility result GeoJSON"),
+):
+    """Divide the facility accessibility GeoJSON into 200 m cells and score each cell for QoL."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "facility_result.geojson"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        grid_geojson = grid_from_facility_accessibility(str(input_path))
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Facility Accessibility failed: {e}")
