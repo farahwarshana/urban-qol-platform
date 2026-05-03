@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import rasterio
+import pyproj
 
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 
@@ -10,6 +11,7 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
     Calculate Heat Index from a single LST GeoTIFF
     and export result as GeoTIFF in EPSG:4326.
     """
+    print(pyproj.show_versions())
 
     if not os.path.exists(geotiff_path):
         raise FileNotFoundError(f"File not found: {geotiff_path}")

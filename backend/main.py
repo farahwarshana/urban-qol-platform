@@ -1,5 +1,10 @@
 # hello nada 
 # Hello Farohaa ❤️
+import os
+from pyproj import datadir
+
+os.environ["PROJ_LIB"] = datadir.get_data_dir()
+
 import shutil
 import uuid
 from pathlib import Path
