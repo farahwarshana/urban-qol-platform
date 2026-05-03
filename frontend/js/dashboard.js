@@ -33,13 +33,17 @@ const SERVICES = {
       { type: "file", id: "geoJsonInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
-  "service-area": {
+  "facility_Accessibility_index": {
     title: "Service Area Analysis",
     desc: "Compute walkable service areas around facilities.",
-    inputs: [
-      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
-      { type: "number", id: "walkingTime", label: "Walking time (minutes)", value: 10 },
+  inputs: [
+      {
+      type: "file",
+      id: "facilitiesGeojsonInput",
+      label: "Upload facilities layer (GeoJSON)"
+      }
     ],
+     action: runFacilityAccessibilityAnalysis
   },
   "heat-index": {
     title: "Heat Index",
@@ -245,6 +249,12 @@ function renderExpansionPanel(service) {
    ============================================================ */
 function runAnalysis(key) {
   const service = SERVICES[key];
+
+
+  if (key === "facility_Accessibility_index") {
+  runFacilityAccessibilityAnalysis();
+  return;
+}
 
   if (key === "ndvi") {
     runNDVIAnalysis();
@@ -655,25 +665,22 @@ async function runUrbanDensityAnalysis() {
     `;
   }
 }
-/*---------------------heat index-------------------------*/
-async function runHeatIndexAnalysis() {
-  const tiffInput = document.getElementById("tiffInput");
+/*---------------------facility accessibility-------------------------*/
+async function runFacilityAccessibilityAnalysis() {
+  const input = document.getElementById("facilitiesGeojsonInput");
 
-  if (!tiffInput || !tiffInput.files[0]) {
-    alert("Please upload GeoTIFF file first.");
+  if (!input || !input.files[0]) {
+    alert("Please upload facilities GeoJSON first.");
     return;
   }
 
-  const file = tiffInput.files[0];
-
   const formData = new FormData();
-  formData.append("lst_geotiff", file);
+  formData.append("facilities_geojson", input.files[0]);
 
-  // loading UI
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Heat Index — Processing</h3>
-      <p class="panel-desc">Calculating heat index...</p>
+      <h3 class="panel-title">Facility Accessibility — Processing</h3>
+      <p class="panel-desc">Calculating 5, 10, and 15 minute walking service areas...</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary"></div>
       </div>
@@ -681,28 +688,74 @@ async function runHeatIndexAnalysis() {
   `;
 
   try {
-    const response = await fetch("http://localhost:8000/calculate-heat-index", {
+    const response = await fetch("http://localhost:8000/calculate-facility-accessibility", {
       method: "POST",
       body: formData,
     });
 
     if (!response.ok) {
       const err = await response.json();
-      throw new Error(err.detail);
+      throw new Error(err.detail || "Facility Accessibility failed");
     }
 
-    // 🟢 نقرأ الصورة
-    const arrayBuffer = await response.arrayBuffer();
+    const geojson = await response.json();
 
-    resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
-      opacity: 0.9,
-      resolution: 256,
-    });
+    if (resultLayer) {
+      map.removeLayer(resultLayer);
+    }
 
-    // 🟢 نعرض النتائج
+    resultLayer = L.geoJSON(geojson, {
+      style: function (feature) {
+        const time = feature.properties.time_min;
+
+        if (time === 5) {
+          return {
+            color: "#198754",
+            weight: 2,
+            fillColor: "#198754",
+            fillOpacity: 0.35
+          };
+        }
+
+        if (time === 10) {
+          return {
+            color: "#ffc107",
+            weight: 2,
+            fillColor: "#ffc107",
+            fillOpacity: 0.28
+          };
+        }
+
+        return {
+          color: "#dc3545",
+          weight: 2,
+          fillColor: "#dc3545",
+          fillOpacity: 0.22
+        };
+      },
+
+      onEachFeature: function (feature, layer) {
+        const props = feature.properties || {};
+
+        layer.bindPopup(`
+          <div style="min-width:180px">
+            <b>Facility Accessibility</b><br>
+            <hr style="margin:6px 0">
+            <b>Facility ID:</b> ${props.facility_id ?? "N/A"}<br>
+            <b>Walking Time:</b> ${props.time_min ?? "N/A"} min<br>
+            <b>Distance:</b> ${props.distance_m ?? "N/A"} m
+          </div>
+        `);
+      }
+    }).addTo(map);
+
+    if (resultLayer.getBounds && resultLayer.getBounds().isValid()) {
+      map.fitBounds(resultLayer.getBounds());
+    }
+
     renderResults({
-      title: "Heat Index",
-      desc: "Heat analysis completed"
+      title: "Facility Accessibility",
+      desc: "Walkable service areas calculated successfully."
     });
 
   } catch (error) {
@@ -713,7 +766,7 @@ async function runHeatIndexAnalysis() {
         <h3 class="panel-title">Error</h3>
         <p class="text-danger">${error.message}</p>
         <button class="btn btn-ghost"
-                onclick="renderServicePanel('heat-index')">
+                onclick="renderServicePanel('facility_Accessibility_index')">
           ← Back
         </button>
       </div>

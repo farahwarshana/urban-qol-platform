@@ -5,12 +5,10 @@ import networkx as nx
 import pandas as pd
 from shapely.geometry import Point
 
-
 def calculate_facility_accessibility(
     facilities_geojson_path,
-    selected_lat,
-    selected_lon,
     output_dir,
+    facility_id=0,
     walking_speed_kmh=4.5,
     times_minutes=[5, 10, 15],
     network_dist_m=2000
