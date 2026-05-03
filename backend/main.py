@@ -1,5 +1,6 @@
 # hello nada 
 # Hello Farohaa ❤️
+from ast import Index
 import os
 from pyproj import datadir
 
@@ -7,6 +8,8 @@ os.environ["PROJ_LIB"] = datadir.get_data_dir()
 
 import shutil
 import uuid
+import geopandas as gpd
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
@@ -17,6 +20,7 @@ from ndvi import calculate_ndvi_from_bands
 from crimedensity import calculate_crime_density
 from heat_index import calculate_heat_index_4326
 from urbandensity import calculate_urban_density
+from facility_Accessibility_index import calculate_facility_accessibility
 
 app = FastAPI(
     title="Urban QOL API",
@@ -294,3 +298,43 @@ def calculate_heat_index_endpoint(
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Heat Index calculation failed: {e}")
+    
+    
+# Facility Accessibility Index endpoint
+    
+@app.post("/calculate-facility-accessibility", tags=["Facility Accessibility"])
+def calculate_facility_accessibility_endpoint(
+    facilities_geojson: UploadFile = File(...),
+    facility_id: int = Query(0)
+):
+    job_id = str(uuid.uuid4())
+
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    facility_dir = get_output_subdir("facility_accessibility")
+    input_path = tmp_dir / "facilities.geojson"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(facilities_geojson.file, f)
+
+        stats = calculate_facility_accessibility(
+            facilities_geojson_path=str(input_path),
+            facility_id=facility_id,
+            output_dir=str(facility_dir),
+            walking_speed_kmh=4.5,
+            times_minutes=[5, 10, 15],
+            network_dist_m=2000
+        )
+
+        with open(stats["combined_output"], "r", encoding="utf-8") as f:
+            geojson_data = json.load(f)
+
+        return JSONResponse(content=geojson_data)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Facility Accessibility failed: {e}"
+        )
