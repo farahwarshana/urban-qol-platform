@@ -28,9 +28,13 @@ const SERVICES = {
   },
   "public-transport": {
     title: "Public Transport Coverage",
-    desc: "Analyze coverage of public transport stations.",
+    desc: "Analyze walking coverage of transit stations within an area of interest.",
     inputs: [
-      { type: "file", id: "geoJsonInput", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "stationsInput",    label: "Upload transit stations (GeoJSON points)" },
+      { type: "file", id: "aoiInput",         label: "Upload area of interest (GeoJSON polygon)" },
+      { type: "number", id: "walkingDistance", label: "Walking distance (metres)", value: 1000 },
+      { type: "file", id: "populationInput",  label: "Population layer (GeoJSON, optional)" },
+      { type: "text", id: "populationField",  label: "Population field name (optional)", placeholder: "e.g. population, pop" },
     ],
   },
   "facility_Accessibility_index": {
@@ -273,6 +277,11 @@ function runAnalysis(key) {
 
   if (key === "urban-density") {
     runUrbanDensityAnalysis();
+    return;
+  }
+
+  if (key === "public-transport") {
+    runPublicTransportAnalysis();
     return;
   }
 
@@ -806,6 +815,217 @@ dcebfbcfa791e37c2551f72d542c87c61cd69c48
     `;
   }
 }
+/* ---------- Public Transport Analysis - calls backend API ---------- */
+async function runPublicTransportAnalysis() {
+  const stationsInput    = document.getElementById("stationsInput");
+  const aoiInput         = document.getElementById("aoiInput");
+  const walkingDistanceEl= document.getElementById("walkingDistance");
+  const populationInput  = document.getElementById("populationInput");
+  const populationFieldEl= document.getElementById("populationField");
+
+  if (!stationsInput || !stationsInput.files[0]) {
+    alert("Please upload a GeoJSON file with transit stations.");
+    return;
+  }
+  if (!aoiInput || !aoiInput.files[0]) {
+    alert("Please upload a GeoJSON file for the area of interest.");
+    return;
+  }
+
+  const stationsFile    = stationsInput.files[0];
+  const aoiFile         = aoiInput.files[0];
+  const walkingDistance = walkingDistanceEl ? (parseFloat(walkingDistanceEl.value) || 1000) : 1000;
+  const popFile         = populationInput && populationInput.files[0] ? populationInput.files[0] : null;
+  const popField        = populationFieldEl ? populationFieldEl.value.trim() : "";
+
+  const inputs = {
+    stationsFileName: stationsFile.name,
+    aoiFileName:      aoiFile.name,
+    walkingDistance:  walkingDistance,
+    populationField:  popField || null,
+  };
+
+  const formData = new FormData();
+  formData.append("stations_geojson", stationsFile);
+  formData.append("aoi_geojson",      aoiFile);
+  if (popFile && popField) {
+    formData.append("population_geojson", popFile);
+  }
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Public Transport — Processing</h3>
+      <p class="panel-desc">Calculating transit coverage…</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading…</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  try {
+    let url = `http://localhost:8000/calculate-transit-coverage?walking_distance_m=${walkingDistance}`;
+    if (popField) url += `&population_field=${encodeURIComponent(popField)}`;
+
+    const response = await fetch(url, { method: "POST", body: formData });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    }
+
+    const coveragePct      = response.headers.get("X-Coverage-Pct");
+    const populationPct    = response.headers.get("X-Population-Pct");
+    const overallScore     = response.headers.get("X-Overall-Score");
+    const stationCount     = response.headers.get("X-Station-Count");
+    const walkingDistanceM = response.headers.get("X-Walking-Distance-M");
+
+    const geojsonData = await response.json();
+
+    lastResultBlob    = geojsonData;
+    lastResultService = "public-transport";
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
+
+    if (inputLayer) map.removeLayer(inputLayer);
+    clearMap();
+
+    // Render covered (blue) and uncovered (red-striped) polygons
+    resultLayer = L.geoJSON(geojsonData, {
+      style: function(feature) {
+        const isCovered = feature.properties.type === "covered";
+        return {
+          fillColor:   isCovered ? "#4cc2ff" : "#e74c3c",
+          fillOpacity: isCovered ? 0.45      : 0.25,
+          color:       isCovered ? "#1a8fc1" : "#c0392b",
+          weight:      1.5,
+          dashArray:   isCovered ? null       : "5, 4",
+        };
+      },
+      onEachFeature: function(feature, layer) {
+        const label = feature.properties.type === "covered"
+          ? "Within walking distance"
+          : "Outside walking distance";
+        layer.bindPopup(`<strong>${label}</strong>`);
+      }
+    }).addTo(map);
+
+    try {
+      const bounds = resultLayer.getBounds();
+      if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
+    } catch (e) { console.warn("Could not fit bounds:", e); }
+
+    renderTransitResults({
+      coverage_pct:    coveragePct,
+      population_pct:  populationPct,
+      overall_score:   overallScore,
+      station_count:   stationCount,
+      walking_distance_m: walkingDistanceM,
+    }, inputs);
+
+  } catch (error) {
+    console.error("Transit coverage error:", error);
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">Failed to calculate transit coverage: ${error.message}</p>
+        <button class="btn btn-ghost btn-block mt-3"
+                onclick="renderServicePanel('public-transport')">
+          ← Back to inputs
+        </button>
+      </div>
+    `;
+  }
+}
+
+
+/* ---------- Render Public Transport Results ---------- */
+function renderTransitResults(stats, inputs) {
+  const inputsHtml = inputs ? `
+    <div class="insight-card">
+      <div class="label">Stations file</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.stationsFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Area of interest</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.aoiFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Walking distance</div>
+      <div class="value">${inputs.walkingDistance} m</div>
+    </div>
+    ${inputs.populationField ? `
+    <div class="insight-card">
+      <div class="label">Population field</div>
+      <div class="value">${inputs.populationField}</div>
+    </div>` : ""}
+  ` : `<p class="text-muted">No input info available.</p>`;
+
+  const score = parseFloat(stats.overall_score);
+  const scoreColor = !isNaN(score) ? qolScoreTextColor(score) : "#888";
+
+  const popRow = stats.population_pct ? `
+    <div class="insight-card">
+      <div class="label">Population Coverage</div>
+      <div class="value">${parseFloat(stats.population_pct).toFixed(1)}%</div>
+    </div>` : "";
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Public Transport — Results</h3>
+      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+
+      <div class="tabs">
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+      </div>
+
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
+      </div>
+
+      <div class="tab-content active" id="tab-full">
+        <div class="insight-card">
+          <div class="label">Area Coverage</div>
+          <div class="value">${stats.coverage_pct !== null ? parseFloat(stats.coverage_pct).toFixed(1) + "%" : "N/A"}</div>
+        </div>
+        ${popRow}
+        <div class="insight-card">
+          <div class="label">Overall Score</div>
+          <div class="value" style="color:${scoreColor}">${!isNaN(score) ? score.toFixed(1) + " / 100" : "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Stations Analyzed</div>
+          <div class="value">${stats.station_count || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Walking Buffer</div>
+          <div class="value">${stats.walking_distance_m || "N/A"} m</div>
+        </div>
+        <ul class="bullet-list">
+          <li>Blue = within walking distance of a station</li>
+          <li>Red dashed = uncovered area</li>
+          <li>Coverage % based on area intersection with AOI</li>
+        </ul>
+      </div>
+
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Click this tab to generate the cell grid…</p>
+      </div>
+
+      <button class="btn btn-ghost btn-block mt-3"
+              onclick="renderServicePanel('public-transport')">
+        ← Back to inputs
+      </button>
+    </div>
+  `;
+
+  wireTabSwitching();
+}
+
+
 /* ---------- Render Crime Results with stats ---------- */
 function renderCrimeResults(stats, inputs) {
   const inputsHtml = inputs ? `
@@ -1208,7 +1428,7 @@ function wireTabSwitching() {
           gridTabContent.innerHTML = `
             <div class="text-center my-4">
               <div class="spinner-border text-primary" role="status"></div>
-              <p class="text-muted mt-2">Generating 200 m cell grid…</p>
+              <p class="text-muted mt-2">Generating cell grid (cell size auto-scaled to area)…</p>
             </div>`;
         }
 
@@ -1229,14 +1449,18 @@ function wireTabSwitching() {
           const scores = geojson.features
             .map(f => f.properties.qol_score)
             .filter(s => s !== null && s !== undefined);
-          const avg  = scores.length ? Math.round(scores.reduce((a,b) => a+b, 0) / scores.length) : null;
-          const best = scores.length ? Math.max(...scores) : null;
-          const worst= scores.length ? Math.min(...scores) : null;
+          const avg      = scores.length ? Math.round(scores.reduce((a,b) => a+b, 0) / scores.length) : null;
+          const best     = scores.length ? Math.max(...scores) : null;
+          const worst    = scores.length ? Math.min(...scores) : null;
           const cellCount = geojson.features.length;
+          const cellSizeM = geojson.cell_size_m || "?";
+          const cellLabel = cellSizeM >= 1000
+            ? `${(cellSizeM / 1000).toFixed(1)} km`
+            : `${cellSizeM} m`;
 
           if (gridTabContent) {
             gridTabContent.innerHTML = `
-              <p class="text-muted" style="font-size:11px;">Each cell = 200 m × 200 m. Score: 100 = best QoL, 0 = worst.</p>
+              <p class="text-muted" style="font-size:11px;">Cell size: ${cellLabel} × ${cellLabel} (auto-scaled to area). Score: 100 = best QoL, 0 = worst.</p>
               <div class="insight-card">
                 <div class="label">Cells Analyzed</div>
                 <div class="value">${cellCount}</div>
@@ -1253,15 +1477,23 @@ function wireTabSwitching() {
                 <div class="label">Worst Cell Score</div>
                 <div class="value" style="color:${qolScoreTextColor(worst)}">${worst !== null ? worst + "/100" : "N/A"}</div>
               </div>
-              <div class="legend-bar" style="margin:10px 0 4px;">
-                <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
-                  <div style="width:12px;height:12px;background:#00c800;border-radius:2px;"></div> Best QoL (100)
+              <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${qolScoreColor(88)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Excellent</strong> &nbsp;75–100</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:3px;">
-                  <div style="width:12px;height:12px;background:#ffdc00;border-radius:2px;"></div> Moderate (50)
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${qolScoreColor(62)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Good</strong> &nbsp;50–74</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:3px;">
-                  <div style="width:12px;height:12px;background:#c80000;border-radius:2px;"></div> Worst QoL (0)
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${qolScoreColor(37)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Poor</strong> &nbsp;25–49</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${qolScoreColor(12)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Bad</strong> &nbsp;0–24</span>
                 </div>
               </div>`;
           }
@@ -1502,21 +1734,36 @@ let gridLayer   = null;  // 200 m cell QoL layer — shown when Grid/Cell tab is
 let lastResultBlob    = null;  // ArrayBuffer (rasters) or object (geojson)
 let lastResultService = null;  // e.g. "ndvi", "heat-index", "crime", "urban-density"
 
-/* ---------- QoL score → colour (green 100 → red 0) ---------- */
+/* ---------- QoL score → colour (4-tier: green / yellow-green / orange / red) ---------- */
 function _qolRGB(score) {
   // Returns [r, g, b] — shared by map fill and text helpers
+  // Tier boundaries match scoring functions: 75–100 green, 50–74 yellow-green, 25–49 orange, 0–24 red
   if (score === null || score === undefined) return [150, 150, 150];
-  const t = score / 100;  // 1 = best (green), 0 = worst (red)
+  const s = Math.max(0, Math.min(100, score));
   let r, g, b;
-  if (t >= 0.5) {
-    const s = (t - 0.5) * 2;
-    r = Math.round((1 - s) * 255);
-    g = Math.round(s * 200 + (1 - s) * 220);
+  if (s >= 75) {
+    // Excellent: deep green → bright green  (100 → 75)
+    const t = (s - 75) / 25;          // 1 at 100, 0 at 75
+    r = Math.round((1 - t) * 80  + t * 30);
+    g = Math.round((1 - t) * 200 + t * 160);
+    b = Math.round((1 - t) * 60  + t * 40);
+  } else if (s >= 50) {
+    // Good: yellow-green → lime  (74 → 50)
+    const t = (s - 50) / 25;
+    r = Math.round((1 - t) * 230 + t * 100);
+    g = Math.round((1 - t) * 210 + t * 200);
+    b = 0;
+  } else if (s >= 25) {
+    // Poor: orange → amber  (49 → 25)
+    const t = (s - 25) / 25;
+    r = Math.round((1 - t) * 220 + t * 240);
+    g = Math.round((1 - t) * 100 + t * 170);
     b = 0;
   } else {
-    const s = t * 2;
-    r = Math.round(s * 255 + (1 - s) * 200);
-    g = Math.round(s * 220);
+    // Bad: dark red → red  (24 → 0)
+    const t = s / 25;
+    r = Math.round((1 - t) * 160 + t * 220);
+    g = Math.round((1 - t) * 20  + t * 60);
     b = 0;
   }
   return [r, g, b];
@@ -1562,7 +1809,9 @@ async function fetchAndRenderGrid(service, blob) {
       ? "http://localhost:8000/calculate-grid/crime"
       : service === "urban-density"
         ? "http://localhost:8000/calculate-grid/urban-density"
-        : "http://localhost:8000/calculate-grid/facility-accessibility";
+        : service === "public-transport"
+          ? "http://localhost:8000/calculate-grid/public-transport"
+          : "http://localhost:8000/calculate-grid/facility-accessibility";
   }
 
   const response = await fetch(endpoint, { method: "POST", body: formData });
@@ -1643,6 +1892,59 @@ function attachFileInputListeners() {
       }
 
         reader.readAsText(file);
+    });
+  }
+
+  // Transit stations file input — previews points on map
+  const stationsInput = document.getElementById("stationsInput");
+  if (stationsInput) {
+    stationsInput.addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          const geojsonData = JSON.parse(event.target.result);
+          if (inputLayer) map.removeLayer(inputLayer);
+          inputLayer = L.geoJSON(geojsonData, {
+            pointToLayer: function(feature, latlng) {
+              return L.circleMarker(latlng, {
+                radius: 5, fillColor: "#4cc2ff", color: "#1a8fc1",
+                weight: 1.5, opacity: 1, fillOpacity: 0.9,
+              });
+            }
+          }).addTo(map);
+          try {
+            const b = inputLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch(e) {}
+        } catch(err) { console.warn("Could not parse stations GeoJSON:", err); }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // AOI file input — previews boundary on map (layered on top of stations)
+  const aoiInput = document.getElementById("aoiInput");
+  if (aoiInput) {
+    aoiInput.addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          const geojsonData = JSON.parse(event.target.result);
+          // Add as a separate overlay — don't overwrite the stations inputLayer
+          const aoiLayer = L.geoJSON(geojsonData, {
+            style: { color: "#f39c12", weight: 2.5, fill: false },
+          }).addTo(map);
+          try {
+            const b = aoiLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch(e) {}
+        } catch(err) { console.warn("Could not parse AOI GeoJSON:", err); }
+      };
+      reader.readAsText(file);
     });
   }
 

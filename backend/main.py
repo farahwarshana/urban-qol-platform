@@ -21,10 +21,12 @@ from crimedensity import calculate_crime_density
 from heat_index import calculate_heat_index_4326
 from urbandensity import calculate_urban_density
 from facility_Accessibility_index import calculate_facility_accessibility
+from public_transport import calculate_transit_coverage
 from grid_analysis import (
     grid_from_raster,
     grid_from_vector,
     grid_from_facility_accessibility,
+    grid_from_transit_coverage,
 )
 
 app = FastAPI(
@@ -45,6 +47,8 @@ app.add_middleware(
         "X-Crime-Count", "X-Area-Count", "X-Avg-Density", "X-Max-Density",
         "X-Total-Population", "X-Total-Area",
         "X-HeatIndex-Min", "X-HeatIndex-Max", "X-HeatIndex-Mean",
+        "X-Coverage-Pct", "X-Population-Pct", "X-Overall-Score",
+        "X-Station-Count", "X-Walking-Distance-M",
     ],
 )
 
@@ -351,7 +355,7 @@ def calculate_facility_accessibility_endpoint(
 def grid_ndvi_endpoint(
     geotiff: UploadFile = File(..., description="NDVI result GeoTIFF"),
 ):
-    """Divide the NDVI raster into 200 m cells and score each cell for QoL."""
+    """Divide the NDVI raster into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -372,7 +376,7 @@ def grid_ndvi_endpoint(
 def grid_heat_index_endpoint(
     geotiff: UploadFile = File(..., description="Heat Index result GeoTIFF"),
 ):
-    """Divide the Heat Index raster into 200 m cells and score each cell for QoL."""
+    """Divide the Heat Index raster into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -393,7 +397,7 @@ def grid_heat_index_endpoint(
 def grid_crime_endpoint(
     geojson: UploadFile = File(..., description="Crime density result GeoJSON"),
 ):
-    """Divide the crime density GeoJSON into 200 m cells and score each cell for QoL."""
+    """Divide the crime density GeoJSON into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -414,7 +418,7 @@ def grid_crime_endpoint(
 def grid_urban_density_endpoint(
     geojson: UploadFile = File(..., description="Urban density result GeoJSON"),
 ):
-    """Divide the urban density GeoJSON into 200 m cells and score each cell for QoL."""
+    """Divide the urban density GeoJSON into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -431,11 +435,97 @@ def grid_urban_density_endpoint(
         raise HTTPException(status_code=500, detail=f"Grid Urban Density failed: {e}")
 
 
+@app.post("/calculate-transit-coverage", tags=["Public Transport"])
+def calculate_transit_coverage_endpoint(
+    stations_geojson: UploadFile = File(..., description="GeoJSON point layer of transit stations"),
+    aoi_geojson: UploadFile = File(..., description="GeoJSON polygon of area of interest"),
+    walking_distance_m: float = Query(1000.0, description="Walking buffer radius in metres (default 1000 m)"),
+    population_geojson: UploadFile = File(None, description="Optional GeoJSON polygon layer with population data"),
+    population_field: str = Query(None, description="Attribute name holding population counts (required if population_geojson provided)"),
+):
+    """
+    Calculate public-transit walking coverage within an AOI using geometric buffers.
+
+    Returns a GeoJSON FeatureCollection of covered and uncovered areas, with
+    coverage statistics in response headers.
+    """
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    transit_dir = get_output_subdir("public_transport")
+
+    stations_path  = tmp_dir / "stations.geojson"
+    aoi_path       = tmp_dir / "aoi.geojson"
+    output_path    = transit_dir / f"transit_coverage_{job_id}.geojson"
+    pop_path       = None
+
+    try:
+        with stations_path.open("wb") as f:
+            shutil.copyfileobj(stations_geojson.file, f)
+        with aoi_path.open("wb") as f:
+            shutil.copyfileobj(aoi_geojson.file, f)
+
+        if population_geojson is not None:
+            pop_path = tmp_dir / "population.geojson"
+            with pop_path.open("wb") as f:
+                shutil.copyfileobj(population_geojson.file, f)
+
+        result = calculate_transit_coverage(
+            stations_geojson_path=str(stations_path),
+            aoi_geojson_path=str(aoi_path),
+            walking_distance_m=walking_distance_m,
+            population_geojson_path=str(pop_path) if pop_path else None,
+            population_field=population_field,
+            output_path=str(output_path),
+        )
+
+        # Read the saved combined GeoJSON (covered + uncovered)
+        with open(str(output_path), "r", encoding="utf-8") as f:
+            geojson_data = json.load(f)
+
+        headers = {
+            "X-Coverage-Pct":       str(result["coverage_pct"]),
+            "X-Overall-Score":      str(result["overall_score"]),
+            "X-Station-Count":      str(result["station_count"]),
+            "X-Walking-Distance-M": str(result["walking_distance_m"]),
+        }
+        if result["population_pct"] is not None:
+            headers["X-Population-Pct"] = str(result["population_pct"])
+
+        return JSONResponse(content=geojson_data, headers=headers)
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transit coverage calculation failed: {e}")
+
+
+@app.post("/calculate-grid/public-transport", tags=["Grid Analysis"])
+def grid_transit_coverage_endpoint(
+    geojson: UploadFile = File(..., description="Transit coverage result GeoJSON (from /calculate-transit-coverage)"),
+):
+    """Divide the transit coverage GeoJSON into adaptive-size cells and score each cell for QoL."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "transit_result.geojson"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        grid_geojson = grid_from_transit_coverage(str(input_path))
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Public Transport failed: {e}")
+
+
 @app.post("/calculate-grid/facility-accessibility", tags=["Grid Analysis"])
 def grid_facility_accessibility_endpoint(
     geojson: UploadFile = File(..., description="Facility accessibility result GeoJSON"),
 ):
-    """Divide the facility accessibility GeoJSON into 200 m cells and score each cell for QoL."""
+    """Divide the facility accessibility GeoJSON into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
