@@ -1142,7 +1142,7 @@ function wireTabSwitching() {
           gridTabContent.innerHTML = `
             <div class="text-center my-4">
               <div class="spinner-border text-primary" role="status"></div>
-              <p class="text-muted mt-2">Generating 200 m cell grid…</p>
+              <p class="text-muted mt-2">Generating cell grid (cell size auto-scaled to area)…</p>
             </div>`;
         }
 
@@ -1163,14 +1163,18 @@ function wireTabSwitching() {
           const scores = geojson.features
             .map(f => f.properties.qol_score)
             .filter(s => s !== null && s !== undefined);
-          const avg  = scores.length ? Math.round(scores.reduce((a,b) => a+b, 0) / scores.length) : null;
-          const best = scores.length ? Math.max(...scores) : null;
-          const worst= scores.length ? Math.min(...scores) : null;
+          const avg      = scores.length ? Math.round(scores.reduce((a,b) => a+b, 0) / scores.length) : null;
+          const best     = scores.length ? Math.max(...scores) : null;
+          const worst    = scores.length ? Math.min(...scores) : null;
           const cellCount = geojson.features.length;
+          const cellSizeM = geojson.cell_size_m || "?";
+          const cellLabel = cellSizeM >= 1000
+            ? `${(cellSizeM / 1000).toFixed(1)} km`
+            : `${cellSizeM} m`;
 
           if (gridTabContent) {
             gridTabContent.innerHTML = `
-              <p class="text-muted" style="font-size:11px;">Each cell = 200 m × 200 m. Score: 100 = best QoL, 0 = worst.</p>
+              <p class="text-muted" style="font-size:11px;">Cell size: ${cellLabel} × ${cellLabel} (auto-scaled to area). Score: 100 = best QoL, 0 = worst.</p>
               <div class="insight-card">
                 <div class="label">Cells Analyzed</div>
                 <div class="value">${cellCount}</div>
@@ -1187,15 +1191,23 @@ function wireTabSwitching() {
                 <div class="label">Worst Cell Score</div>
                 <div class="value" style="color:${qolScoreTextColor(worst)}">${worst !== null ? worst + "/100" : "N/A"}</div>
               </div>
-              <div class="legend-bar" style="margin:10px 0 4px;">
-                <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
-                  <div style="width:12px;height:12px;background:#00c800;border-radius:2px;"></div> Best QoL (100)
+              <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${qolScoreColor(88)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Excellent</strong> &nbsp;75–100</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:3px;">
-                  <div style="width:12px;height:12px;background:#ffdc00;border-radius:2px;"></div> Moderate (50)
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${qolScoreColor(62)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Good</strong> &nbsp;50–74</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:3px;">
-                  <div style="width:12px;height:12px;background:#c80000;border-radius:2px;"></div> Worst QoL (0)
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${qolScoreColor(37)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Poor</strong> &nbsp;25–49</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${qolScoreColor(12)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Bad</strong> &nbsp;0–24</span>
                 </div>
               </div>`;
           }
@@ -1436,21 +1448,36 @@ let gridLayer   = null;  // 200 m cell QoL layer — shown when Grid/Cell tab is
 let lastResultBlob    = null;  // ArrayBuffer (rasters) or object (geojson)
 let lastResultService = null;  // e.g. "ndvi", "heat-index", "crime", "urban-density"
 
-/* ---------- QoL score → colour (green 100 → red 0) ---------- */
+/* ---------- QoL score → colour (4-tier: green / yellow-green / orange / red) ---------- */
 function _qolRGB(score) {
   // Returns [r, g, b] — shared by map fill and text helpers
+  // Tier boundaries match scoring functions: 75–100 green, 50–74 yellow-green, 25–49 orange, 0–24 red
   if (score === null || score === undefined) return [150, 150, 150];
-  const t = score / 100;  // 1 = best (green), 0 = worst (red)
+  const s = Math.max(0, Math.min(100, score));
   let r, g, b;
-  if (t >= 0.5) {
-    const s = (t - 0.5) * 2;
-    r = Math.round((1 - s) * 255);
-    g = Math.round(s * 200 + (1 - s) * 220);
+  if (s >= 75) {
+    // Excellent: deep green → bright green  (100 → 75)
+    const t = (s - 75) / 25;          // 1 at 100, 0 at 75
+    r = Math.round((1 - t) * 80  + t * 30);
+    g = Math.round((1 - t) * 200 + t * 160);
+    b = Math.round((1 - t) * 60  + t * 40);
+  } else if (s >= 50) {
+    // Good: yellow-green → lime  (74 → 50)
+    const t = (s - 50) / 25;
+    r = Math.round((1 - t) * 230 + t * 100);
+    g = Math.round((1 - t) * 210 + t * 200);
+    b = 0;
+  } else if (s >= 25) {
+    // Poor: orange → amber  (49 → 25)
+    const t = (s - 25) / 25;
+    r = Math.round((1 - t) * 220 + t * 240);
+    g = Math.round((1 - t) * 100 + t * 170);
     b = 0;
   } else {
-    const s = t * 2;
-    r = Math.round(s * 255 + (1 - s) * 200);
-    g = Math.round(s * 220);
+    // Bad: dark red → red  (24 → 0)
+    const t = s / 25;
+    r = Math.round((1 - t) * 160 + t * 220);
+    g = Math.round((1 - t) * 20  + t * 60);
     b = 0;
   }
   return [r, g, b];

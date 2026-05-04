@@ -351,7 +351,7 @@ def calculate_facility_accessibility_endpoint(
 def grid_ndvi_endpoint(
     geotiff: UploadFile = File(..., description="NDVI result GeoTIFF"),
 ):
-    """Divide the NDVI raster into 200 m cells and score each cell for QoL."""
+    """Divide the NDVI raster into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -372,7 +372,7 @@ def grid_ndvi_endpoint(
 def grid_heat_index_endpoint(
     geotiff: UploadFile = File(..., description="Heat Index result GeoTIFF"),
 ):
-    """Divide the Heat Index raster into 200 m cells and score each cell for QoL."""
+    """Divide the Heat Index raster into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -393,7 +393,7 @@ def grid_heat_index_endpoint(
 def grid_crime_endpoint(
     geojson: UploadFile = File(..., description="Crime density result GeoJSON"),
 ):
-    """Divide the crime density GeoJSON into 200 m cells and score each cell for QoL."""
+    """Divide the crime density GeoJSON into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -414,7 +414,7 @@ def grid_crime_endpoint(
 def grid_urban_density_endpoint(
     geojson: UploadFile = File(..., description="Urban density result GeoJSON"),
 ):
-    """Divide the urban density GeoJSON into 200 m cells and score each cell for QoL."""
+    """Divide the urban density GeoJSON into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -435,7 +435,7 @@ def grid_urban_density_endpoint(
 def grid_facility_accessibility_endpoint(
     geojson: UploadFile = File(..., description="Facility accessibility result GeoJSON"),
 ):
-    """Divide the facility accessibility GeoJSON into 200 m cells and score each cell for QoL."""
+    """Divide the facility accessibility GeoJSON into adaptive-size cells and score each cell for QoL."""
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
