@@ -31,6 +31,11 @@ Facility Accessibility: smaller walk time → higher score.
               10 min zone → 65
               15 min zone → 35
               outside     → 0
+
+Public Transport: cell is inside transit walking coverage → high score.
+              covered (type="covered")   → 100
+              uncovered (type="uncovered") → 0
+              (score is interpolated from coverage fraction for partial cells)
 """
 
 import numpy as np
@@ -389,6 +394,95 @@ def grid_from_vector(geojson_path, service_type, value_field):
                 "qol_score": score,
                 "service":   service_type,
             }
+        })
+
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "cell_size_m": cell_m,
+    }
+
+
+def _score_transit_coverage(coverage_fraction):
+    """
+    Fraction of cell area covered by transit buffers (0.0–1.0) → QoL score.
+
+    Tier 4 Excellent : 0.75 – 1.00 → 75–100  (well-served)
+    Tier 3 Good      : 0.50 – 0.75 → 50– 74  (partially served)
+    Tier 2 Poor      : 0.25 – 0.50 → 25– 49  (low coverage)
+    Tier 1 Bad       : 0.00 – 0.25 →  0– 24  (effectively uncovered)
+    """
+    if coverage_fraction is None or np.isnan(coverage_fraction):
+        return None
+    f = float(np.clip(coverage_fraction, 0.0, 1.0))
+    if f >= 0.75:
+        return int(np.interp(f, [0.75, 1.00], [75, 100]))
+    if f >= 0.50:
+        return int(np.interp(f, [0.50, 0.75], [50, 74]))
+    if f >= 0.25:
+        return int(np.interp(f, [0.25, 0.50], [25, 49]))
+    return int(np.interp(f, [0.00, 0.25], [0, 24]))
+
+
+def grid_from_transit_coverage(geojson_path):
+    """
+    Score cells based on how much of each cell falls inside transit walking
+    coverage polygons.  Expects a GeoJSON with a 'type' property of
+    'covered' or 'uncovered' (as produced by calculate_transit_coverage).
+
+    Cell size is chosen automatically based on extent (target ~600 cells max).
+    """
+    gdf = gpd.read_file(geojson_path)
+    if gdf.crs is None:
+        gdf = gdf.set_crs("EPSG:4326")
+    gdf = gdf.to_crs("EPSG:4326")
+
+    if gdf.empty:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
+
+    bounds       = gdf.total_bounds
+    grid, cell_m = _build_grid_cells(tuple(bounds))
+
+    # Keep only covered polygons for intersection
+    covered_gdf = gdf[gdf.get("type", gdf.get("type", None)) == "covered"] if "type" in gdf.columns else gdf
+    if covered_gdf.empty:
+        # Fallback: treat all features as covered
+        covered_gdf = gdf
+
+    covered_union = covered_gdf.geometry.union_all()
+
+    # Determine UTM for accurate area fraction
+    cx = (bounds[0] + bounds[2]) / 2
+    cy = (bounds[1] + bounds[3]) / 2
+    utm_epsg = _get_utm_crs(cx, cy)
+    utm_crs  = f"EPSG:{utm_epsg}"
+
+    grid_utm         = grid.to_crs(utm_crs)
+    covered_gdf_utm  = covered_gdf.to_crs(utm_crs)
+    covered_union_utm = covered_gdf_utm.geometry.union_all()
+
+    features = []
+    for idx, row in grid_utm.iterrows():
+        cell_geom  = row.geometry
+        cell_area  = cell_geom.area
+        cell_wgs   = grid.loc[idx].geometry
+
+        if cell_area <= 0:
+            fraction = 0.0
+        else:
+            intersection = cell_geom.intersection(covered_union_utm)
+            fraction     = intersection.area / cell_area if not intersection.is_empty else 0.0
+
+        score = _score_transit_coverage(fraction)
+
+        features.append({
+            "type": "Feature",
+            "geometry": cell_wgs.__geo_interface__,
+            "properties": {
+                "value":     round(fraction, 4),
+                "qol_score": score,
+                "service":   "public-transport",
+            },
         })
 
     return {
