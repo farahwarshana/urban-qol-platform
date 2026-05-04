@@ -335,14 +335,18 @@ async function runNDVIAnalysis() {
 
     // Convert response to array buffer
     const arrayBuffer = await response.arrayBuffer();
+    // Keep a copy for the grid endpoint (slice() creates a detached copy)
+    lastResultBlob    = arrayBuffer.slice(0);
+    lastResultService = "ndvi";
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     // Render the NDVI result on the map (without custom color function to avoid projection issues)
     resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
       opacity: 0.9,
       resolution: 256,
     });
-    
-    
+
+
     // Render results panel with NDVI stats
     renderNDVIResults({
       min: ndviMin,
@@ -451,7 +455,11 @@ async function runCrimeAnalysis() {
     // Render the crime density result on the map as GeoJSON
     const geojsonData = await response.json();
 
-    // Render the crime density result on the map as GeoJSON
+    // Store for grid analysis
+    lastResultBlob    = geojsonData;
+    lastResultService = "crime";
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
+
     if (inputLayer) {
       map.removeLayer(inputLayer);
     }
@@ -590,7 +598,11 @@ async function runUrbanDensityAnalysis() {
     // Render the urban density result on the map as GeoJSON
     const geojsonData = await response.json();
 
-    // Render the urban density result on the map as GeoJSON
+    // Store for grid analysis
+    lastResultBlob    = geojsonData;
+    lastResultService = "urban-density";
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
+
     if (inputLayer) {
       map.removeLayer(inputLayer);
     }
@@ -698,7 +710,14 @@ async function runFacilityAccessibilityAnalysis() {
       throw new Error(err.detail || "Facility Accessibility failed");
     }
 
+HEAD
     const geojson = await response.json();
+
+    const arrayBuffer = await response.arrayBuffer();
+    lastResultBlob    = arrayBuffer.slice(0);
+    lastResultService = "heat-index";
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
+dcebfbcfa791e37c2551f72d542c87c61cd69c48
 
     if (resultLayer) {
       map.removeLayer(resultLayer);
@@ -753,10 +772,24 @@ async function runFacilityAccessibilityAnalysis() {
       map.fitBounds(resultLayer.getBounds());
     }
 
+HEAD
     renderResults({
       title: "Facility Accessibility",
       desc: "Walkable service areas calculated successfully."
     });
+
+    const hiMin  = response.headers.get("X-HeatIndex-Min");
+    const hiMax  = response.headers.get("X-HeatIndex-Max");
+    const hiMean = response.headers.get("X-HeatIndex-Mean");
+    const hiValid= response.headers.get("X-Valid-Pixels");
+
+    renderHeatIndexResults({
+      min:          hiMin,
+      max:          hiMax,
+      mean:         hiMean,
+      valid_pixels: hiValid,
+    }, { fileName: tiffInput.files[0].name });
+dcebfbcfa791e37c2551f72d542c87c61cd69c48
 
   } catch (error) {
     console.error(error);
@@ -837,15 +870,7 @@ function renderCrimeResults(stats, inputs) {
       </div>
 
       <div class="tab-content" id="tab-grid">
-        <p class="text-muted">Grid analysis of crime density values.</p>
-        <div class="insight-card">
-          <div class="label">High crime areas</div>
-          <div class="value">${((parseFloat(stats.max_density) || 0) > 50 ? "Yes" : "Limited")}</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Safety rating</div>
-          <div class="value">${(parseFloat(stats.avg_density) || 0) < 10 ? "Good" : (parseFloat(stats.avg_density) || 0) < 30 ? "Moderate" : "Poor"}</div>
-        </div>
+        <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -920,15 +945,7 @@ function renderUrbanDensityResults(stats, inputs) {
       </div>
 
       <div class="tab-content" id="tab-grid">
-        <p class="text-muted">Grid analysis of urban density values.</p>
-        <div class="insight-card">
-          <div class="label">High density areas</div>
-          <div class="value">${((parseFloat(stats.max_density) || 0) > 1000 ? "Yes" : "Limited")}</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Urbanization level</div>
-          <div class="value">${(parseFloat(stats.avg_density) || 0) < 100 ? "Low" : (parseFloat(stats.avg_density) || 0) < 500 ? "Medium" : "High"}</div>
-        </div>
+        <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -998,19 +1015,76 @@ function renderNDVIResults(stats, inputs) {
       </div>
 
       <div class="tab-content" id="tab-grid">
-        <p class="text-muted">Grid analysis of NDVI values.</p>
-        <div class="insight-card">
-          <div class="label">High vegetation areas</div>
-          <div class="value">${((parseFloat(stats.mean) || 0) > 0.4 ? "Yes" : "Limited")}</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Vegetation health</div>
-          <div class="value">${(parseFloat(stats.mean) || 0) > 0.6 ? "Excellent" : (parseFloat(stats.mean) || 0) > 0.4 ? "Good" : "Moderate"}</div>
-        </div>
+        <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
               onclick="renderServicePanel('ndvi')">
+        ← Back to inputs
+      </button>
+    </div>
+  `;
+
+  wireTabSwitching();
+}
+
+
+/* ---------- Render Heat Index Results with stats ---------- */
+function renderHeatIndexResults(stats, inputs) {
+  const inputsHtml = inputs ? `
+    <div class="insight-card">
+      <div class="label">GeoTIFF file</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+  ` : `<p class="text-muted">No input info available.</p>`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Heat Index — Results</h3>
+      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+
+      <div class="tabs">
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+      </div>
+
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
+      </div>
+
+      <div class="tab-content active" id="tab-full">
+        <div class="insight-card">
+          <div class="label">Min Temp (°C)</div>
+          <div class="value">${stats.min || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Max Temp (°C)</div>
+          <div class="value">${stats.max || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Mean Temp (°C)</div>
+          <div class="value">${stats.mean || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Valid Pixels</div>
+          <div class="value">${stats.valid_pixels || "N/A"}</div>
+        </div>
+        <ul class="bullet-list">
+          <li>Class 0 (&lt;27°C): Comfortable</li>
+          <li>Class 1 (27–32°C): Caution</li>
+          <li>Class 2 (32–38°C): Extreme caution</li>
+          <li>Class 3 (≥38°C): Danger</li>
+        </ul>
+      </div>
+
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <button class="btn btn-ghost btn-block mt-3"
+              onclick="renderServicePanel('heat-index')">
         ← Back to inputs
       </button>
     </div>
@@ -1061,16 +1135,7 @@ function renderResults(service) {
       </div>
 
       <div class="tab-content" id="tab-grid">
-        <p class="text-muted">AOI divided into cells.</p>
-        <div class="insight-card">
-          <div class="label">Cells analyzed</div>
-          <div class="value">256</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Best cell score</div>
-          <div class="value">0.91</div>
-        </div>
-        <!-- TODO: render grid cell table or heatmap from backend -->
+        <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -1094,7 +1159,7 @@ function getActiveServiceKey() {
 /* ---------- Helper: wire up tab switching + map layer toggle ---------- */
 function wireTabSwitching() {
   analysisPanel.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", function () {
+    tab.addEventListener("click", async function () {
       const target = tab.getAttribute("data-tab");
       analysisPanel.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
       analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
@@ -1103,6 +1168,7 @@ function wireTabSwitching() {
 
       if (target === "raw") {
         if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+        if (gridLayer   && map.hasLayer(gridLayer))   map.removeLayer(gridLayer);
         if (inputLayer && !map.hasLayer(inputLayer)) {
           try {
             inputLayer.addTo(map);
@@ -1110,14 +1176,101 @@ function wireTabSwitching() {
             if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
           } catch (e) { console.warn("Could not restore input layer:", e); }
         }
+
       } else if (target === "full") {
         if (inputLayer && map.hasLayer(inputLayer)) map.removeLayer(inputLayer);
+        if (gridLayer  && map.hasLayer(gridLayer))  map.removeLayer(gridLayer);
         if (resultLayer && !map.hasLayer(resultLayer)) {
           try {
             resultLayer.addTo(map);
             const b = resultLayer.getBounds ? resultLayer.getBounds() : null;
             if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
           } catch (e) { console.warn("Could not restore result layer:", e); }
+        }
+
+      } else if (target === "grid") {
+        if (inputLayer  && map.hasLayer(inputLayer))  map.removeLayer(inputLayer);
+        if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+
+        // If grid layer already loaded, just show it
+        if (gridLayer) {
+          if (!map.hasLayer(gridLayer)) gridLayer.addTo(map);
+          try {
+            const b = gridLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch(e) {}
+          return;
+        }
+
+        // Need to fetch — show loading indicator in the tab content
+        const gridTabContent = analysisPanel.querySelector("#tab-grid");
+        if (gridTabContent) {
+          gridTabContent.innerHTML = `
+            <div class="text-center my-4">
+              <div class="spinner-border text-primary" role="status"></div>
+              <p class="text-muted mt-2">Generating 200 m cell grid…</p>
+            </div>`;
+        }
+
+        if (!lastResultBlob || !lastResultService) {
+          if (gridTabContent) gridTabContent.innerHTML = `<p class="text-muted">No analysis result available to grid.</p>`;
+          return;
+        }
+
+        try {
+          const geojson = await fetchAndRenderGrid(lastResultService, lastResultBlob);
+          gridLayer.addTo(map);
+          try {
+            const b = gridLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch(e) {}
+
+          // Compute summary stats from geojson
+          const scores = geojson.features
+            .map(f => f.properties.qol_score)
+            .filter(s => s !== null && s !== undefined);
+          const avg  = scores.length ? Math.round(scores.reduce((a,b) => a+b, 0) / scores.length) : null;
+          const best = scores.length ? Math.max(...scores) : null;
+          const worst= scores.length ? Math.min(...scores) : null;
+          const cellCount = geojson.features.length;
+
+          if (gridTabContent) {
+            gridTabContent.innerHTML = `
+              <p class="text-muted" style="font-size:11px;">Each cell = 200 m × 200 m. Score: 100 = best QoL, 0 = worst.</p>
+              <div class="insight-card">
+                <div class="label">Cells Analyzed</div>
+                <div class="value">${cellCount}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Average QoL Score</div>
+                <div class="value" style="color:${qolScoreTextColor(avg)}">${avg !== null ? avg + "/100" : "N/A"}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Best Cell Score</div>
+                <div class="value" style="color:${qolScoreTextColor(best)}">${best !== null ? best + "/100" : "N/A"}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Worst Cell Score</div>
+                <div class="value" style="color:${qolScoreTextColor(worst)}">${worst !== null ? worst + "/100" : "N/A"}</div>
+              </div>
+              <div class="legend-bar" style="margin:10px 0 4px;">
+                <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+                  <div style="width:12px;height:12px;background:#00c800;border-radius:2px;"></div> Best QoL (100)
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:3px;">
+                  <div style="width:12px;height:12px;background:#ffdc00;border-radius:2px;"></div> Moderate (50)
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:3px;">
+                  <div style="width:12px;height:12px;background:#c80000;border-radius:2px;"></div> Worst QoL (0)
+                </div>
+              </div>`;
+          }
+
+        } catch (err) {
+          console.error("Grid fetch error:", err);
+          if (gridTabContent) {
+            gridTabContent.innerHTML = `<p class="text-danger">Failed to generate grid: ${err.message}</p>`;
+          }
         }
       }
     });
@@ -1341,8 +1494,108 @@ async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
   }
 }
 
-let inputLayer = null;  // pre-analysis layer — shown when Raw Data tab is active
-let resultLayer = null; // analysis result layer — shown when Full Area tab is active
+let inputLayer  = null;  // pre-analysis layer — shown when Raw Data tab is active
+let resultLayer = null;  // analysis result layer — shown when Full Area tab is active
+let gridLayer   = null;  // 200 m cell QoL layer — shown when Grid/Cell tab is active
+
+// Holds the last analysis result so the grid endpoint can re-use it
+let lastResultBlob    = null;  // ArrayBuffer (rasters) or object (geojson)
+let lastResultService = null;  // e.g. "ndvi", "heat-index", "crime", "urban-density"
+
+/* ---------- QoL score → colour (green 100 → red 0) ---------- */
+function _qolRGB(score) {
+  // Returns [r, g, b] — shared by map fill and text helpers
+  if (score === null || score === undefined) return [150, 150, 150];
+  const t = score / 100;  // 1 = best (green), 0 = worst (red)
+  let r, g, b;
+  if (t >= 0.5) {
+    const s = (t - 0.5) * 2;
+    r = Math.round((1 - s) * 255);
+    g = Math.round(s * 200 + (1 - s) * 220);
+    b = 0;
+  } else {
+    const s = t * 2;
+    r = Math.round(s * 255 + (1 - s) * 200);
+    g = Math.round(s * 220);
+    b = 0;
+  }
+  return [r, g, b];
+}
+// Semi-transparent fill for map cells
+function qolScoreColor(score) {
+  if (score === null || score === undefined) return "rgba(150,150,150,0.25)";
+  const [r, g, b] = _qolRGB(score);
+  return `rgba(${r},${g},${b},0.72)`;
+}
+// Solid colour for sidebar text
+function qolScoreTextColor(score) {
+  if (score === null || score === undefined) return "#888";
+  const [r, g, b] = _qolRGB(score);
+  return `rgb(${r},${g},${b})`;
+}
+
+/* ---------- Fetch grid from backend and render on map ---------- */
+async function fetchAndRenderGrid(service, blob) {
+  if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
+
+  // Build a FormData with the result file
+  const formData = new FormData();
+  let endpoint;
+
+  if (service === "ndvi" || service === "heat-index") {
+    // blob is an ArrayBuffer — wrap in a File
+    const ext  = "tif";
+    const file = new File([blob], `result.${ext}`, { type: "image/tiff" });
+    formData.append("geotiff", file);
+    endpoint = service === "ndvi"
+      ? "http://localhost:8000/calculate-grid/ndvi"
+      : "http://localhost:8000/calculate-grid/heat-index";
+  } else {
+    // blob is a plain JS object (GeoJSON) — serialise it
+    const file = new File(
+      [JSON.stringify(blob)],
+      "result.geojson",
+      { type: "application/json" }
+    );
+    formData.append("geojson", file);
+    endpoint = service === "crime"
+      ? "http://localhost:8000/calculate-grid/crime"
+      : service === "urban-density"
+        ? "http://localhost:8000/calculate-grid/urban-density"
+        : "http://localhost:8000/calculate-grid/facility-accessibility";
+  }
+
+  const response = await fetch(endpoint, { method: "POST", body: formData });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `Grid request failed: ${response.status}`);
+  }
+
+  const geojson = await response.json();
+
+  gridLayer = L.geoJSON(geojson, {
+    style: function(feature) {
+      const score = feature.properties.qol_score;
+      return {
+        fillColor: qolScoreColor(score),
+        fillOpacity: 0.75,
+        color: "rgba(0,0,0,0.15)",
+        weight: 0.5,
+      };
+    },
+    onEachFeature: function(feature, layer) {
+      const p = feature.properties;
+      const scoreText = p.qol_score !== null ? `${p.qol_score}/100` : "No data";
+      const valText   = p.value    !== null ? p.value : "—";
+      layer.bindPopup(
+        `<strong>QoL Score:</strong> ${scoreText}<br>` +
+        `<strong>Value:</strong> ${valText}`
+      );
+    }
+  });
+
+  return geojson;
+}
 
 /* ---------- Attach file input listeners after DOM is updated ---------- */
 function attachFileInputListeners() {

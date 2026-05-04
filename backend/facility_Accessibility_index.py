@@ -3,7 +3,7 @@ import geopandas as gpd
 import osmnx as ox
 import networkx as nx
 import pandas as pd
-from shapely.geometry import Point
+
 
 def calculate_facility_accessibility(
     facilities_geojson_path,
@@ -22,18 +22,8 @@ def calculate_facility_accessibility(
 
     facilities = facilities.to_crs("EPSG:4326")
 
-    selected_point = Point(selected_lon, selected_lat)
-
-    # اختيار أقرب facility للنقطة اللي المستخدم ضغط عليها
-    facilities_metric = facilities.to_crs(facilities.estimate_utm_crs())
-    clicked_metric = gpd.GeoSeries(
-        [selected_point],
-        crs="EPSG:4326"
-    ).to_crs(facilities_metric.crs).iloc[0]
-
-    nearest_facility_index = facilities_metric.geometry.distance(clicked_metric).idxmin()
-
-    facility_geom = facilities.loc[nearest_facility_index].geometry
+    selected = facilities.iloc[facility_id]
+    facility_geom = selected.geometry
 
     if facility_geom.geom_type != "Point":
         facility_geom = facility_geom.centroid
@@ -58,7 +48,6 @@ def calculate_facility_accessibility(
         crs="EPSG:4326"
     ).to_crs(nodes.crs).iloc[0]
 
-    # بدل ox.distance.nearest_nodes عشان نتفادى مشكلة scipy
     nearest_node = nodes.geometry.distance(facility_point_proj).idxmin()
 
     meters_per_minute = (walking_speed_kmh * 1000) / 60
@@ -86,7 +75,7 @@ def calculate_facility_accessibility(
 
         zone_gdf = gpd.GeoDataFrame(
             {
-                "selected_facility_index": [int(nearest_facility_index)],
+                "facility_id": [int(facility_id)],
                 "time_min": [time],
                 "distance_m": [round(max_distance, 2)],
                 "walking_speed_kmh": [walking_speed_kmh],
@@ -121,9 +110,9 @@ def calculate_facility_accessibility(
 
     all_zones.to_file(all_output, driver="GeoJSON")
 
-    stats = {
+    return {
         "indicator": "Facility Accessibility Index",
-        "selected_facility_index": int(nearest_facility_index),
+        "facility_id": int(facility_id),
         "selected_lat": lat,
         "selected_lon": lon,
         "walking_speed_kmh": walking_speed_kmh,
@@ -131,5 +120,3 @@ def calculate_facility_accessibility(
         "outputs": output_files,
         "combined_output": all_output
     }
-
-    return stats
