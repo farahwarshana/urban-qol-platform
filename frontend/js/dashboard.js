@@ -54,9 +54,10 @@ const SERVICES = {
   },
   "vegetation": {
     title: "Vegetation Density",
-    desc: "Compute vegetation cover from satellite imagery.",
+    desc: "Analyse how much of your area meets the 30% urban greenery standard.",
     inputs: [
-      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
+      { type: "file",   id: "tiffInput",    label: "Upload satellite raster (GeoTIFF)" },
+      { type: "number", id: "vegThreshold", label: "Vegetation threshold (NDVI ≥)", value: 0.2 },
     ],
   },
   "ndvi": {
@@ -157,7 +158,7 @@ function renderServicePanel(key) {
         </div>`;
     }
     if (field.type === "select") {
-      const optionsHtml = field.options.map(opt => 
+      const optionsHtml = field.options.map(opt =>
         `<option value="${opt.value}" ${opt.selected ? 'selected' : ''}>${opt.label}</option>`
       ).join("");
       return `
@@ -167,6 +168,9 @@ function renderServicePanel(key) {
             ${optionsHtml}
           </select>
         </div>`;
+    }
+    if (field.type === "custom") {
+      return field.html;
     }
     // default: text
     return `
@@ -272,6 +276,11 @@ function runAnalysis(key) {
 
   if (key === "public-transport") {
     runPublicTransportAnalysis();
+    return;
+  }
+
+  if (key === "vegetation") {
+    runVegetationAnalysis();
     return;
   }
 
@@ -960,6 +969,265 @@ function renderTransitResults(stats, inputs) {
 }
 
 
+/* ============================================================
+   VEGETATION DENSITY — analysis and results
+   ============================================================ */
+
+let lastVegResult = null;   // full result GeoJSON for grid + CSV
+
+
+/* ---------- Vegetation Analysis — calls backend API ---------- */
+async function runVegetationAnalysis() {
+  const tiffInput = document.getElementById("tiffInput");
+  const threshold = parseFloat(document.getElementById("vegThreshold")?.value ?? 0.2);
+
+  if (!tiffInput || !tiffInput.files[0]) {
+    alert("Please upload a satellite GeoTIFF file.");
+    return;
+  }
+
+  const tiffFile = tiffInput.files[0];
+  const inputs   = { fileName: tiffFile.name, threshold, aoiDesc: "Full raster extent" };
+
+  const formData = new FormData();
+  formData.append("geotiff", tiffFile);
+
+  const url = `http://localhost:8000/calculate-vegetation-density?ndvi_threshold=${threshold}`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Vegetation Density — Processing</h3>
+      <p class="panel-desc">Classifying vegetated pixels and building cell grid…</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading…</span>
+        </div>
+      </div>
+    </div>`;
+
+  try {
+    const response = await fetch(url, { method: "POST", body: formData });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+
+    const vegetationPct   = parseFloat(response.headers.get("X-Vegetation-Pct") || "0");
+    const benchmarkGap    = parseFloat(response.headers.get("X-Benchmark-Gap")  || "0");
+    const passesBenchmark = response.headers.get("X-Passes-Benchmark") === "true";
+    const overallScore    = parseFloat(response.headers.get("X-Overall-Score")  || "0");
+    const validPixels     = response.headers.get("X-Valid-Pixels");
+    const vegPixels       = response.headers.get("X-Vegetated-Pixels");
+    const cellSizeM       = parseInt(response.headers.get("X-Cell-Size-M") || "0");
+
+    const geojsonData = await response.json();
+
+    // Store for grid tab and CSV download
+    lastVegResult     = geojsonData;
+    lastResultBlob    = geojsonData;
+    lastResultService = "vegetation";
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
+
+    if (inputLayer) map.removeLayer(inputLayer);
+    clearMap();
+
+    // Render result cells coloured red→green by vegetation %
+    resultLayer = L.geoJSON(geojsonData, {
+      style: function(feature) {
+        const pct = feature.properties.vegetation_pct ?? 0;
+        return {
+          fillColor:   vegPctColor(pct),
+          fillOpacity: 0.65,
+          color:       "rgba(0,0,0,0.2)",
+          weight:      0.8,
+        };
+      },
+      onEachFeature: function(feature, layer) {
+        const p   = feature.properties;
+        const pct = p.vegetation_pct !== null ? p.vegetation_pct.toFixed(1) + "%" : "—";
+        const tag = p.passes_30pct ? "✓ Passes 30% standard" : "✗ Below 30% standard";
+        layer.bindPopup(
+          `<strong>Vegetation:</strong> ${pct}<br>` +
+          `<strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100<br>` +
+          `<span style="font-size:11px;">${tag}</span>`
+        );
+      },
+    }).addTo(map);
+
+    try {
+      const b = resultLayer.getBounds();
+      if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+    } catch(e) {}
+
+    renderVegetationResults({
+      vegetation_pct:   vegetationPct,
+      benchmark_gap:    benchmarkGap,
+      passes_benchmark: passesBenchmark,
+      overall_score:    overallScore,
+      valid_pixels:     validPixels,
+      veg_pixels:       vegPixels,
+      cell_size_m:      cellSizeM,
+    }, inputs);
+
+  } catch (error) {
+    console.error("Vegetation analysis error:", error);
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">Failed to calculate vegetation density: ${error.message}</p>
+        <button class="btn btn-ghost btn-block mt-3"
+                onclick="renderServicePanel('vegetation')">
+          ← Back to inputs
+        </button>
+      </div>`;
+  }
+}
+
+
+/* ---------- vegetation % → red-to-green fill colour ---------- */
+function vegPctColor(pct) {
+  // 0% = red, 30% = yellow (benchmark), 60%+ = green
+  const p = Math.max(0, Math.min(100, pct));
+  if (p >= 50) {
+    const t = (p - 50) / 50;
+    return `rgba(${Math.round((1-t)*80+t*30)},${Math.round((1-t)*180+t*160)},50,0.85)`;
+  }
+  if (p >= 30) {
+    const t = (p - 30) / 20;
+    return `rgba(${Math.round((1-t)*230+t*80)},${Math.round((1-t)*200+t*180)},0,0.85)`;
+  }
+  // 0-30: red to orange-yellow
+  const t = p / 30;
+  return `rgba(${Math.round((1-t)*200+t*230)},${Math.round((1-t)*40+t*160)},0,0.85)`;
+}
+
+
+/* ---------- Render Vegetation Results ---------- */
+function renderVegetationResults(stats, inputs) {
+  const gap       = parseFloat(stats.benchmark_gap);
+  const aboveBelow = gap >= 0
+    ? `<span style="color:var(--success)">▲ ${gap.toFixed(1)}% above</span>`
+    : `<span style="color:var(--danger)">▼ ${Math.abs(gap).toFixed(1)}% below</span>`;
+  const benchmarkMsg = gap >= 0
+    ? `You exceed the 30% urban greenery standard by ${gap.toFixed(1)}%.`
+    : `You are ${Math.abs(gap).toFixed(1)}% below the healthy urban greenery standard. Consider adding green infrastructure.`;
+
+  const scoreColor = qolScoreTextColor(stats.overall_score);
+
+  const inputsHtml = `
+    <div class="insight-card">
+      <div class="label">Raster file</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Area of interest</div>
+      <div class="value">${inputs.aoiDesc}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">NDVI threshold</div>
+      <div class="value">≥ ${inputs.threshold}</div>
+    </div>`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Vegetation Density — Results</h3>
+      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+
+      <div class="tabs">
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+      </div>
+
+      <!-- RAW tab -->
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
+      </div>
+
+      <!-- FULL AREA tab -->
+      <div class="tab-content active" id="tab-full">
+        <div class="insight-card" style="border-left:3px solid ${stats.passes_benchmark ? 'var(--success)' : 'var(--danger)'};">
+          <div class="label">vs. 30% Greenery Standard</div>
+          <div class="value">${aboveBelow}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Vegetation Coverage</div>
+          <div class="value">${stats.vegetation_pct.toFixed(1)}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Urban Greenery Benchmark</div>
+          <div class="value">30.0%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Overall QoL Score</div>
+          <div class="value" style="color:${scoreColor}">${stats.overall_score.toFixed(1)} / 100</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Status</div>
+          <div class="value" style="color:${stats.passes_benchmark ? 'var(--success)' : 'var(--danger)'}">
+            ${stats.passes_benchmark ? "✓ Passes standard" : "✗ Below standard"}
+          </div>
+        </div>
+        <ul class="bullet-list">
+          <li>${benchmarkMsg}</li>
+          <li>Vegetated pixels: ${parseInt(stats.veg_pixels).toLocaleString()} of ${parseInt(stats.valid_pixels).toLocaleString()}</li>
+          <li>NDVI ≥ ${inputs.threshold} = vegetated</li>
+          <li>Map: green = well-vegetated, red = bare / urban</li>
+        </ul>
+      </div>
+
+      <!-- GRID tab -->
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Click this tab to score cells…</p>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-top:12px;">
+        <button class="btn btn-ghost btn-block"
+                onclick="downloadVegCSV()"
+                style="flex:1;font-size:12px;">⬇ Download CSV</button>
+        <button class="btn btn-ghost btn-block"
+                onclick="renderServicePanel('vegetation')"
+                style="flex:1;font-size:12px;">← Back</button>
+      </div>
+    </div>`;
+
+  wireTabSwitching();
+}
+
+
+/* ---------- CSV export for vegetation cells ---------- */
+function downloadVegCSV() {
+  if (!lastVegResult || !lastVegResult.features) {
+    alert("Run the analysis first.");
+    return;
+  }
+  const BENCHMARK = 30;
+  const rows = [["cell_lat","cell_lon","vegetation_pct","qol_score","passes_30pct","status"]];
+  lastVegResult.features.forEach(f => {
+    const p    = f.properties;
+    const pass = p.passes_30pct ? "PASS" : "FAIL";
+    rows.push([
+      p.cell_cy ?? "",
+      p.cell_cx ?? "",
+      p.vegetation_pct ?? "",
+      p.qol_score ?? "",
+      p.passes_30pct ? "true" : "false",
+      pass,
+    ]);
+  });
+  const csv     = rows.map(r => r.join(",")).join("\n");
+  const blob    = new Blob([csv], { type: "text/csv" });
+  const url     = URL.createObjectURL(blob);
+  const a       = document.createElement("a");
+  a.href        = url;
+  a.download    = "vegetation_density_report.csv";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+
 /* ---------- Render Crime Results with stats ---------- */
 function renderCrimeResults(stats, inputs) {
   const inputsHtml = inputs ? `
@@ -1393,24 +1661,41 @@ function wireTabSwitching() {
             : `${cellSizeM} m`;
 
           if (gridTabContent) {
-            gridTabContent.innerHTML = `
-              <p class="text-muted" style="font-size:11px;">Cell size: ${cellLabel} × ${cellLabel} (auto-scaled to area). Score: 100 = best QoL, 0 = worst.</p>
-              <div class="insight-card">
-                <div class="label">Cells Analyzed</div>
-                <div class="value">${cellCount}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Average QoL Score</div>
-                <div class="value" style="color:${qolScoreTextColor(avg)}">${avg !== null ? avg + "/100" : "N/A"}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Best Cell Score</div>
-                <div class="value" style="color:${qolScoreTextColor(best)}">${best !== null ? best + "/100" : "N/A"}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Worst Cell Score</div>
-                <div class="value" style="color:${qolScoreTextColor(worst)}">${worst !== null ? worst + "/100" : "N/A"}</div>
-              </div>
+            const isVegGrid = lastResultService === "vegetation";
+
+            // Vegetation-specific: count passing / failing cells against benchmark
+            let vegPassCount = 0, vegFailCount = 0, vegPctValues = [];
+            if (isVegGrid) {
+              geojson.features.forEach(f => {
+                const p = f.properties;
+                if (p.passes_30pct) vegPassCount++; else vegFailCount++;
+                if (p.value !== null && p.value !== undefined) vegPctValues.push(p.value);
+              });
+            }
+            const vegAvgPct = vegPctValues.length
+              ? (vegPctValues.reduce((a,b) => a+b, 0) / vegPctValues.length).toFixed(1)
+              : null;
+
+            const tiersHtml = isVegGrid ? `
+              <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Vegetation tiers vs. 30% standard</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${vegPctColor(75)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Excellent</strong> &nbsp;≥ 50% vegetation</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${vegPctColor(38)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Good</strong> &nbsp;30–50% (meets benchmark)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${vegPctColor(20)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Poor</strong> &nbsp;15–30% (below benchmark)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${vegPctColor(5)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Bad</strong> &nbsp;0–15% (severely under-greened)</span>
+                </div>
+              </div>` : `
               <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers</div>
               <div style="display:flex;flex-direction:column;gap:4px;">
                 <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
@@ -1430,6 +1715,40 @@ function wireTabSwitching() {
                   <span><strong>Bad</strong> &nbsp;0–24</span>
                 </div>
               </div>`;
+
+            gridTabContent.innerHTML = `
+              <p class="text-muted" style="font-size:11px;">Cell size: ${cellLabel} × ${cellLabel} (auto-scaled). Score: 100 = best QoL, 0 = worst.</p>
+              <div class="insight-card">
+                <div class="label">Cells Analyzed</div>
+                <div class="value">${cellCount}</div>
+              </div>
+              ${isVegGrid ? `
+              <div class="insight-card">
+                <div class="label">Avg Vegetation %</div>
+                <div class="value">${vegAvgPct !== null ? vegAvgPct + "%" : "N/A"}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Cells ≥ 30% (pass)</div>
+                <div class="value" style="color:var(--success)">${vegPassCount}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Cells &lt; 30% (fail)</div>
+                <div class="value" style="color:var(--danger)">${vegFailCount}</div>
+              </div>` : `
+              <div class="insight-card">
+                <div class="label">Average QoL Score</div>
+                <div class="value" style="color:${qolScoreTextColor(avg)}">${avg !== null ? avg + "/100" : "N/A"}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Best Cell Score</div>
+                <div class="value" style="color:${qolScoreTextColor(best)}">${best !== null ? best + "/100" : "N/A"}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Worst Cell Score</div>
+                <div class="value" style="color:${qolScoreTextColor(worst)}">${worst !== null ? worst + "/100" : "N/A"}</div>
+              </div>`}
+              ${tiersHtml}
+              ${isVegGrid ? `<button class="btn btn-ghost btn-block mt-3" style="font-size:12px;" onclick="downloadVegCSV()">⬇ Download CSV report</button>` : ""}`;
           }
 
         } catch (err) {
@@ -1745,7 +2064,9 @@ async function fetchAndRenderGrid(service, blob) {
         ? "http://localhost:8000/calculate-grid/urban-density"
         : service === "public-transport"
           ? "http://localhost:8000/calculate-grid/public-transport"
-          : "http://localhost:8000/calculate-grid/facility-accessibility";
+          : service === "vegetation"
+            ? "http://localhost:8000/calculate-grid/vegetation"
+            : "http://localhost:8000/calculate-grid/facility-accessibility";
   }
 
   const response = await fetch(endpoint, { method: "POST", body: formData });
@@ -1756,25 +2077,38 @@ async function fetchAndRenderGrid(service, blob) {
 
   const geojson = await response.json();
 
+  const isVeg = service === "vegetation";
+
   gridLayer = L.geoJSON(geojson, {
     style: function(feature) {
-      const score = feature.properties.qol_score;
+      const p     = feature.properties;
+      const score = p.qol_score;
       return {
-        fillColor: qolScoreColor(score),
+        fillColor:   isVeg ? vegPctColor(p.value ?? 0) : qolScoreColor(score),
         fillOpacity: 0.75,
-        color: "rgba(0,0,0,0.15)",
-        weight: 0.5,
+        color:       "rgba(0,0,0,0.15)",
+        weight:      0.5,
       };
     },
     onEachFeature: function(feature, layer) {
       const p = feature.properties;
-      const scoreText = p.qol_score !== null ? `${p.qol_score}/100` : "No data";
-      const valText   = p.value    !== null ? p.value : "—";
-      layer.bindPopup(
-        `<strong>QoL Score:</strong> ${scoreText}<br>` +
-        `<strong>Value:</strong> ${valText}`
-      );
-    }
+      if (isVeg) {
+        const pct  = p.value !== null ? p.value.toFixed(1) + "%" : "—";
+        const tag  = p.passes_30pct ? "✓ Passes 30%" : "✗ Below 30%";
+        layer.bindPopup(
+          `<strong>Vegetation:</strong> ${pct}<br>` +
+          `<strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100<br>` +
+          `<span style="font-size:11px">${tag}</span>`
+        );
+      } else {
+        const scoreText = p.qol_score !== null ? `${p.qol_score}/100` : "No data";
+        const valText   = p.value     !== null ? p.value : "—";
+        layer.bindPopup(
+          `<strong>QoL Score:</strong> ${scoreText}<br>` +
+          `<strong>Value:</strong> ${valText}`
+        );
+      }
+    },
   });
 
   return geojson;

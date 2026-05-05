@@ -1,10 +1,15 @@
-# hello nada 
+# hello nada
 # Hello Farohaa ❤️
 from ast import Index
 import os
-from pyproj import datadir
 
-os.environ["PROJ_LIB"] = datadir.get_data_dir()
+# Point pyproj (used internally by geopandas) at rasterio's bundled PROJ
+# database, which is the correct version. Must happen before any geopandas
+# or pyproj import, otherwise PostgreSQL's PostGIS proj.db (wrong version)
+# gets picked up from the system PATH.
+import rasterio
+os.environ["PROJ_DATA"] = os.path.join(os.path.dirname(rasterio.__file__), "proj_data")
+os.environ["PROJ_LIB"]  = os.environ["PROJ_DATA"]
 
 import shutil
 import uuid
@@ -22,11 +27,13 @@ from heat_index import calculate_heat_index_4326
 from urbandensity import calculate_urban_density
 from facility_Accessibility_index import calculate_facility_accessibility
 from public_transport import calculate_transit_coverage
+from vegetation_density import calculate_vegetation_density
 from grid_analysis import (
     grid_from_raster,
     grid_from_vector,
     grid_from_facility_accessibility,
     grid_from_transit_coverage,
+    grid_from_vegetation,
 )
 
 app = FastAPI(
@@ -49,6 +56,8 @@ app.add_middleware(
         "X-HeatIndex-Min", "X-HeatIndex-Max", "X-HeatIndex-Mean",
         "X-Coverage-Pct", "X-Population-Pct", "X-Overall-Score",
         "X-Station-Count", "X-Walking-Distance-M",
+        "X-Vegetation-Pct", "X-Benchmark-Gap", "X-Passes-Benchmark",
+        "X-Valid-Pixels", "X-Vegetated-Pixels", "X-Cell-Size-M",
     ],
 )
 
@@ -519,6 +528,80 @@ def grid_transit_coverage_endpoint(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Grid Public Transport failed: {e}")
+
+
+@app.post("/calculate-vegetation-density", tags=["Vegetation Density"])
+def calculate_vegetation_density_endpoint(
+    geotiff: UploadFile = File(..., description="Multi-band GeoTIFF (Red+NIR auto-detected) or single-band NDVI raster"),
+    ndvi_threshold: float = Query(0.2, description="NDVI threshold for vegetated classification (default 0.2)"),
+):
+    """
+    Analyse vegetation density from a GeoTIFF raster (full extent).
+
+    Red and NIR bands are detected automatically. Single-band files are
+    treated as pre-computed NDVI. Returns a per-cell GeoJSON benchmarked
+    against the 30% urban greenery standard.
+    """
+    job_id      = str(uuid.uuid4())
+    tmp_dir     = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    veg_dir     = get_output_subdir("vegetation")
+
+    tiff_path   = tmp_dir / "input.tif"
+    output_path = veg_dir / f"vegetation_{job_id}.geojson"
+
+    try:
+        with tiff_path.open("wb") as f:
+            shutil.copyfileobj(geotiff.file, f)
+
+        result = calculate_vegetation_density(
+            geotiff_path=str(tiff_path),
+            ndvi_threshold=ndvi_threshold,
+            output_path=str(output_path),
+            tmp_dir=str(tmp_dir),
+        )
+
+        with open(str(output_path), "r", encoding="utf-8") as f:
+            geojson_data = json.load(f)
+
+        return JSONResponse(
+            content=geojson_data,
+            headers={
+                "X-Vegetation-Pct":    str(result["vegetation_pct"]),
+                "X-Benchmark-Gap":     str(result["benchmark_gap"]),
+                "X-Passes-Benchmark":  str(result["passes_benchmark"]).lower(),
+                "X-Overall-Score":     str(result["overall_score"]),
+                "X-Valid-Pixels":      str(result["valid_pixels"]),
+                "X-Vegetated-Pixels":  str(result["vegetated_pixels"]),
+                "X-Cell-Size-M":       str(result["cell_size_m"]),
+            },
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Vegetation density calculation failed: {e}")
+
+
+@app.post("/calculate-grid/vegetation", tags=["Grid Analysis"])
+def grid_vegetation_endpoint(
+    geojson: UploadFile = File(..., description="Vegetation density result GeoJSON (from /calculate-vegetation-density)"),
+):
+    """Re-score the vegetation cell GeoJSON and return it for the grid/cell tab."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "veg_result.geojson"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        grid_geojson = grid_from_vegetation(str(input_path))
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Vegetation failed: {e}")
 
 
 @app.post("/calculate-grid/facility-accessibility", tags=["Grid Analysis"])

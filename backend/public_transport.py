@@ -15,7 +15,6 @@ Steps
 import numpy as np
 import geopandas as gpd
 from shapely.ops import unary_union
-from pyproj import Transformer
 
 
 def _get_utm_epsg(lon, lat):
@@ -108,8 +107,6 @@ def calculate_transit_coverage(
     uncovered_utm = aoi_union_utm.difference(covered_utm)
 
     # ── Convert results back to WGS84 ────────────────────────────────────────
-    to_wgs = Transformer.from_crs(utm_crs, "EPSG:4326", always_xy=True)
-
     def _geom_to_wgs(geom):
         if geom is None or geom.is_empty:
             return None

@@ -36,14 +36,20 @@ Public Transport: cell is inside transit walking coverage → high score.
               covered (type="covered")   → 100
               uncovered (type="uncovered") → 0
               (score is interpolated from coverage fraction for partial cells)
+
+Vegetation Density: benchmarked against the 30% urban greenery standard.
+              >= 50% vegetated → 75–100  (excellent, well above benchmark)
+              30–50% vegetated → 50– 74  (good, at/above benchmark)
+              15–30% vegetated → 25– 49  (poor, below benchmark)
+               0–15% vegetated →  0– 24  (bad, severely under-greened)
 """
 
+import math
 import numpy as np
 import rasterio
 import geopandas as gpd
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from shapely.geometry import box, mapping
-from pyproj import Transformer
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,32 +66,21 @@ _CELL_MIN_M        = 50    # absolute floor — sub-block detail
 
 def _adaptive_cell_size(bounds_4326):
     """
-    Derive cell size so that cols × rows ≈ _GRID_TARGET_CELLS for *any* extent,
-    from a single city block to multiple countries.
+    Derive cell size so that cols × rows ≈ _GRID_TARGET_CELLS for *any* extent.
+    Uses degree-to-metre approximation only — no pyproj/Transformer needed.
 
     Formula:  cell_m = sqrt(width_m × height_m / TARGET)
 
-    The raw result is then rounded to the nearest "clean" value using a
-    scale-relative rounding base:
-      raw < 500 m  → round to nearest 25 m
-      raw < 2 km   → round to nearest 100 m
-      raw < 10 km  → round to nearest 500 m
-      raw < 50 km  → round to nearest 2 000 m
-      raw ≥ 50 km  → round to nearest 10 000 m
-
-    No upper clamp — for country-scale data the cell will simply be large.
+    The raw result is rounded to the nearest "clean" value using a
+    scale-relative rounding base.
     """
     minx, miny, maxx, maxy = bounds_4326
-    cx = (minx + maxx) / 2
     cy = (miny + maxy) / 2
 
-    utm_epsg = _get_utm_crs(cx, cy)
-    to_utm   = Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
-
-    x0, y0 = to_utm.transform(minx, miny)
-    x1, y1 = to_utm.transform(maxx, maxy)
-    width_m  = abs(x1 - x0)
-    height_m = abs(y1 - y0)
+    # 1 degree latitude ≈ 111 000 m; longitude degree shrinks with cos(lat)
+    lat_rad  = math.radians(cy)
+    width_m  = abs(maxx - minx) * 111_000 * math.cos(lat_rad)
+    height_m = abs(maxy - miny) * 111_000
 
     raw = (width_m * height_m / _GRID_TARGET_CELLS) ** 0.5
 
@@ -102,7 +97,6 @@ def _adaptive_cell_size(bounds_4326):
         base = 10_000
 
     cell_m = max(_CELL_MIN_M, round(raw / base) * base)
-    # Safety: if rounding pushed us to 0, use the base itself
     if cell_m == 0:
         cell_m = base
 
@@ -115,6 +109,8 @@ def _build_grid_cells(bounds_4326):
     adaptive-size cells in EPSG:4326.  Cell size is chosen automatically
     so the grid never exceeds ~600 cells regardless of area extent.
 
+    Uses geopandas .to_crs() for reprojection (rasterio-bundled PROJ, no pyproj).
+
     Returns
     -------
     (GeoDataFrame with polygon geometry column CRS=EPSG:4326, cell_m used)
@@ -123,36 +119,33 @@ def _build_grid_cells(bounds_4326):
     cx = (minx + maxx) / 2
     cy = (miny + maxy) / 2
 
-    cell_m = _adaptive_cell_size(bounds_4326)
-
+    cell_m   = _adaptive_cell_size(bounds_4326)
     utm_epsg = _get_utm_crs(cx, cy)
-    to_utm   = Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
-    to_wgs84 = Transformer.from_crs(f"EPSG:{utm_epsg}", "EPSG:4326", always_xy=True)
+    utm_crs  = f"EPSG:{utm_epsg}"
 
-    x0, y0 = to_utm.transform(minx, miny)
-    x1, y1 = to_utm.transform(maxx, maxy)
+    # Project the bounding box corners to UTM via geopandas (no pyproj import)
+    corners_gdf = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy([minx, maxx], [miny, maxy]),
+        crs="EPSG:4326",
+    ).to_crs(utm_crs)
+    x0, y0 = corners_gdf.geometry.iloc[0].x, corners_gdf.geometry.iloc[0].y
+    x1, y1 = corners_gdf.geometry.iloc[1].x, corners_gdf.geometry.iloc[1].y
 
     xs = np.arange(x0, x1, cell_m)
     ys = np.arange(y0, y1, cell_m)
 
-    cells = []
-    for xi in xs:
-        for yi in ys:
-            corners_utm = [
-                (xi,          yi),
-                (xi + cell_m, yi),
-                (xi + cell_m, yi + cell_m),
-                (xi,          yi + cell_m),
-            ]
-            corners_wgs = [to_wgs84.transform(px, py) for px, py in corners_utm]
-            cells.append(box(
-                min(p[0] for p in corners_wgs),
-                min(p[1] for p in corners_wgs),
-                max(p[0] for p in corners_wgs),
-                max(p[1] for p in corners_wgs),
-            ))
+    # Build UTM cell boxes, then reproject the batch to WGS84
+    utm_boxes = [
+        box(xi, yi, xi + cell_m, yi + cell_m)
+        for xi in xs
+        for yi in ys
+    ]
 
-    gdf = gpd.GeoDataFrame(geometry=cells, crs="EPSG:4326")
+    if not utm_boxes:
+        return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326"), cell_m
+
+    gdf_utm = gpd.GeoDataFrame(geometry=utm_boxes, crs=utm_crs)
+    gdf     = gdf_utm.to_crs("EPSG:4326")
     return gdf, cell_m
 
 
@@ -542,4 +535,66 @@ def grid_from_facility_accessibility(geojson_path):
         "type": "FeatureCollection",
         "features": features,
         "cell_size_m": cell_m,
+    }
+
+
+def _score_vegetation_pct(pct):
+    """
+    Vegetation % per cell → QoL score (0–100).
+    Benchmarked against the 30% urban greenery standard.
+
+    Tier 4 Excellent : >= 50%  → 75–100  (well above benchmark)
+    Tier 3 Good      : 30–50%  → 50– 74  (at or above benchmark)
+    Tier 2 Poor      : 15–30%  → 25– 49  (below benchmark)
+    Tier 1 Bad       :  0–15%  →  0– 24  (severely under-greened)
+    """
+    if pct is None or (isinstance(pct, float) and np.isnan(pct)):
+        return None
+    p = float(np.clip(pct, 0.0, 100.0))
+    if p >= 50:
+        return int(np.interp(p, [50, 100], [75, 100]))
+    if p >= 30:
+        return int(np.interp(p, [30, 50], [50, 74]))
+    if p >= 15:
+        return int(np.interp(p, [15, 30], [25, 49]))
+    return int(np.interp(p, [0, 15], [0, 24]))
+
+
+def grid_from_vegetation(geojson_path):
+    """
+    Re-score a vegetation density cell GeoJSON produced by vegetation_density.py.
+
+    The input already has per-cell vegetation_pct values — this function
+    re-applies the scoring function and returns a clean grid GeoJSON
+    compatible with the standard grid tab rendering.
+    """
+    import json
+    with open(geojson_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    cell_size_m = data.get("cell_size_m", 0)
+    features    = []
+
+    for feat in data.get("features", []):
+        props   = feat.get("properties", {})
+        veg_pct = props.get("vegetation_pct")
+        score   = _score_vegetation_pct(veg_pct) if veg_pct is not None else None
+
+        features.append({
+            "type":     feat["type"],
+            "geometry": feat["geometry"],
+            "properties": {
+                "value":        round(float(veg_pct), 2) if veg_pct is not None else None,
+                "qol_score":    score,
+                "passes_30pct": props.get("passes_30pct"),
+                "cell_cx":      props.get("cell_cx"),
+                "cell_cy":      props.get("cell_cy"),
+                "service":      "vegetation",
+            },
+        })
+
+    return {
+        "type":        "FeatureCollection",
+        "features":    features,
+        "cell_size_m": cell_size_m,
     }
