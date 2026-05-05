@@ -13,7 +13,7 @@ import geopandas as gpd
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -312,42 +312,46 @@ def calculate_heat_index_endpoint(
     
 # Facility Accessibility Index endpoint
     
-@app.post("/calculate-facility-accessibility", tags=["Facility Accessibility"])
-def calculate_facility_accessibility_endpoint(
+@app.post("/calculate-facility-accessibility")
+def facility_accessibility_endpoint(
     facilities_geojson: UploadFile = File(...),
-    facility_id: int = Query(0)
+    facility_id: int = Form(0),
+    walking_speed_kmh: float = Form(4.5),
+    network_dist_m: int = Form(2000),
 ):
-    job_id = str(uuid.uuid4())
+    import uuid
+    import shutil
 
+    job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    facility_dir = get_output_subdir("facility_accessibility")
-    input_path = tmp_dir / "facilities.geojson"
+    facility_dir = get_output_subdir("facility")
 
-    try:
-        with input_path.open("wb") as f:
-            shutil.copyfileobj(facilities_geojson.file, f)
+    input_path = tmp_dir / "input.geojson"
 
-        stats = calculate_facility_accessibility(
-            facilities_geojson_path=str(input_path),
-            facility_id=facility_id,
-            output_dir=str(facility_dir),
-            walking_speed_kmh=4.5,
-            times_minutes=[5, 10, 15],
-            network_dist_m=2000
-        )
+    # حفظ الملف
+    with input_path.open("wb") as f:
+        shutil.copyfileobj(facilities_geojson.file, f)
 
-        with open(stats["combined_output"], "r", encoding="utf-8") as f:
-            geojson_data = json.load(f)
+    # تشغيل التحليل
+    result = calculate_facility_accessibility(
+        facilities_geojson_path=str(input_path),
+        output_dir=str(facility_dir),
+        facility_id=facility_id,
+        walking_speed_kmh=walking_speed_kmh,
+        network_dist_m=network_dist_m,
+    )
 
-        return JSONResponse(content=geojson_data)
+    # قراءة الناتج النهائي
+    import json
+    with open(result["combined_output"], "r") as f:
+        geojson_data = json.load(f)
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Facility Accessibility failed: {e}"
-        )
+    return {
+        "geojson": geojson_data,
+        "stats": result
+    }
 
 
 # ── Grid / Cell Analysis endpoints ───────────────────────────────────────────
