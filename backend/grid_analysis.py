@@ -560,6 +560,83 @@ def _score_vegetation_pct(pct):
     return int(np.interp(p, [0, 15], [0, 24]))
 
 
+def _score_traffic(local_density, congestion):
+    """
+    Road density + congestion label → QoL score (0–100).
+
+    Lower congestion and optimal road density → higher QoL.
+
+    Tier 4 Excellent : congestion = low,    density optimal  → 75–100
+    Tier 3 Good      : congestion = low,    density high     → 50– 74
+                     : congestion = medium, density optimal  → 50– 74
+    Tier 2 Poor      : congestion = medium, others          → 25– 49
+    Tier 1 Bad       : congestion = high                    → 0 – 24
+    """
+    if congestion == "high":
+        # Bad: 0–24 — clamp density to reasonable range
+        d = float(np.clip(local_density, 0, 2))
+        return int(np.interp(d, [0, 2], [0, 24]))
+    if congestion == "medium":
+        d = float(np.clip(local_density, 0, 20))
+        return int(np.interp(d, [0, 20], [25, 49]))
+    # low congestion
+    if local_density <= 10:
+        return int(np.interp(float(np.clip(local_density, 2, 10)), [2, 10], [75, 100]))
+    # over-built but low congestion → still good
+    d = float(np.clip(local_density, 10, 30))
+    return int(np.interp(d, [10, 30], [74, 50]))
+
+
+def grid_from_traffic(geojson_path):
+    """
+    Re-score a traffic analysis grid GeoJSON produced by traffic_analysis.py.
+
+    The input already has per-cell congestion labels and local_density values.
+    This function re-applies scoring and returns a clean grid GeoJSON compatible
+    with the standard grid tab rendering.
+    """
+    import json
+    with open(geojson_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    cell_size_m = data.get("cell_size_m", 0)
+    features    = []
+
+    for feat in data.get("features", []):
+        props      = feat.get("properties", {})
+        service    = props.get("service", "traffic")
+        if service != "traffic":
+            continue  # skip hotspot features if combined file is passed
+
+        congestion     = props.get("congestion", "low")
+        local_density  = props.get("local_density", 0.0) or 0.0
+        local_pressure = props.get("local_pressure")
+
+        score = _score_traffic(local_density, congestion)
+
+        out_props = {
+            "value":          round(float(local_density), 4),
+            "qol_score":      score,
+            "congestion":     congestion,
+            "road_length_km": props.get("road_length_km"),
+            "service":        "traffic",
+        }
+        if local_pressure is not None:
+            out_props["local_pressure"] = local_pressure
+
+        features.append({
+            "type":       feat["type"],
+            "geometry":   feat["geometry"],
+            "properties": out_props,
+        })
+
+    return {
+        "type":        "FeatureCollection",
+        "features":    features,
+        "cell_size_m": cell_size_m,
+    }
+
+
 def grid_from_vegetation(geojson_path):
     """
     Re-score a vegetation density cell GeoJSON produced by vegetation_density.py.

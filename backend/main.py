@@ -28,12 +28,14 @@ from urbandensity import calculate_urban_density
 from facility_Accessibility_index import calculate_facility_accessibility
 from public_transport import calculate_transit_coverage
 from vegetation_density import calculate_vegetation_density
+from traffic_analysis import calculate_traffic_analysis
 from grid_analysis import (
     grid_from_raster,
     grid_from_vector,
     grid_from_facility_accessibility,
     grid_from_transit_coverage,
     grid_from_vegetation,
+    grid_from_traffic,
 )
 
 app = FastAPI(
@@ -58,6 +60,9 @@ app.add_middleware(
         "X-Station-Count", "X-Walking-Distance-M",
         "X-Vegetation-Pct", "X-Benchmark-Gap", "X-Passes-Benchmark",
         "X-Valid-Pixels", "X-Vegetated-Pixels", "X-Cell-Size-M",
+        "X-Road-Length-Km", "X-AOI-Area-Km2", "X-Road-Density",
+        "X-Density-Class", "X-Traffic-Pressure", "X-High-Congestion-Pct",
+        "X-Cell-Size-M",
     ],
 )
 
@@ -623,3 +628,95 @@ def grid_facility_accessibility_endpoint(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Grid Facility Accessibility failed: {e}")
+
+
+# ── Traffic / Road Analysis ───────────────────────────────────────────────────
+
+@app.post("/calculate-traffic", tags=["Traffic Analysis"])
+def calculate_traffic_endpoint(
+    roads_geojson: UploadFile = File(..., description="GeoJSON LineString layer of road network"),
+    aoi_geojson:   UploadFile = File(..., description="GeoJSON polygon of area of interest"),
+    population:    float      = Query(None, description="Optional total population within the AOI"),
+):
+    """
+    Analyse road network density and traffic congestion within an AOI.
+
+    Returns a GeoJSON grid with per-cell congestion classification and
+    a GeoJSON of merged high-congestion hotspot polygons. Summary stats
+    are returned in response headers.
+    """
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    traffic_dir = get_output_subdir("traffic")
+
+    roads_path  = tmp_dir / "roads.geojson"
+    aoi_path    = tmp_dir / "aoi.geojson"
+    output_path = traffic_dir / f"traffic_{job_id}.geojson"
+
+    try:
+        with roads_path.open("wb") as f:
+            shutil.copyfileobj(roads_geojson.file, f)
+        with aoi_path.open("wb") as f:
+            shutil.copyfileobj(aoi_geojson.file, f)
+
+        result = calculate_traffic_analysis(
+            roads_geojson_path=str(roads_path),
+            aoi_geojson_path=str(aoi_path),
+            population=population,
+            output_path=str(output_path),
+        )
+
+        # Combined response: grid cells + hotspot polygons
+        combined = {
+            "type":     "FeatureCollection",
+            "features": (
+                result["grid_geojson"]["features"] +
+                result["hotspots_geojson"]["features"]
+            ),
+            "cell_size_m":        result["cell_size_m"],
+            "road_length_km":     result["road_length_km"],
+            "aoi_area_km2":       result["aoi_area_km2"],
+            "road_density":       result["road_density"],
+            "density_class":      result["density_class"],
+            "high_congestion_pct": result["high_congestion_pct"],
+        }
+
+        headers = {
+            "X-Road-Length-Km":     str(result["road_length_km"]),
+            "X-AOI-Area-Km2":       str(result["aoi_area_km2"]),
+            "X-Road-Density":       str(result["road_density"]),
+            "X-Density-Class":      result["density_class"],
+            "X-High-Congestion-Pct": str(result["high_congestion_pct"]),
+            "X-Cell-Size-M":        str(result["cell_size_m"]),
+        }
+        if result["traffic_pressure"] is not None:
+            headers["X-Traffic-Pressure"] = str(result["traffic_pressure"])
+
+        return JSONResponse(content=combined, headers=headers)
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Traffic analysis failed: {e}")
+
+
+@app.post("/calculate-grid/traffic", tags=["Grid Analysis"])
+def grid_traffic_endpoint(
+    geojson: UploadFile = File(..., description="Traffic analysis result GeoJSON (from /calculate-traffic)"),
+):
+    """Re-score the traffic grid GeoJSON and return it for the grid/cell tab."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "traffic_result.geojson"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        grid_geojson = grid_from_traffic(str(input_path))
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Traffic failed: {e}")
