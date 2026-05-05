@@ -38,17 +38,17 @@ const SERVICES = {
     ],
   },
   "facility_Accessibility_index": {
-    title: "Service Area Analysis",
-    desc: "Compute walkable service areas around facilities.",
+  title: "facility_Accessibility_index",
+  desc: "Compute walkable service areas around facilities.",
   inputs: [
-      {
-      type: "file",
-      id: "facilitiesGeojsonInput",
-      label: "Upload facilities layer (GeoJSON)"
-      }
-    ],
-     action: runFacilityAccessibilityAnalysis
-  },
+    { type: "file", id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
+    { type: "number", id: "facilityIdInput", label: "Facility ID", value: 0 },
+    { type: "number", id: "walkingSpeedInput", label: "Walking speed (km/h)", value: 4.5 },
+    { type: "number", id: "networkDistInput", label: "Network distance (meters)", value: 2000 },
+  ],
+  action: runFacilityAccessibilityAnalysis
+},
+
   "heat-index": {
     title: "Heat Index",
     desc: "Surface heat analysis from raster data.",
@@ -113,7 +113,10 @@ const SERVICES = {
    2. SERVICE SELECTION
    ============================================================ */
 const serviceList   = document.getElementById("serviceList");
+console.log("serviceList =", serviceList);
 const analysisPanel = document.getElementById("analysisPanel");
+
+
 
 serviceList.addEventListener("click", function (e) {
   const li = e.target.closest("li[data-service]");
@@ -686,7 +689,7 @@ async function runUrbanDensityAnalysis() {
     `;
   }
 }
-/*---------------------facility accessibility-------------------------*/
+
 /*---------------------facility accessibility-------------------------*/
 async function runFacilityAccessibilityAnalysis() {
   const input = document.getElementById("facilitiesGeojsonInput");
@@ -698,6 +701,14 @@ async function runFacilityAccessibilityAnalysis() {
 
   const formData = new FormData();
   formData.append("facilities_geojson", input.files[0]);
+
+  const facilityId = document.getElementById("facilityIdInput")?.value || 0;
+const walkingSpeed = document.getElementById("walkingSpeedInput")?.value || 4.5;
+const networkDist = document.getElementById("networkDistInput")?.value || 2000;
+
+formData.append("facility_id", facilityId);
+formData.append("walking_speed_kmh", walkingSpeed);
+formData.append("network_dist_m", networkDist);
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
@@ -720,7 +731,9 @@ async function runFacilityAccessibilityAnalysis() {
       throw new Error(err.detail || "Facility Accessibility failed");
     }
 
-    const geojson = await response.json();
+    const data = await response.json();
+    const geojson = data.geojson;
+    const stats = data.stats;
 
     lastResultBlob = geojson;
     lastResultService = "facility-accessibility";
@@ -735,49 +748,33 @@ async function runFacilityAccessibilityAnalysis() {
     }
 
     resultLayer = L.geoJSON(geojson, {
-      style: function (feature) {
-        const time = feature.properties.time_min;
+  style: function (feature) {
+    const time = feature.properties.time_min;
 
-        if (time === 5) {
-          return {
-            color: "#198754",
-            weight: 2,
-            fillColor: "#198754",
-            fillOpacity: 0.35
-          };
-        }
+    if (time === 5) {
+      return {
+        color: "#198754",
+        fillColor: "#198754",
+        fillOpacity: 0.35
+      };
+    }
 
-        if (time === 10) {
-          return {
-            color: "#ffc107",
-            weight: 2,
-            fillColor: "#ffc107",
-            fillOpacity: 0.28
-          };
-        }
+    if (time === 10) {
+      return {
+        color: "#ffc107",
+        fillColor: "#ffc107",
+        fillOpacity: 0.28
+      };
+    }
 
-        return {
-          color: "#dc3545",
-          weight: 2,
-          fillColor: "#dc3545",
-          fillOpacity: 0.22
-        };
-      },
-
-      onEachFeature: function (feature, layer) {
-        const props = feature.properties || {};
-
-        layer.bindPopup(`
-          <div style="min-width:180px">
-            <b>Facility Accessibility</b><br>
-            <hr style="margin:6px 0">
-            <b>Facility ID:</b> ${props.facility_id ?? "N/A"}<br>
-            <b>Walking Time:</b> ${props.time_min ?? "N/A"} min<br>
-            <b>Distance:</b> ${props.distance_m ?? "N/A"} m
-          </div>
-        `);
-      }
-    }).addTo(map);
+    return {
+      color: "#dc3545",
+      fillColor: "#dc3545",
+      fillOpacity: 0.22
+    };
+  }
+}).addTo(map);
+    
 
     if (resultLayer.getBounds && resultLayer.getBounds().isValid()) {
       map.fitBounds(resultLayer.getBounds());
@@ -1149,6 +1146,7 @@ function renderUrbanDensityResults(stats, inputs) {
           <li>Areas are automatically calculated from polygon geometries</li>
           <li>Higher values indicate more densely populated areas</li>
           <li>Layer displayed with blue color gradient on map</li>
+          
         </ul>
       </div>
 
