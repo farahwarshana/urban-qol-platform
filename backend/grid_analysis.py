@@ -637,6 +637,72 @@ def grid_from_traffic(geojson_path):
     }
 
 
+def _score_informal_settlement(irregularity_score):
+    """
+    Irregularity score (0=planned, 100=informal) → QoL score (0=bad, 100=good).
+
+    Tier 4 Excellent (QoL 75–100): irregularity  0–15  (very planned)
+    Tier 3 Good      (QoL 50– 74): irregularity 16–33
+    Tier 2 Poor      (QoL 25– 49): irregularity 34–66
+    Tier 1 Bad       (QoL  0– 24): irregularity 67–100 (informal)
+    """
+    if irregularity_score is None or (isinstance(irregularity_score, float) and np.isnan(irregularity_score)):
+        return None
+    s = int(np.clip(irregularity_score, 0, 100))
+    if s <= 15:
+        return int(np.interp(s, [0,  15],  [100, 75]))
+    if s <= 33:
+        return int(np.interp(s, [15, 33],  [74,  50]))
+    if s <= 66:
+        return int(np.interp(s, [33, 66],  [49,  25]))
+    return int(np.interp(s, [66, 100], [24,  0]))
+
+
+def grid_from_informal_settlement(geojson_path):
+    """
+    Re-score an informal settlement analysis GeoJSON produced by
+    informal_settlement.py.  Skips high_irregularity_zone features.
+    Returns a clean grid GeoJSON compatible with the standard grid tab.
+    """
+    import json
+    with open(geojson_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    cell_size_m = data.get("cell_size_m", 0)
+    features    = []
+
+    for feat in data.get("features", []):
+        props = feat.get("properties", {})
+        if props.get("type") == "high_irregularity_zone":
+            continue
+
+        irr   = props.get("irregularity_score")
+        score = _score_informal_settlement(irr) if irr is not None else None
+        label = props.get("classification", "unknown")
+
+        features.append({
+            "type":     feat["type"],
+            "geometry": feat["geometry"],
+            "properties": {
+                "value":               irr,
+                "qol_score":           score,
+                "classification":      label,
+                "texture_val":         props.get("texture_val"),
+                "edge_val":            props.get("edge_val"),
+                "buildup_ratio":       props.get("buildup_ratio"),
+                "cell_cx":             props.get("cell_cx"),
+                "cell_cy":             props.get("cell_cy"),
+                "service":             "informal-settlement",
+            },
+        })
+
+    return {
+        "type":        "FeatureCollection",
+        "features":    features,
+        "cell_size_m": cell_size_m,
+    }
+
+
 def grid_from_vegetation(geojson_path):
     """
     Re-score a vegetation density cell GeoJSON produced by vegetation_density.py.
