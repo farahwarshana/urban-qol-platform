@@ -687,6 +687,7 @@ async function runUrbanDensityAnalysis() {
   }
 }
 /*---------------------facility accessibility-------------------------*/
+/*---------------------facility accessibility-------------------------*/
 async function runFacilityAccessibilityAnalysis() {
   const input = document.getElementById("facilitiesGeojsonInput");
 
@@ -719,14 +720,15 @@ async function runFacilityAccessibilityAnalysis() {
       throw new Error(err.detail || "Facility Accessibility failed");
     }
 
-HEAD
     const geojson = await response.json();
 
-    const arrayBuffer = await response.arrayBuffer();
-    lastResultBlob    = arrayBuffer.slice(0);
-    lastResultService = "heat-index";
-    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
-dcebfbcfa791e37c2551f72d542c87c61cd69c48
+    lastResultBlob = geojson;
+    lastResultService = "facility-accessibility";
+
+    if (gridLayer) {
+      map.removeLayer(gridLayer);
+      gridLayer = null;
+    }
 
     if (resultLayer) {
       map.removeLayer(resultLayer);
@@ -781,27 +783,13 @@ dcebfbcfa791e37c2551f72d542c87c61cd69c48
       map.fitBounds(resultLayer.getBounds());
     }
 
-HEAD
     renderResults({
       title: "Facility Accessibility",
       desc: "Walkable service areas calculated successfully."
     });
 
-    const hiMin  = response.headers.get("X-HeatIndex-Min");
-    const hiMax  = response.headers.get("X-HeatIndex-Max");
-    const hiMean = response.headers.get("X-HeatIndex-Mean");
-    const hiValid= response.headers.get("X-Valid-Pixels");
-
-    renderHeatIndexResults({
-      min:          hiMin,
-      max:          hiMax,
-      mean:         hiMean,
-      valid_pixels: hiValid,
-    }, { fileName: tiffInput.files[0].name });
-dcebfbcfa791e37c2551f72d542c87c61cd69c48
-
   } catch (error) {
-    console.error(error);
+    console.error("Facility Accessibility error:", error);
 
     analysisPanel.innerHTML = `
       <div class="fade-in">

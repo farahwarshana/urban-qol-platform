@@ -5,6 +5,7 @@ import os
 from pyproj import datadir
 
 os.environ["PROJ_LIB"] = datadir.get_data_dir()
+os.environ["PROJ_DATA"] = datadir.get_data_dir()
 
 import shutil
 import uuid
