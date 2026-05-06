@@ -38,8 +38,8 @@ const SERVICES = {
     ],
   },
   "facility_Accessibility_index": {
-  title: "facility_Accessibility_index",
-  desc: "Compute walkable service areas around facilities.",
+  title: "Facility Accessibility Index",
+  desc: "Compute walkable service areas around facilities in 5, 10, and 15 minute intervals.",
   inputs: [
     { type: "file", id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
     { type: "number", id: "facilityIdInput", label: "Facility ID", value: 0 },
@@ -61,7 +61,7 @@ const SERVICES = {
     desc: "Analyse how much of your area meets the 30% urban greenery standard.",
     inputs: [
       { type: "file",   id: "tiffInput",    label: "Upload satellite raster (GeoTIFF)" },
-      { type: "number", id: "vegThreshold", label: "Vegetation threshold (NDVI ≥)", value: 0.2 },
+      { type: "number", id: "vegThreshold", label: "Vegetation Threshold. Recommended: 0.3", value: 0.3 },
     ],
   },
   "ndvi": {
@@ -3065,8 +3065,15 @@ function wireTabSwitching() {
               ${gridChartHtml}
               ${tiersHtml}
               <div style="display:flex;gap:6px;margin-top:12px;">
-                <button class="btn btn-ghost btn-block" style="flex:1;font-size:12px;" data-csv-dl="true">⬇ CSV</button>
-                <button class="btn btn-ghost btn-block" style="flex:1;font-size:12px;" data-geojson-dl="true">⬇ GeoJSON</button>
+                <button class="btn btn-ghost btn-block" style="flex:1;font-size:12px;" data-csv-dl="true">
+                 <img width="24" height="24" src="https://img.icons8.com/material-outlined/24/FFFFFF/export-csv.png" alt="export-csv"/>
+                 Download CSV
+                 </button>
+
+                <button class="btn btn-ghost btn-block" style="flex:1;font-size:12px;" data-geojson-dl="true">
+                <img width="24" height="24" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="json-download"/>
+                Download GeoJSON
+                </button>
               </div>`;
 
             // Wire CSV download — universal for all services
