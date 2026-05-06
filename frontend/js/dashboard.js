@@ -813,10 +813,7 @@ formData.append("network_dist_m", networkDist);
       map.fitBounds(resultLayer.getBounds());
     }
 
-    renderResults({
-      title: "Facility Accessibility",
-      desc: "Walkable service areas calculated successfully."
-    });
+    renderFacilityAccessibilityResults(stats || {}, input.files[0].name, { facilityId, walkingSpeed, networkDist });
 
   } catch (error) {
     console.error("Facility Accessibility error:", error);
@@ -977,10 +974,36 @@ function renderTransitResults(stats, inputs) {
       <div class="label">Population field</div>
       <div class="value">${inputs.populationField}</div>
     </div>` : ""}
+    <div class="insight-card">
+      <div class="label">Total Features</div>
+      <div class="value">${stats.station_count || "N/A"} stations</div>
+    </div>
   ` : `<p class="text-muted">No input info available.</p>`;
 
   const score = parseFloat(stats.overall_score);
   const scoreColor = !isNaN(score) ? qolScoreTextColor(score) : "#888";
+  const cat = !isNaN(score) ? perfCategory(score) : null;
+
+  const covPct  = stats.coverage_pct !== null ? parseFloat(stats.coverage_pct) : null;
+  const uncovPct = covPct !== null ? (100 - covPct).toFixed(1) : null;
+
+  const chartHtml = covPct !== null ? miniBarChart(
+    [covPct.toFixed(1), uncovPct],
+    2,
+    ["#4cc2ff", "#e74c3c"],
+    ["Covered", "Uncovered"]
+  ) : "";
+
+  const ineqStdDev = covPct !== null ? calcStdDev([covPct, 100 - covPct]) : 0;
+  const ineq = inequalityLabel(ineqStdDev);
+
+  const keyInsight = covPct !== null
+    ? covPct >= 70
+      ? `Good transit coverage — most of the area is within walking distance of a station.`
+      : covPct >= 40
+      ? `Moderate coverage — ${uncovPct}% of the area lacks walkable transit access.`
+      : `Low coverage — ${uncovPct}% of the area is underserved by transit.`
+    : "";
 
   const popRow = stats.population_pct ? `
     <div class="insight-card">
@@ -991,7 +1014,7 @@ function renderTransitResults(stats, inputs) {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Public Transport — Results</h3>
-      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+      <p class="panel-desc">Analysis complete. Blue = covered · Red dashed = uncovered.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -1007,13 +1030,17 @@ function renderTransitResults(stats, inputs) {
       <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Area Coverage</div>
-          <div class="value">${stats.coverage_pct !== null ? parseFloat(stats.coverage_pct).toFixed(1) + "%" : "N/A"}</div>
+          <div class="value">${covPct !== null ? covPct.toFixed(1) + "%" : "N/A"}</div>
         </div>
         ${popRow}
         <div class="insight-card">
           <div class="label">Overall Score</div>
           <div class="value" style="color:${scoreColor}">${!isNaN(score) ? score.toFixed(1) + " / 100" : "N/A"}</div>
         </div>
+        ${cat ? `<div class="insight-card">
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+        </div>` : ""}
         <div class="insight-card">
           <div class="label">Stations Analyzed</div>
           <div class="value">${stats.station_count || "N/A"}</div>
@@ -1022,11 +1049,14 @@ function renderTransitResults(stats, inputs) {
           <div class="label">Walking Buffer</div>
           <div class="value">${stats.walking_distance_m || "N/A"} m</div>
         </div>
-        <ul class="bullet-list">
-          <li>Blue = within walking distance of a station</li>
-          <li>Red dashed = uncovered area</li>
-          <li>Coverage % based on area intersection with AOI</li>
-        </ul>
+        ${covPct !== null ? `<div class="insight-card">
+          <div class="label">Coverage Balance</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+        </div>` : ""}
+        ${chartHtml}
+        ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>` : ""}
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -1189,11 +1219,33 @@ function renderVegetationResults(stats, inputs) {
     : `You are ${Math.abs(gap).toFixed(1)}% below the healthy urban greenery standard. Consider adding green infrastructure.`;
 
   const scoreColor = qolScoreTextColor(stats.overall_score);
+  const cat = perfCategory(stats.overall_score);
+  const vegPct  = stats.vegetation_pct;
+  const barePct = (100 - vegPct).toFixed(1);
+
+  const chartHtml = miniBarChart(
+    [vegPct.toFixed(1), barePct],
+    2,
+    [vegPctColor(75), "#c0392b"],
+    ["Vegetated", "Bare/Urban"]
+  );
+
+  const ineq = inequalityLabel(calcStdDev([vegPct, 100 - vegPct]));
+  const keyInsight = vegPct >= 30
+    ? `Vegetation coverage meets the urban greenery standard. Green space is healthy across the area.`
+    : `Coverage is ${vegPct.toFixed(1)}% — ${Math.abs(gap).toFixed(1)}% below the 30% benchmark. Underserved zones need green infrastructure.`;
+
+  const validPixels = parseInt(stats.valid_pixels);
+  const vegPixels   = parseInt(stats.veg_pixels);
 
   const inputsHtml = `
     <div class="insight-card">
       <div class="label">Raster file</div>
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Total Pixels (Features)</div>
+      <div class="value">${validPixels.toLocaleString()}</div>
     </div>
     <div class="insight-card">
       <div class="label">Area of interest</div>
@@ -1207,7 +1259,7 @@ function renderVegetationResults(stats, inputs) {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Vegetation Density — Results</h3>
-      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+      <p class="panel-desc">Vegetation coverage = % of pixels with NDVI ≥ ${inputs.threshold}. Green = vegetated · Red = bare/urban.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -1229,15 +1281,15 @@ function renderVegetationResults(stats, inputs) {
         </div>
         <div class="insight-card">
           <div class="label">Vegetation Coverage</div>
-          <div class="value">${stats.vegetation_pct.toFixed(1)}%</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Urban Greenery Benchmark</div>
-          <div class="value">30.0%</div>
+          <div class="value">${vegPct.toFixed(1)}%</div>
         </div>
         <div class="insight-card">
           <div class="label">Overall QoL Score</div>
           <div class="value" style="color:${scoreColor}">${stats.overall_score.toFixed(1)} / 100</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>
         <div class="insight-card">
           <div class="label">Status</div>
@@ -1245,12 +1297,18 @@ function renderVegetationResults(stats, inputs) {
             ${stats.passes_benchmark ? "✓ Passes standard" : "✗ Below standard"}
           </div>
         </div>
-        <ul class="bullet-list">
-          <li>${benchmarkMsg}</li>
-          <li>Vegetated pixels: ${parseInt(stats.veg_pixels).toLocaleString()} of ${parseInt(stats.valid_pixels).toLocaleString()}</li>
-          <li>NDVI ≥ ${inputs.threshold} = vegetated</li>
-          <li>Map: green = well-vegetated, red = bare / urban</li>
-        </ul>
+        <div class="insight-card">
+          <div class="label">Coverage Balance</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+        </div>
+        ${chartHtml}
+        <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>
+        <div class="insight-card" style="margin-top:8px;">
+          <div class="label">Vegetated Pixels</div>
+          <div class="value" style="font-size:14px;">${vegPixels.toLocaleString()} <span style="font-size:11px;color:var(--text-muted);">of ${validPixels.toLocaleString()}</span></div>
+        </div>
       </div>
 
       <!-- GRID tab -->
@@ -1464,14 +1522,35 @@ function renderTrafficResults(stats, inputs) {
       ? `<span style="color:var(--danger)">Low (underdeveloped)</span>`
       : `<span style="color:var(--warning)">High (overbuilt)</span>`;
 
-  const highPct = parseFloat(stats.high_congestion_pct);
+  const highPct    = parseFloat(stats.high_congestion_pct);
+  const lowPct     = 100 - highPct;
   const highPctColor = highPct > 30 ? "var(--danger)" : highPct > 10 ? "var(--warning)" : "var(--success)";
+
+  const trafficScore = densityClass === "optimal" ? 75 : densityClass === "low" ? 30 : 45;
+  const cat = perfCategory(trafficScore);
 
   const pressureRow = stats.traffic_pressure ? `
     <div class="insight-card">
       <div class="label">Traffic Pressure</div>
       <div class="value">${parseFloat(stats.traffic_pressure).toFixed(0)} pop / road-km</div>
     </div>` : "";
+
+  const chartHtml = miniBarChart(
+    [lowPct.toFixed(1), highPct.toFixed(1)],
+    2,
+    ["#2ecc71", "#e74c3c"],
+    ["Low/Med", "High Cong."]
+  );
+
+  const ineq = inequalityLabel(calcStdDev([lowPct, highPct]));
+
+  const keyInsight = highPct > 30
+    ? `High congestion affects ${highPct.toFixed(1)}% of the area — road infrastructure is under serious pressure.`
+    : highPct > 10
+    ? `Moderate congestion detected in ${highPct.toFixed(1)}% of the area. Monitor key corridors.`
+    : `Road network is performing well — congestion is limited to ${highPct.toFixed(1)}% of the area.`;
+
+  const aoiKm2 = parseFloat(stats.aoi_area_km2);
 
   const inputsHtml = `
     <div class="insight-card">
@@ -1481,6 +1560,10 @@ function renderTrafficResults(stats, inputs) {
     <div class="insight-card">
       <div class="label">Area of interest</div>
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.aoiFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Data Coverage Area</div>
+      <div class="value">${isNaN(aoiKm2) ? "N/A" : aoiKm2.toFixed(2) + " km²"}</div>
     </div>
     ${inputs.population != null ? `
     <div class="insight-card">
@@ -1492,7 +1575,7 @@ function renderTrafficResults(stats, inputs) {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Traffic Analysis — Results</h3>
-      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+      <p class="panel-desc">Road density = km of road per km². Green = low congestion · Orange = medium · Red = high.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -1512,7 +1595,7 @@ function renderTrafficResults(stats, inputs) {
         </div>
         <div class="insight-card">
           <div class="label">AOI Area</div>
-          <div class="value">${parseFloat(stats.aoi_area_km2).toFixed(2)} km²</div>
+          <div class="value">${isNaN(aoiKm2) ? "N/A" : aoiKm2.toFixed(2) + " km²"}</div>
         </div>
         <div class="insight-card">
           <div class="label">Road Density</div>
@@ -1522,17 +1605,23 @@ function renderTrafficResults(stats, inputs) {
           <div class="label">Density Classification</div>
           <div class="value">${densityBadge}</div>
         </div>
+        <div class="insight-card">
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+        </div>
         ${pressureRow}
         <div class="insight-card">
           <div class="label">High-Congestion Area</div>
           <div class="value" style="color:${highPctColor}">${highPct.toFixed(1)}% of AOI</div>
         </div>
-        <ul class="bullet-list">
-          <li>Green = low congestion, Orange = medium, Red = high congestion</li>
-          <li>Red dashed outline = merged hotspot polygons</li>
-          <li>Density thresholds: &lt; 2 km/km² = Low, 2–10 = Optimal, &gt; 10 = High</li>
-          ${stats.traffic_pressure ? "<li>Traffic pressure = population ÷ total road-km</li>" : ""}
-        </ul>
+        <div class="insight-card">
+          <div class="label">Spatial Balance</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+        </div>
+        ${chartHtml}
+        <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -1699,9 +1788,10 @@ async function runInformalSettlementAnalysis() {
 /* ---------- Render Informal Settlement Results ---------- */
 function renderInformalSettlementResults(stats, inputs) {
   const scoreColor = qolScoreTextColor(stats.overall_qol);
+  const cat = perfCategory(stats.overall_qol);
 
-  const highColor   = stats.high_pct   > 30 ? "var(--danger)"  : stats.high_pct   > 10 ? "var(--warning)" : "var(--success)";
-  const lowColor    = stats.low_pct    > 50 ? "var(--success)" : "var(--text-muted)";
+  const highColor   = stats.high_pct > 30 ? "var(--danger)" : stats.high_pct > 10 ? "var(--warning)" : "var(--success)";
+  const lowColor    = stats.low_pct  > 50 ? "var(--success)" : "var(--text-muted)";
 
   const classLabel = stats.avg_irregularity <= 33
     ? `<span style="color:var(--success)">Low — Mostly Planned</span>`
@@ -1709,10 +1799,25 @@ function renderInformalSettlementResults(stats, inputs) {
       ? `<span style="color:var(--warning)">Medium — Mixed Patterns</span>`
       : `<span style="color:var(--danger)">High — Informal Patterns Detected</span>`;
 
+  const chartHtml = miniBarChart(
+    [stats.low_pct.toFixed(1), stats.medium_pct.toFixed(1), stats.high_pct.toFixed(1)],
+    3,
+    [irregularityColor(10), irregularityColor(50), irregularityColor(85)],
+    ["Planned", "Mixed", "Informal"]
+  );
+
+  const ineq = inequalityLabel(calcStdDev([stats.low_pct, stats.medium_pct, stats.high_pct]));
+
+  const keyInsight = stats.high_pct > 30
+    ? `${stats.high_pct.toFixed(1)}% of the area shows high informality patterns — these zones need priority urban planning intervention.`
+    : stats.high_pct > 10
+    ? `Informality is present in ${stats.high_pct.toFixed(1)}% of the area. Most zones are planned but some require attention.`
+    : `The area is mostly planned and regular — only ${stats.high_pct.toFixed(1)}% shows informal settlement patterns.`;
+
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Informal Settlement — Results</h3>
-      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+      <p class="panel-desc">Irregularity score 0–33 = Planned · 34–66 = Mixed · 67–100 = Informal. Green = regular · Red = irregular.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -1752,6 +1857,10 @@ function renderInformalSettlementResults(stats, inputs) {
           <div class="value" style="color:${scoreColor}">${stats.overall_qol} / 100</div>
         </div>
         <div class="insight-card">
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+        </div>
+        <div class="insight-card">
           <div class="label">High-Irregularity Cells</div>
           <div class="value" style="color:${highColor}">${stats.high_pct.toFixed(1)}%</div>
         </div>
@@ -1767,12 +1876,14 @@ function renderInformalSettlementResults(stats, inputs) {
           <div class="label">Merged High-Irregularity Zones</div>
           <div class="value">${stats.high_zone_count}</div>
         </div>
-        <ul class="bullet-list">
-          <li>Green = planned / regular, Red = irregular / potentially informal</li>
-          <li>Red dashed outlines = merged high-irregularity zones</li>
-          <li>Score 0–33 = Low (planned), 34–66 = Medium, 67–100 = High (informal)</li>
-          <li>Irregularity computed from texture variance, edge density, and built-up ratio</li>
-        </ul>
+        <div class="insight-card">
+          <div class="label">Distribution Balance</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+        </div>
+        ${chartHtml}
+        <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>
       </div>
 
       <!-- GRID tab -->
@@ -1826,12 +1937,86 @@ function downloadISPACSV() {
 }
 
 
+/* ---------- Universal grid CSV export (all services) ---------- */
+function downloadGridCSV(geojson, service) {
+  if (!geojson || !geojson.features) { alert("No grid data to export."); return; }
+
+  // Build header from all unique property keys (excluding geometry styling props)
+  const excludeKeys = new Set(["fill_color", "stroke", "stroke_width", "fill_opacity", "type"]);
+  const allKeys = new Set();
+  geojson.features.forEach(f => {
+    if (f.properties?.type === "high_irregularity_zone") return;
+    Object.keys(f.properties || {}).forEach(k => { if (!excludeKeys.has(k)) allKeys.add(k); });
+  });
+
+  // Preferred column order
+  const preferred = ["cell_cy","cell_cx","qol_score","value","classification","congestion",
+    "vegetation_pct","passes_30pct","irregularity_score","local_density","local_pressure",
+    "density","texture_val","edge_val","buildup_ratio"];
+  const orderedKeys = [
+    ...preferred.filter(k => allKeys.has(k)),
+    ...[...allKeys].filter(k => !preferred.includes(k)),
+  ];
+
+  const rows = [orderedKeys];
+  geojson.features.forEach(f => {
+    if (f.properties?.type === "high_irregularity_zone") return;
+    const p = f.properties || {};
+    rows.push(orderedKeys.map(k => {
+      const v = p[k];
+      if (v === null || v === undefined) return "";
+      if (typeof v === "number") return isNaN(v) ? "" : v;
+      return String(v).includes(",") ? `"${v}"` : v;
+    }));
+  });
+
+  const csv  = rows.map(r => r.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `${service}_grid.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+
 /* ---------- Render Crime Results with stats ---------- */
 function renderCrimeResults(stats, inputs) {
+  const avgDen = parseFloat(stats.avg_density) || 0;
+  const maxDen = parseFloat(stats.max_density) || 0;
+  const crimeCount = parseInt(stats.crime_count) || 0;
+
+  // Invert: higher crime = lower score
+  const safetyScore = maxDen > 0 ? Math.max(0, Math.round(100 - Math.min(100, (avgDen / maxDen) * 100))) : 50;
+  const cat = perfCategory(safetyScore);
+  const scoreColor = qolScoreTextColor(safetyScore);
+
+  const hotRatio  = maxDen > 0 ? Math.min(100, (avgDen / maxDen) * 100) : 0;
+  const safeRatio = 100 - hotRatio;
+  const chartHtml = miniBarChart(
+    [safeRatio.toFixed(1), hotRatio.toFixed(1)],
+    2,
+    ["#2ecc71", "#e74c3c"],
+    ["Safe", "Hotspot"]
+  );
+
+  const ineq = maxDen > 0 ? inequalityLabel(calcStdDev([avgDen, maxDen])) : null;
+
+  const keyInsight = maxDen > 0
+    ? maxDen / Math.max(avgDen, 0.01) > 5
+      ? `Crime is heavily concentrated in a few hotspot zones — the rest of the area is relatively safe.`
+      : `Crime incidents are spread more evenly across the area with no dominant single hotspot.`
+    : "";
+
   const inputsHtml = inputs ? `
     <div class="insight-card">
       <div class="label">Crime data (CSV)</div>
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.csvFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Total Records (Features)</div>
+      <div class="value">${crimeCount.toLocaleString()} incidents</div>
     </div>
     <div class="insight-card">
       <div class="label">Boundary data (GeoJSON)</div>
@@ -1850,16 +2035,14 @@ function renderCrimeResults(stats, inputs) {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Crime Density — Results</h3>
-      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+      <p class="panel-desc">Crime density = incidents per km². Higher values = more crime. Color gradient from safe (green) to hotspot (red).</p>
 
-      <!-- Tab headers -->
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
-      <!-- Tab contents -->
       <div class="tab-content" id="tab-raw">
         <p class="text-muted">Uploaded input data.</p>
         ${inputsHtml}
@@ -1868,25 +2051,36 @@ function renderCrimeResults(stats, inputs) {
       <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Total Crimes</div>
-          <div class="value">${stats.crime_count || "N/A"}</div>
+          <div class="value">${crimeCount.toLocaleString()}</div>
         </div>
         <div class="insight-card">
           <div class="label">Areas Analyzed</div>
           <div class="value">${stats.area_count || "N/A"}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Avg Density</div>
-          <div class="value">${stats.avg_density || "N/A"}</div>
+          <div class="label">Overall Safety Score</div>
+          <div class="value" style="color:${scoreColor}">${safetyScore} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Max Density</div>
-          <div class="value">${stats.max_density || "N/A"}</div>
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>
-        <ul class="bullet-list">
-          <li>Crime density = crimes per km²</li>
-          <li>Higher values indicate more crime incidents</li>
-          <li>Layer displayed with color gradient on map</li>
-        </ul>
+        <div class="insight-card">
+          <div class="label">Avg Density</div>
+          <div class="value">${stats.avg_density || "N/A"} crimes/km²</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Peak Hotspot Density</div>
+          <div class="value" style="color:var(--danger)">${stats.max_density || "N/A"} crimes/km²</div>
+        </div>
+        ${ineq ? `<div class="insight-card">
+          <div class="label">Distribution Balance</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+        </div>` : ""}
+        ${chartHtml}
+        ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>` : ""}
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -1906,10 +2100,45 @@ function renderCrimeResults(stats, inputs) {
 
 /* ---------- Render Urban Density Results with stats ---------- */
 function renderUrbanDensityResults(stats, inputs) {
+  const avgDen = parseFloat(stats.avg_density) || 0;
+  const maxDen = parseFloat(stats.max_density) || 0;
+  const areaCount = parseInt(stats.area_count) || 0;
+  const totalArea = parseFloat(stats.total_area) || 0;
+
+  // Score: well-distributed density is good; extreme peaks indicate stress
+  const densityScore = maxDen > 0 ? Math.max(0, Math.round(100 - Math.min(80, (maxDen / Math.max(avgDen, 1)) * 10))) : 50;
+  const cat = perfCategory(densityScore);
+  const scoreColor = qolScoreTextColor(densityScore);
+
+  const ineq = maxDen > 0 ? inequalityLabel(calcStdDev([avgDen, maxDen])) : null;
+
+  const highDen = maxDen;
+  const lowDen  = Math.max(0, 2 * avgDen - maxDen);
+  const chartHtml = miniBarChart(
+    [lowDen.toFixed(0), avgDen.toFixed(0), highDen.toFixed(0)],
+    3,
+    ["#4cc2ff", "#f39c12", "#e74c3c"],
+    ["Low", "Avg", "Peak"]
+  );
+
+  const keyInsight = maxDen > 0
+    ? (maxDen / Math.max(avgDen, 0.01)) > 3
+      ? `Density is concentrated in a few zones — most of the area is much less populated than the peak.`
+      : `Population is relatively balanced across the area with no extreme density hotspots.`
+    : "";
+
   const inputsHtml = inputs ? `
     <div class="insight-card">
       <div class="label">Boundary data (GeoJSON)</div>
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.geoJsonFileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Total Features (Areas)</div>
+      <div class="value">${areaCount.toLocaleString()}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Data Coverage Area</div>
+      <div class="value">${totalArea ? totalArea.toFixed(2) + " km²" : "N/A"}</div>
     </div>
     <div class="insight-card">
       <div class="label">Population field</div>
@@ -1920,16 +2149,14 @@ function renderUrbanDensityResults(stats, inputs) {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Urban Density — Results</h3>
-      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+      <p class="panel-desc">Urban density = population per km². Blue gradient: darker = more densely populated.</p>
 
-      <!-- Tab headers -->
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
-      <!-- Tab contents -->
       <div class="tab-content" id="tab-raw">
         <p class="text-muted">Uploaded input data.</p>
         ${inputsHtml}
@@ -1938,31 +2165,40 @@ function renderUrbanDensityResults(stats, inputs) {
       <div class="tab-content active" id="tab-full">
         <div class="insight-card">
           <div class="label">Total Population</div>
-          <div class="value">${stats.total_population || "N/A"}</div>
+          <div class="value">${stats.total_population ? parseInt(stats.total_population).toLocaleString() : "N/A"}</div>
         </div>
         <div class="insight-card">
           <div class="label">Total Area</div>
-          <div class="value">${stats.total_area || "N/A"} km²</div>
+          <div class="value">${totalArea ? totalArea.toFixed(2) + " km²" : "N/A"}</div>
         </div>
         <div class="insight-card">
           <div class="label">Areas Analyzed</div>
-          <div class="value">${stats.area_count || "N/A"}</div>
+          <div class="value">${areaCount.toLocaleString()}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Overall Score</div>
+          <div class="value" style="color:${scoreColor}">${densityScore} / 100</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>
         <div class="insight-card">
           <div class="label">Avg Density</div>
-          <div class="value">${stats.avg_density || "N/A"}</div>
+          <div class="value">${stats.avg_density || "N/A"} pop/km²</div>
         </div>
         <div class="insight-card">
-          <div class="label">Max Density</div>
-          <div class="value">${stats.max_density || "N/A"}</div>
+          <div class="label">Peak Density Zone</div>
+          <div class="value" style="color:var(--warning)">${stats.max_density || "N/A"} pop/km²</div>
         </div>
-        <ul class="bullet-list">
-          <li>Urban density = population per km²</li>
-          <li>Areas are automatically calculated from polygon geometries</li>
-          <li>Higher values indicate more densely populated areas</li>
-          <li>Layer displayed with blue color gradient on map</li>
-          
-        </ul>
+        ${ineq ? `<div class="insight-card">
+          <div class="label">Distribution Balance</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+        </div>` : ""}
+        ${chartHtml}
+        ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>` : ""}
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -1982,6 +2218,36 @@ function renderUrbanDensityResults(stats, inputs) {
 
 /* ---------- Render NDVI Results with stats ---------- */
 function renderNDVIResults(stats, inputs) {
+  const meanNDVI = parseFloat(stats.mean) || 0;
+  const minNDVI  = parseFloat(stats.min)  || 0;
+  const maxNDVI  = parseFloat(stats.max)  || 0;
+  const validPx  = parseInt(stats.valid_pixels) || 0;
+
+  // Score: mean NDVI mapped to 0–100 (mean 0.6+ = excellent green, -0.2 = bare)
+  const ndviScore = Math.max(0, Math.min(100, Math.round(((meanNDVI + 0.2) / 0.8) * 100)));
+  const cat = perfCategory(ndviScore);
+  const scoreColor = qolScoreTextColor(ndviScore);
+
+  // 4 buckets for distribution bar
+  const rangeSize = Math.max(0.001, maxNDVI - minNDVI);
+  const q1 = minNDVI + rangeSize * 0.25;
+  const q2 = minNDVI + rangeSize * 0.5;
+  const q3 = minNDVI + rangeSize * 0.75;
+  const chartHtml = miniBarChart(
+    [25, 25, 25, 25],
+    4,
+    [vegPctColor(5), vegPctColor(20), vegPctColor(40), vegPctColor(70)],
+    [minNDVI.toFixed(2), q1.toFixed(2), q2.toFixed(2), maxNDVI.toFixed(2)]
+  );
+
+  const ineq = inequalityLabel(calcStdDev([minNDVI * 100, maxNDVI * 100]));
+
+  const keyInsight = meanNDVI >= 0.4
+    ? `Mean NDVI of ${meanNDVI.toFixed(2)} indicates healthy and abundant vegetation across the area.`
+    : meanNDVI >= 0.2
+    ? `Moderate vegetation detected (mean NDVI ${meanNDVI.toFixed(2)}). Some zones may need greening.`
+    : `Low mean NDVI (${meanNDVI.toFixed(2)}) — the area is mostly bare or built-up with limited vegetation.`;
+
   const inputsHtml = inputs ? `
     <div class="insight-card">
       <div class="label">GeoTIFF file</div>
@@ -1996,22 +2262,32 @@ function renderNDVIResults(stats, inputs) {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">NDVI — Results</h3>
-      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+      <p class="panel-desc">NDVI ranges −1 to 1. Values &gt; 0.2 = healthy vegetation. Color: dark green = dense · red = bare.</p>
 
-      <!-- Tab headers -->
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
-      <!-- Tab contents -->
       <div class="tab-content" id="tab-raw">
         <p class="text-muted">Uploaded input data.</p>
         ${inputsHtml}
       </div>
 
       <div class="tab-content active" id="tab-full">
+        <div class="insight-card">
+          <div class="label">Overall Score</div>
+          <div class="value" style="color:${scoreColor}">${ndviScore} / 100</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Mean NDVI</div>
+          <div class="value">${stats.mean || "N/A"}</div>
+        </div>
         <div class="insight-card">
           <div class="label">Min NDVI</div>
           <div class="value">${stats.min || "N/A"}</div>
@@ -2021,18 +2297,17 @@ function renderNDVIResults(stats, inputs) {
           <div class="value">${stats.max || "N/A"}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Mean NDVI</div>
-          <div class="value">${stats.mean || "N/A"}</div>
+          <div class="label">Valid Pixels</div>
+          <div class="value">${validPx.toLocaleString()}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Valid Pixels</div>
-          <div class="value">${stats.valid_pixels || "N/A"}</div>
+          <div class="label">Value Spread</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
         </div>
-        <ul class="bullet-list">
-          <li>NDVI range: -1 to 1</li>
-          <li>Values > 0.2 indicate healthy vegetation</li>
-          <li>Layer displayed with color gradient on map</li>
-        </ul>
+        ${chartHtml}
+        <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -2052,17 +2327,61 @@ function renderNDVIResults(stats, inputs) {
 
 /* ---------- Render Heat Index Results with stats ---------- */
 function renderHeatIndexResults(stats, inputs) {
+  const meanTemp = parseFloat(stats.mean) || 0;
+  const minTemp  = parseFloat(stats.min)  || 0;
+  const maxTemp  = parseFloat(stats.max)  || 0;
+  const validPx  = parseInt(stats.valid_pixels) || 0;
+
+  // Score: cooler = better. < 27 = 100, 38+ = 0
+  const heatScore = Math.max(0, Math.min(100, Math.round(((38 - meanTemp) / 11) * 100)));
+  const cat = perfCategory(heatScore);
+  const scoreColor = qolScoreTextColor(heatScore);
+
+  const heatClass = meanTemp < 27 ? "Comfortable"
+    : meanTemp < 32 ? "Caution"
+    : meanTemp < 38 ? "Extreme Caution"
+    : "Danger";
+  const heatClassColor = meanTemp < 27 ? "var(--success)"
+    : meanTemp < 32 ? "#8bc34a"
+    : meanTemp < 38 ? "var(--warning)"
+    : "var(--danger)";
+
+  const tempRange = Math.max(0.1, maxTemp - minTemp);
+  const cool = Math.max(0, ((27 - minTemp) / tempRange * 100)).toFixed(1);
+  const caution = Math.max(0, (Math.min(32, maxTemp) - Math.max(27, minTemp)) / tempRange * 100).toFixed(1);
+  const hot = Math.max(0, ((maxTemp - Math.max(32, minTemp)) / tempRange * 100)).toFixed(1);
+  const chartHtml = miniBarChart(
+    [cool, caution, hot],
+    3,
+    ["#4cc2ff", "#f39c12", "#e74c3c"],
+    ["Cool", "Caution", "Hot"]
+  );
+
+  const ineq = inequalityLabel(calcStdDev([minTemp, meanTemp, maxTemp]));
+
+  const keyInsight = meanTemp >= 38
+    ? `Dangerous heat levels detected — mean temperature is ${meanTemp.toFixed(1)}°C. Urgent cooling interventions needed.`
+    : meanTemp >= 32
+    ? `High heat stress across the area (avg ${meanTemp.toFixed(1)}°C). Green spaces or cool corridors could help.`
+    : meanTemp >= 27
+    ? `Moderate heat (avg ${meanTemp.toFixed(1)}°C). Some zones may need shade or cooling infrastructure.`
+    : `Thermal comfort is good — mean temperature is ${meanTemp.toFixed(1)}°C, below the caution threshold.`;
+
   const inputsHtml = inputs ? `
     <div class="insight-card">
       <div class="label">GeoTIFF file</div>
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Total Pixels (Features)</div>
+      <div class="value">${validPx.toLocaleString()}</div>
     </div>
   ` : `<p class="text-muted">No input info available.</p>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Heat Index — Results</h3>
-      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+      <p class="panel-desc">Surface temperature in °C. &lt;27 = Comfortable · 27–32 = Caution · 32–38 = Extreme · ≥38 = Danger.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -2077,27 +2396,41 @@ function renderHeatIndexResults(stats, inputs) {
 
       <div class="tab-content active" id="tab-full">
         <div class="insight-card">
-          <div class="label">Min Temp (°C)</div>
-          <div class="value">${stats.min || "N/A"}</div>
+          <div class="label">Overall Score</div>
+          <div class="value" style="color:${scoreColor}">${heatScore} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Max Temp (°C)</div>
-          <div class="value">${stats.max || "N/A"}</div>
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Thermal Class</div>
+          <div class="value" style="color:${heatClassColor}">${heatClass}</div>
         </div>
         <div class="insight-card">
           <div class="label">Mean Temp (°C)</div>
           <div class="value">${stats.mean || "N/A"}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Valid Pixels</div>
-          <div class="value">${stats.valid_pixels || "N/A"}</div>
+          <div class="label">Min Temp (°C)</div>
+          <div class="value">${stats.min || "N/A"}</div>
         </div>
-        <ul class="bullet-list">
-          <li>Class 0 (&lt;27°C): Comfortable</li>
-          <li>Class 1 (27–32°C): Caution</li>
-          <li>Class 2 (32–38°C): Extreme caution</li>
-          <li>Class 3 (≥38°C): Danger</li>
-        </ul>
+        <div class="insight-card">
+          <div class="label">Max Temp (°C)</div>
+          <div class="value" style="color:${maxTemp >= 38 ? "var(--danger)" : "inherit"}">${stats.max || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Valid Pixels</div>
+          <div class="value">${validPx.toLocaleString()}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Temperature Spread</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+        </div>
+        ${chartHtml}
+        <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -2205,10 +2538,47 @@ async function runAirQualityAnalysis() {
 
 /* ---------- Render Air Quality Results ---------- */
 function renderAirQualityResults(stats, inputs) {
+  const goodPct    = parseFloat(stats.good_pct)          || 0;
+  const modPct     = parseFloat(stats.moderate_pct)      || 0;
+  const sensPct    = parseFloat(stats.sensitive_pct)     || 0;
+  const unhPct     = parseFloat(stats.unhealthy_pct)     || 0;
+  const vUnhPct    = parseFloat(stats.very_unhealthy_pct)|| 0;
+  const hazPct     = parseFloat(stats.hazardous_pct)     || 0;
+  const validPx    = parseInt(stats.valid_pixels)        || 0;
+
+  // Score: weighted sum — good=100, hazardous=0
+  const aqiScore = Math.round(
+    (goodPct * 100 + modPct * 75 + sensPct * 55 + unhPct * 35 + vUnhPct * 15 + hazPct * 0) / 100
+  );
+  const cat = perfCategory(aqiScore);
+  const scoreColor = qolScoreTextColor(aqiScore);
+
+  const cleanPct  = (goodPct + modPct).toFixed(1);
+  const riskyPct  = (unhPct + vUnhPct + hazPct).toFixed(1);
+
+  const chartHtml = miniBarChart(
+    [goodPct.toFixed(1), modPct.toFixed(1), sensPct.toFixed(1), unhPct.toFixed(1), vUnhPct.toFixed(1), hazPct.toFixed(1)],
+    6,
+    ["#2ecc71", "#8bc34a", "#f39c12", "#e67e22", "#c0392b", "#8e0e0e"],
+    ["Good", "Mod", "Sens", "Unhl", "V.Unhl", "Haz"]
+  );
+
+  const ineq = inequalityLabel(calcStdDev([goodPct, modPct, sensPct, unhPct, vUnhPct, hazPct]));
+
+  const keyInsight = parseFloat(riskyPct) > 30
+    ? `${riskyPct}% of the area has unhealthy or worse air quality — this zone requires urgent attention.`
+    : parseFloat(cleanPct) > 70
+    ? `Air quality is mostly good — ${cleanPct}% of the area meets acceptable standards.`
+    : `Mixed air quality: ${cleanPct}% is acceptable while ${riskyPct}% poses health risks.`;
+
   const inputsHtml = inputs ? `
     <div class="insight-card">
       <div class="label">GeoTIFF file</div>
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Total Pixels (Features)</div>
+      <div class="value">${validPx.toLocaleString()}</div>
     </div>
     <div class="insight-card">
       <div class="label">Pollutant detected</div>
@@ -2219,7 +2589,7 @@ function renderAirQualityResults(stats, inputs) {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Air Quality Index — Results</h3>
-      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+      <p class="panel-desc">AQI: ≤50 Good · 51–100 Moderate · 101–150 Sensitive · 151–200 Unhealthy · 201–300 Very Unhealthy · &gt;300 Hazardous.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -2234,41 +2604,45 @@ function renderAirQualityResults(stats, inputs) {
 
       <div class="tab-content active" id="tab-full">
         <div class="insight-card">
+          <div class="label">Overall Score</div>
+          <div class="value" style="color:${scoreColor}">${aqiScore} / 100</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+        </div>
+        <div class="insight-card">
           <div class="label">Valid Pixels</div>
-          <div class="value">${stats.valid_pixels || "N/A"}</div>
+          <div class="value">${validPx.toLocaleString()}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Good (class 0)</div>
-          <div class="value">${stats.good_pct || "N/A"}%</div>
+          <div class="label">Good (AQI ≤ 50)</div>
+          <div class="value" style="color:var(--success)">${goodPct.toFixed(1)}%</div>
         </div>
         <div class="insight-card">
-          <div class="label">Moderate (class 1)</div>
-          <div class="value">${stats.moderate_pct || "N/A"}%</div>
+          <div class="label">Moderate (51–100)</div>
+          <div class="value">${modPct.toFixed(1)}%</div>
         </div>
         <div class="insight-card">
-          <div class="label">Sensitive groups (class 2)</div>
-          <div class="value">${stats.sensitive_pct || "N/A"}%</div>
+          <div class="label">Sensitive Groups (101–150)</div>
+          <div class="value" style="color:var(--warning)">${sensPct.toFixed(1)}%</div>
         </div>
         <div class="insight-card">
-          <div class="label">Unhealthy (class 3)</div>
-          <div class="value">${stats.unhealthy_pct || "N/A"}%</div>
+          <div class="label">Unhealthy (151–200)</div>
+          <div class="value" style="color:var(--danger)">${unhPct.toFixed(1)}%</div>
         </div>
         <div class="insight-card">
-          <div class="label">Very Unhealthy (class 4)</div>
-          <div class="value">${stats.very_unhealthy_pct || "N/A"}%</div>
+          <div class="label">Very Unhealthy / Hazardous</div>
+          <div class="value" style="color:var(--danger)">${(vUnhPct + hazPct).toFixed(1)}%</div>
         </div>
         <div class="insight-card">
-          <div class="label">Hazardous (class 5)</div>
-          <div class="value">${stats.hazardous_pct || "N/A"}%</div>
+          <div class="label">Distribution Balance</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
         </div>
-        <ul class="bullet-list">
-          <li>Class 0 — Good: AQI ≤ 50</li>
-          <li>Class 1 — Moderate: AQI 51–100</li>
-          <li>Class 2 — Unhealthy for Sensitive Groups: AQI 101–150</li>
-          <li>Class 3 — Unhealthy: AQI 151–200</li>
-          <li>Class 4 — Very Unhealthy: AQI 201–300</li>
-          <li>Class 5 — Hazardous: AQI > 300</li>
-        </ul>
+        ${chartHtml}
+        <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -2277,6 +2651,115 @@ function renderAirQualityResults(stats, inputs) {
 
       <button class="btn btn-ghost btn-block mt-3"
               onclick="renderServicePanel('air-quality')">
+        ← Back to inputs
+      </button>
+    </div>
+  `;
+
+  wireTabSwitching();
+}
+
+
+/* ---------- Render Facility Accessibility Results ---------- */
+function renderFacilityAccessibilityResults(stats, fileName, inputs) {
+  const score5  = parseFloat(stats.pct_5min)  || 0;
+  const score10 = parseFloat(stats.pct_10min) || 0;
+  const score15 = parseFloat(stats.pct_15min) || 0;
+  const totalFacilities = parseInt(stats.facility_count) || parseInt(stats.total_facilities) || "N/A";
+
+  // Overall score: weight 5min access most
+  const overallScore = score5 > 0 || score10 > 0 || score15 > 0
+    ? Math.round(score5 * 1.0 + Math.min(score10 - score5, 0) * 0.5 + Math.min(score15 - score10, 0) * 0.3)
+    : null;
+  const cat = overallScore !== null ? perfCategory(overallScore) : null;
+  const scoreColor = overallScore !== null ? qolScoreTextColor(overallScore) : "#888";
+
+  const chartHtml = (score5 + score10 + score15) > 0 ? miniBarChart(
+    [score5.toFixed(1), (score10 - score5).toFixed(1), (score15 - score10).toFixed(1)],
+    3,
+    ["#198754", "#ffc107", "#dc3545"],
+    ["5 min", "10 min", "15 min"]
+  ) : "";
+
+  const ineq = (score5 + score15) > 0 ? inequalityLabel(calcStdDev([score5, score10, score15])) : null;
+
+  const keyInsight = score5 > 50
+    ? `More than half the area is within a 5-minute walk of a facility — excellent accessibility.`
+    : score15 > 70
+    ? `${score15.toFixed(1)}% of the area is reachable within 15 minutes, but 5-minute access is limited to ${score5.toFixed(1)}%.`
+    : `Facility coverage is limited — only ${score15.toFixed(1)}% of the area is within a 15-minute walk.`;
+
+  const inputsHtml = `
+    <div class="insight-card">
+      <div class="label">Facilities file</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${fileName}</div>
+    </div>
+    ${totalFacilities !== "N/A" ? `<div class="insight-card">
+      <div class="label">Total Facilities (Features)</div>
+      <div class="value">${totalFacilities}</div>
+    </div>` : ""}
+    <div class="insight-card">
+      <div class="label">Walking speed</div>
+      <div class="value">${inputs.walkingSpeed} km/h</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Max network distance</div>
+      <div class="value">${parseInt(inputs.networkDist).toLocaleString()} m</div>
+    </div>`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Facility Accessibility — Results</h3>
+      <p class="panel-desc">Walkable service areas: Green = 5 min · Yellow = 10 min · Red = 15 min walk from the facility.</p>
+
+      <div class="tabs">
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+      </div>
+
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
+      </div>
+
+      <div class="tab-content active" id="tab-full">
+        ${overallScore !== null ? `<div class="insight-card">
+          <div class="label">Overall Score</div>
+          <div class="value" style="color:${scoreColor}">${overallScore} / 100</div>
+        </div>` : ""}
+        ${cat ? `<div class="insight-card">
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+        </div>` : ""}
+        ${score5 > 0 ? `<div class="insight-card">
+          <div class="label">Within 5-min walk</div>
+          <div class="value" style="color:var(--success)">${score5.toFixed(1)}%</div>
+        </div>` : ""}
+        ${score10 > 0 ? `<div class="insight-card">
+          <div class="label">Within 10-min walk</div>
+          <div class="value" style="color:#ffc107">${score10.toFixed(1)}%</div>
+        </div>` : ""}
+        ${score15 > 0 ? `<div class="insight-card">
+          <div class="label">Within 15-min walk</div>
+          <div class="value" style="color:#dc3545">${score15.toFixed(1)}%</div>
+        </div>` : ""}
+        ${ineq ? `<div class="insight-card">
+          <div class="label">Coverage Balance</div>
+          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+        </div>` : ""}
+        ${chartHtml}
+        ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>` : ""}
+      </div>
+
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Click this tab to generate the cell grid…</p>
+      </div>
+
+      <button class="btn btn-ghost btn-block mt-3"
+              onclick="renderServicePanel('facility_Accessibility_index')">
         ← Back to inputs
       </button>
     </div>
@@ -2310,20 +2793,7 @@ function renderResults(service) {
       </div>
 
       <div class="tab-content active" id="tab-full">
-        <div class="insight-card">
-          <div class="label">Mean value</div>
-          <div class="value">72.4</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Coverage</div>
-          <div class="value">86%</div>
-        </div>
-        <ul class="bullet-list">
-          <li>Area shows above-average performance.</li>
-          <li>3 hotspots detected.</li>
-          <li>Recommended follow-up: detailed grid review.</li>
-        </ul>
-        <!-- TODO: populate with backend analysis results -->
+        <p class="text-muted" style="font-size:12px;">Results will appear here once the backend returns analysis data.</p>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -2435,7 +2905,7 @@ function wireTabSwitching() {
             const isTrafficGrid = lastResultService === "traffic";
             const isISPAGrid    = lastResultService === "informal-settlement";
 
-            // Vegetation-specific: count passing / failing cells against benchmark
+            // ---- Vegetation counts ----
             let vegPassCount = 0, vegFailCount = 0, vegPctValues = [];
             if (isVegGrid) {
               geojson.features.forEach(f => {
@@ -2445,180 +2915,167 @@ function wireTabSwitching() {
               });
             }
             const vegAvgPct = vegPctValues.length
-              ? (vegPctValues.reduce((a,b) => a+b, 0) / vegPctValues.length).toFixed(1)
-              : null;
+              ? (vegPctValues.reduce((a,b) => a+b, 0) / vegPctValues.length).toFixed(1) : null;
 
-            // Traffic-specific: count congestion levels
+            // ---- Traffic counts ----
             let trafficLow = 0, trafficMed = 0, trafficHigh = 0;
             if (isTrafficGrid) {
               geojson.features.forEach(f => {
                 const c = f.properties.congestion;
-                if (c === "high") trafficHigh++;
-                else if (c === "medium") trafficMed++;
-                else trafficLow++;
+                if (c === "high") trafficHigh++; else if (c === "medium") trafficMed++; else trafficLow++;
               });
             }
 
-            // ISPA-specific: count classification tiers
+            // ---- ISPA counts ----
             let ispaLow = 0, ispaMed = 0, ispaHigh = 0, ispaIrrValues = [];
             if (isISPAGrid) {
               geojson.features.forEach(f => {
                 const cls = f.properties.classification;
-                if (cls === "high")   ispaHigh++;
-                else if (cls === "medium") ispaMed++;
-                else ispaLow++;
+                if (cls === "high") ispaHigh++; else if (cls === "medium") ispaMed++; else ispaLow++;
                 if (f.properties.value !== null && f.properties.value !== undefined)
                   ispaIrrValues.push(f.properties.value);
               });
             }
             const ispaAvgIrr = ispaIrrValues.length
-              ? (ispaIrrValues.reduce((a,b) => a+b, 0) / ispaIrrValues.length).toFixed(1)
-              : null;
+              ? (ispaIrrValues.reduce((a,b) => a+b, 0) / ispaIrrValues.length).toFixed(1) : null;
 
+            // ---- Generic QoL tier counts ----
+            let tierExcellent = 0, tierGood = 0, tierPoor = 0, tierBad = 0;
+            if (!isVegGrid && !isTrafficGrid && !isISPAGrid) {
+              scores.forEach(s => {
+                if (s >= 75) tierExcellent++;
+                else if (s >= 50) tierGood++;
+                else if (s >= 25) tierPoor++;
+                else tierBad++;
+              });
+            }
+
+            // ---- Best / Worst cell (score + raw value) ----
+            let bestFeature = null, worstFeature = null;
+            if (scores.length) {
+              bestFeature  = geojson.features.reduce((a, b) => (b.properties.qol_score || 0) > (a?.properties.qol_score || 0) ? b : a, geojson.features[0]);
+              worstFeature = geojson.features.reduce((a, b) => (b.properties.qol_score || 0) < (a?.properties.qol_score || 999) ? b : a, geojson.features[0]);
+            }
+            const bestVal  = bestFeature  ? (bestFeature.properties.value  ?? bestFeature.properties.vegetation_pct  ?? bestFeature.properties.irregularity_score ?? "—") : "—";
+            const worstVal = worstFeature ? (worstFeature.properties.value ?? worstFeature.properties.vegetation_pct ?? worstFeature.properties.irregularity_score ?? "—") : "—";
+
+            // ---- Spatial clustering ----
+            const clusterInfo = scores.length >= 4 ? clusteringLabel(scores) : null;
+
+            // ---- Distribution bar chart ----
+            let gridChartHtml = "";
+            if (isVegGrid) {
+              gridChartHtml = miniBarChart(
+                [vegPassCount, vegFailCount],
+                2, [vegPctColor(75), "#c0392b"], ["≥30%", "<30%"]
+              );
+            } else if (isTrafficGrid) {
+              gridChartHtml = miniBarChart(
+                [trafficLow, trafficMed, trafficHigh],
+                3, ["#2ecc71", "#f39c12", "#e74c3c"], ["Low", "Med", "High"]
+              );
+            } else if (isISPAGrid) {
+              gridChartHtml = miniBarChart(
+                [ispaLow, ispaMed, ispaHigh],
+                3, [irregularityColor(10), irregularityColor(50), irregularityColor(85)], ["Planned", "Mixed", "Informal"]
+              );
+            } else if (scores.length) {
+              gridChartHtml = miniBarChart(
+                [tierExcellent, tierGood, tierPoor, tierBad],
+                4, [qolScoreColor(88), qolScoreColor(62), qolScoreColor(37), qolScoreColor(12)],
+                ["Exc.", "Good", "Poor", "Bad"]
+              );
+            }
+
+            // ---- Tier legend ----
             const tiersHtml = isVegGrid ? `
-              <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Vegetation tiers vs. 30% standard</div>
+              <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Vegetation tiers</div>
               <div style="display:flex;flex-direction:column;gap:4px;">
+                ${[["Excellent","≥ 50%",75],["Good","30–50%",38],["Poor","15–30%",20],["Bad","0–15%",5]].map(([l,r,v])=>`
                 <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${vegPctColor(75)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Excellent</strong> &nbsp;≥ 50% vegetation</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${vegPctColor(38)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Good</strong> &nbsp;30–50% (meets benchmark)</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${vegPctColor(20)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Poor</strong> &nbsp;15–30% (below benchmark)</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${vegPctColor(5)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Bad</strong> &nbsp;0–15% (severely under-greened)</span>
-                </div>
+                  <div style="width:12px;height:12px;background:${vegPctColor(v)};border-radius:2px;flex-shrink:0;"></div>
+                  <span><strong>${l}</strong> ${r}</span>
+                </div>`).join("")}
               </div>` : isTrafficGrid ? `
-              <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Congestion levels</div>
+              <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Congestion levels</div>
               <div style="display:flex;flex-direction:column;gap:4px;">
+                ${[["Low","optimal","#2ecc71"],["Medium","partial risk","#f39c12"],["High","hotspot","#e74c3c"]].map(([l,r,c])=>`
                 <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:#2ecc71;border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Low</strong> &nbsp;optimal road coverage</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:#f39c12;border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Medium</strong> &nbsp;partial congestion risk</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:#e74c3c;border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>High</strong> &nbsp;congestion hotspot</span>
-                </div>
+                  <div style="width:12px;height:12px;background:${c};border-radius:2px;flex-shrink:0;"></div>
+                  <span><strong>${l}</strong> ${r}</span>
+                </div>`).join("")}
               </div>` : isISPAGrid ? `
-              <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Irregularity tiers</div>
+              <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Irregularity tiers</div>
               <div style="display:flex;flex-direction:column;gap:4px;">
+                ${[["Low (Planned)","0–33",10],["Medium","34–66",50],["High (Informal)","67–100",85]].map(([l,r,v])=>`
                 <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${irregularityColor(10)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Low (Planned)</strong> &nbsp;0–33</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${irregularityColor(50)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Medium</strong> &nbsp;34–66</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${irregularityColor(85)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>High (Informal)</strong> &nbsp;67–100</span>
-                </div>
+                  <div style="width:12px;height:12px;background:${irregularityColor(v)};border-radius:2px;flex-shrink:0;"></div>
+                  <span><strong>${l}</strong> ${r}</span>
+                </div>`).join("")}
               </div>` : `
-              <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers</div>
+              <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers</div>
               <div style="display:flex;flex-direction:column;gap:4px;">
+                ${[[88,"Excellent","75–100"],[62,"Good","50–74"],[37,"Fair","25–49"],[12,"Poor","0–24"]].map(([v,l,r])=>`
                 <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${qolScoreColor(88)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Excellent</strong> &nbsp;75–100</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${qolScoreColor(62)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Good</strong> &nbsp;50–74</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${qolScoreColor(37)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Poor</strong> &nbsp;25–49</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
-                  <div style="width:14px;height:14px;background:${qolScoreColor(12)};border-radius:3px;flex-shrink:0;"></div>
-                  <span><strong>Bad</strong> &nbsp;0–24</span>
-                </div>
+                  <div style="width:12px;height:12px;background:${qolScoreColor(v)};border-radius:2px;flex-shrink:0;"></div>
+                  <span><strong>${l}</strong> ${r}</span>
+                </div>`).join("")}
               </div>`;
 
             gridTabContent.innerHTML = `
-              <ul style="font-size:12px;color:var(--text-primary);line-height:1.8;padding-left:16px;margin:0 0 10px;">
-                <li>Cell size: <strong>${cellLabel} × ${cellLabel}</strong> (auto-scaled to area)</li>
-                <li>Score: <strong style="color:${qolScoreTextColor(88)};">100</strong> = best QoL &nbsp;·&nbsp; <strong style="color:${qolScoreTextColor(12)};">0</strong> = worst QoL</li>
-                <li>Click any cell on the map for its score</li>
-              </ul>
+              <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px;">Cell size: <strong>${cellLabel} × ${cellLabel}</strong> · Click any cell on the map for details.</p>
               <div class="insight-card">
-                <div class="label">Cells Analyzed</div>
+                <div class="label">Total Cells</div>
                 <div class="value">${cellCount}</div>
               </div>
               ${isVegGrid ? `
               <div class="insight-card">
-                <div class="label">Avg Vegetation %</div>
-                <div class="value">${vegAvgPct !== null ? vegAvgPct + "%" : "N/A"}</div>
+                <div class="label">Cells meeting 30% benchmark</div>
+                <div class="value"><span style="color:var(--success)">${vegPassCount} pass</span> &nbsp;/&nbsp; <span style="color:var(--danger)">${vegFailCount} fail</span></div>
               </div>
               <div class="insight-card">
-                <div class="label">Cells ≥ 30% (pass)</div>
-                <div class="value" style="color:var(--success)">${vegPassCount}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Cells &lt; 30% (fail)</div>
-                <div class="value" style="color:var(--danger)">${vegFailCount}</div>
+                <div class="label">% Pass / % Fail</div>
+                <div class="value">${cellCount ? ((vegPassCount/cellCount)*100).toFixed(1) : 0}% / ${cellCount ? ((vegFailCount/cellCount)*100).toFixed(1) : 0}%</div>
               </div>` : isTrafficGrid ? `
               <div class="insight-card">
-                <div class="label">Low Congestion Cells</div>
-                <div class="value" style="color:var(--success)">${trafficLow}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Medium Congestion Cells</div>
-                <div class="value" style="color:var(--warning)">${trafficMed}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">High Congestion Cells</div>
-                <div class="value" style="color:var(--danger)">${trafficHigh}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Average QoL Score</div>
-                <div class="value" style="color:${qolScoreTextColor(avg)}">${avg !== null ? avg + "/100" : "N/A"}</div>
+                <div class="label">Cell breakdown</div>
+                <div class="value" style="font-size:13px;"><span style="color:var(--success)">${cellCount ? ((trafficLow/cellCount)*100).toFixed(0) : 0}% Low</span> · <span style="color:var(--warning)">${cellCount ? ((trafficMed/cellCount)*100).toFixed(0) : 0}% Med</span> · <span style="color:var(--danger)">${cellCount ? ((trafficHigh/cellCount)*100).toFixed(0) : 0}% High</span></div>
               </div>` : isISPAGrid ? `
               <div class="insight-card">
-                <div class="label">Avg Irregularity Score</div>
-                <div class="value">${ispaAvgIrr !== null ? ispaAvgIrr + "/100" : "N/A"}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Low (Planned) Cells</div>
-                <div class="value" style="color:var(--success)">${ispaLow}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Medium Cells</div>
-                <div class="value" style="color:var(--warning)">${ispaMed}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">High (Informal) Cells</div>
-                <div class="value" style="color:var(--danger)">${ispaHigh}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Average QoL Score</div>
-                <div class="value" style="color:${qolScoreTextColor(avg)}">${avg !== null ? avg + "/100" : "N/A"}</div>
+                <div class="label">Cell breakdown</div>
+                <div class="value" style="font-size:13px;"><span style="color:var(--success)">${cellCount ? ((ispaLow/cellCount)*100).toFixed(0) : 0}% Planned</span> · <span style="color:var(--warning)">${cellCount ? ((ispaMed/cellCount)*100).toFixed(0) : 0}% Mixed</span> · <span style="color:var(--danger)">${cellCount ? ((ispaHigh/cellCount)*100).toFixed(0) : 0}% Informal</span></div>
               </div>` : `
               <div class="insight-card">
-                <div class="label">Average QoL Score</div>
-                <div class="value" style="color:${qolScoreTextColor(avg)}">${avg !== null ? avg + "/100" : "N/A"}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Best Cell Score</div>
-                <div class="value" style="color:${qolScoreTextColor(best)}">${best !== null ? best + "/100" : "N/A"}</div>
-              </div>
-              <div class="insight-card">
-                <div class="label">Worst Cell Score</div>
-                <div class="value" style="color:${qolScoreTextColor(worst)}">${worst !== null ? worst + "/100" : "N/A"}</div>
+                <div class="label">Cell breakdown</div>
+                <div class="value" style="font-size:13px;"><span style="color:${qolScoreColor(88)}">${cellCount ? ((tierExcellent/cellCount)*100).toFixed(0) : 0}% Exc</span> · <span style="color:${qolScoreColor(62)}">${cellCount ? ((tierGood/cellCount)*100).toFixed(0) : 0}% Good</span> · <span style="color:${qolScoreColor(37)}">${cellCount ? ((tierPoor/cellCount)*100).toFixed(0) : 0}% Fair</span> · <span style="color:${qolScoreColor(12)}">${cellCount ? ((tierBad/cellCount)*100).toFixed(0) : 0}% Poor</span></div>
               </div>`}
+              ${best !== null ? `
+              <div class="insight-card">
+                <div class="label">Best Cell</div>
+                <div class="value" style="color:${qolScoreTextColor(best)}">${best}/100 <span style="font-size:11px;color:var(--text-muted);">(value: ${typeof bestVal === "number" ? bestVal.toFixed ? bestVal.toFixed(2) : bestVal : bestVal})</span></div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Worst Cell</div>
+                <div class="value" style="color:${qolScoreTextColor(worst)}">${worst}/100 <span style="font-size:11px;color:var(--text-muted);">(value: ${typeof worstVal === "number" ? worstVal.toFixed ? worstVal.toFixed(2) : worstVal : worstVal})</span></div>
+              </div>` : ""}
+              ${clusterInfo ? `<div class="insight-card">
+                <div class="label">Spatial Clustering</div>
+                <div class="value" style="color:${clusterInfo.color};font-size:13px;">${clusterInfo.text}</div>
+              </div>` : ""}
+              ${gridChartHtml}
               ${tiersHtml}
-              ${isVegGrid ? `<button class="btn btn-ghost btn-block mt-3" style="font-size:12px;" onclick="downloadVegCSV()">⬇ Download CSV report</button>` : ""}
-              ${isISPAGrid ? `<button class="btn btn-ghost btn-block mt-3" style="font-size:12px;" onclick="downloadISPACSV()">⬇ Download CSV report</button>` : ""}`;
+              <div style="display:flex;gap:6px;margin-top:12px;">
+                <button class="btn btn-ghost btn-block" style="flex:1;font-size:12px;" data-csv-dl="true">⬇ CSV</button>
+                <button class="btn btn-ghost btn-block" style="flex:1;font-size:12px;" data-geojson-dl="true">⬇ GeoJSON</button>
+              </div>`;
+
+            // Wire CSV download — universal for all services
+            const csvBtn = gridTabContent.querySelector("[data-csv-dl]");
+            if (csvBtn) csvBtn.onclick = () => downloadGridCSV(geojson, lastResultService);
+
+            // Wire GeoJSON download with colored fill_color already injected
+            const gjBtn = gridTabContent.querySelector("[data-geojson-dl]");
+            if (gjBtn) gjBtn.onclick = () => downloadGeoJSON(geojson, `${lastResultService}_grid.geojson`);
           }
 
         } catch (err) {
@@ -3080,6 +3537,102 @@ function qolScoreTextColor(score) {
   return `rgb(${r},${g},${b})`;
 }
 
+/* ============================================================
+   SHARED INSIGHT HELPERS
+   ============================================================ */
+
+function perfCategory(score) {
+  if (score >= 75) return { label: "Excellent", color: "var(--success)" };
+  if (score >= 50) return { label: "Good",      color: "#8bc34a" };
+  if (score >= 25) return { label: "Fair",       color: "var(--warning)" };
+  return               { label: "Poor",      color: "var(--danger)" };
+}
+
+function inequalityLabel(stdDev) {
+  if (stdDev < 10)  return { text: "Evenly distributed",  color: "var(--success)" };
+  if (stdDev < 25)  return { text: "Moderate variation",  color: "var(--warning)" };
+  return                   { text: "Highly uneven",        color: "var(--danger)"  };
+}
+
+function miniBarChart(values, bins, colors, labels) {
+  const max = Math.max(...values, 1);
+  return `<div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Distribution</div>
+    <div style="display:flex;align-items:flex-end;gap:3px;height:40px;margin-bottom:4px;">
+      ${values.map((v, i) => {
+        const h = Math.max(3, Math.round((v / max) * 38));
+        return `<div title="${labels[i]}: ${v}%" style="flex:1;height:${h}px;background:${colors[i]};border-radius:2px 2px 0 0;"></div>`;
+      }).join("")}
+    </div>
+    <div style="display:flex;gap:3px;">
+      ${labels.map((l, i) => `<div style="flex:1;font-size:9px;color:var(--text-muted);text-align:center;overflow:hidden;white-space:nowrap;">${l}</div>`).join("")}
+    </div>`;
+}
+
+function calcStdDev(arr) {
+  if (!arr.length) return 0;
+  const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+  return Math.sqrt(arr.reduce((s, v) => s + (v - mean) ** 2, 0) / arr.length);
+}
+
+function boundingExtentHtml(features) {
+  let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  features.forEach(f => {
+    const coords = f.geometry?.coordinates;
+    if (!coords) return;
+    const flat = f.geometry.type === "Point" ? [coords]
+      : f.geometry.type === "LineString" ? coords
+      : f.geometry.type === "Polygon" ? coords[0]
+      : f.geometry.type === "MultiPolygon" ? coords.flat(2)
+      : [];
+    flat.forEach(([lng, lat]) => {
+      if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+    });
+  });
+  if (!isFinite(minLng)) return "";
+  const dLng = (maxLng - minLng).toFixed(4), dLat = (maxLat - minLat).toFixed(4);
+  return `<div class="insight-card">
+    <div class="label">Bounding Extent</div>
+    <div class="value" style="font-size:12px;">${parseFloat(minLat).toFixed(4)}°N – ${parseFloat(maxLat).toFixed(4)}°N<br>${parseFloat(minLng).toFixed(4)}°E – ${parseFloat(maxLng).toFixed(4)}°E</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${dLng}° wide × ${dLat}° tall</div>
+  </div>`;
+}
+
+function coverageAreaHtml(features) {
+  let total = 0;
+  features.forEach(f => {
+    const a = f.properties?.area_km2 || f.properties?.aoi_area_km2;
+    if (a) total += parseFloat(a);
+  });
+  if (!total) return "";
+  return `<div class="insight-card">
+    <div class="label">Data Coverage Area</div>
+    <div class="value">${total.toFixed(2)} km²</div>
+  </div>`;
+}
+
+function clusteringLabel(scores) {
+  if (scores.length < 4) return null;
+  const sorted = [...scores].sort((a, b) => a - b);
+  const n = sorted.length;
+  const topQuartile   = sorted.slice(Math.floor(n * 0.75));
+  const botQuartile   = sorted.slice(0, Math.floor(n * 0.25));
+  const topMean = topQuartile.reduce((a, b) => a + b, 0) / topQuartile.length;
+  const botMean = botQuartile.reduce((a, b) => a + b, 0) / botQuartile.length;
+  const spread = topMean - botMean;
+  if (spread > 50) return { text: "High/low zones are clustered apart", color: "var(--warning)" };
+  if (spread > 25) return { text: "Moderate spatial grouping", color: "#8bc34a" };
+  return { text: "Well-mixed — scores spread evenly", color: "var(--success)" };
+}
+
+function downloadGeoJSON(geojson, filename) {
+  const blob = new Blob([JSON.stringify(geojson)], { type: "application/json" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 /* ---------- Fetch grid from backend and render on map ---------- */
 async function fetchAndRenderGrid(service, blob) {
   if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
@@ -3190,6 +3743,23 @@ async function fetchAndRenderGrid(service, blob) {
         );
       }
     },
+  });
+
+  // Inject fill_color into each feature for styled GeoJSON export
+  geojson.features.forEach(f => {
+    const p = f.properties;
+    if (isVeg) {
+      p.fill_color = vegPctColor(p.value ?? 0);
+    } else if (isTraffic) {
+      p.fill_color = congestionColor(p.congestion || "low");
+    } else if (isISPA) {
+      p.fill_color = irregularityColor(p.value ?? 0);
+    } else {
+      p.fill_color = qolScoreColor(p.qol_score ?? 0);
+    }
+    p.stroke = "rgba(0,0,0,0.15)";
+    p.stroke_width = 0.5;
+    p.fill_opacity = 0.75;
   });
 
   return geojson;
