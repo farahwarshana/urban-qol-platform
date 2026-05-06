@@ -37,6 +37,14 @@ Public Transport: cell is inside transit walking coverage → high score.
               uncovered (type="uncovered") → 0
               (score is interpolated from coverage fraction for partial cells)
 
+Air Quality Index: lower AQI class → higher score.
+              class 0 (Good)           → 95
+              class 1 (Moderate)       → 70
+              class 2 (Sensitive)      → 45
+              class 3 (Unhealthy)      → 25
+              class 4 (Very Unhealthy) → 10
+              class 5 (Hazardous)      →  0
+
 Vegetation Density: benchmarked against the 30% urban greenery standard.
               >= 50% vegetated → 75–100  (excellent, well above benchmark)
               30–50% vegetated → 50– 74  (good, at/above benchmark)
@@ -265,6 +273,31 @@ def _score_urban_density(density):
     return int(np.interp(min(density, 50000), [25000, 50000], [24, 0]))
 
 
+def _score_aqi(cls_value):
+    """
+    AQI class (0–5) → QoL score.
+
+    The backend outputs integer classes:
+      0 = Good              (AQI  0– 50)
+      1 = Moderate          (AQI 51–100)
+      2 = Sensitive groups  (AQI 101–150)
+      3 = Unhealthy         (AQI 151–200)
+      4 = Very Unhealthy    (AQI 201–300)
+      5 = Hazardous         (AQI >300)
+
+    Tier 4 Excellent : class 0 → 95  (clean air)
+    Tier 3 Good      : class 1 → 70  (acceptable)
+    Tier 2 Poor      : class 2 → 45  (sensitive groups affected)
+                     : class 3 → 25  (unhealthy for all)
+    Tier 1 Bad       : class 4 → 10  (very unhealthy)
+                     : class 5 →  0  (hazardous)
+    """
+    lut = {0: 95, 1: 70, 2: 45, 3: 25, 4: 10, 5: 0}
+    if np.isnan(cls_value) or cls_value < 0:
+        return None
+    return lut.get(int(round(cls_value)), None)
+
+
 def _score_facility_accessibility(walk_time_min):
     """
     Walk time to nearest facility (minutes) → QoL score.
@@ -296,7 +329,12 @@ def grid_from_raster(raster_path, service_type):
     Sample a single-band GeoTIFF on an adaptive grid and return a GeoJSON dict.
     Cell size is chosen automatically based on extent (target ~600 cells max).
     """
-    score_fn = _score_ndvi if service_type == "ndvi" else _score_heat_index
+    if service_type == "ndvi":
+        score_fn = _score_ndvi
+    elif service_type == "air-quality":
+        score_fn = _score_aqi
+    else:
+        score_fn = _score_heat_index
 
     with rasterio.open(raster_path) as src:
         bounds    = src.bounds

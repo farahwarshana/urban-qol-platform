@@ -25,6 +25,7 @@ from public_transport import calculate_transit_coverage
 from vegetation_density import calculate_vegetation_density
 from traffic_analysis import calculate_traffic_analysis
 from informal_settlement import calculate_informal_settlement
+from air_quality_index import calculate_air_quality_index
 from grid_analysis import (
     grid_from_raster,
     grid_from_vector,
@@ -62,6 +63,8 @@ app.add_middleware(
         "X-Cell-Size-M",
         "X-Avg-Irregularity", "X-High-Pct", "X-Medium-Pct", "X-Low-Pct",
         "X-Overall-QoL-Score", "X-High-Zone-Count",
+        "X-Pollutant", "X-Good-Pct", "X-Moderate-Pct", "X-Sensitive-Pct",
+        "X-Unhealthy-Pct", "X-Very-Unhealthy-Pct", "X-Hazardous-Pct",
     ],
 )
 
@@ -798,3 +801,72 @@ def grid_informal_settlement_endpoint(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Grid Informal Settlement failed: {e}")
+
+
+# ── Air Quality Index ─────────────────────────────────────────────────────────
+
+@app.post("/calculate-air-quality", tags=["Air Quality Index"])
+def calculate_air_quality_endpoint(
+    geotiff: UploadFile = File(..., description="Pollutant or AQI GeoTIFF (PM2.5, PM10, NO2, or direct AQI)"),
+):
+    """
+    Upload a single-band GeoTIFF containing PM2.5, PM10, NO2, or pre-computed AQI values.
+    The API classifies pixels into 6 AQI categories (0 = Good … 5 = Hazardous),
+    reprojects to EPSG:4326, and returns the result GeoTIFF with stats in headers.
+    Pollutant type is auto-detected from the filename.
+    """
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    aqi_dir = get_output_subdir("air_quality")
+
+    input_path  = tmp_dir / geotiff.filename
+    output_path = aqi_dir / f"air_quality_{job_id}.tif"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geotiff.file, f)
+
+        stats = calculate_air_quality_index(str(input_path), str(output_path))
+
+        return FileResponse(
+            path=str(output_path),
+            media_type="image/tiff",
+            filename=f"air_quality_{job_id}.tif",
+            headers={
+                "X-Pollutant":          stats["pollutant"],
+                "X-Valid-Pixels":       str(stats["valid_pixels"]),
+                "X-Good-Pct":           str(stats["good_pct"]),
+                "X-Moderate-Pct":       str(stats["moderate_pct"]),
+                "X-Sensitive-Pct":      str(stats["sensitive_pct"]),
+                "X-Unhealthy-Pct":      str(stats["unhealthy_pct"]),
+                "X-Very-Unhealthy-Pct": str(stats["very_unhealthy_pct"]),
+                "X-Hazardous-Pct":      str(stats["hazardous_pct"]),
+            },
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Air quality calculation failed: {e}")
+
+
+@app.post("/calculate-grid/air-quality", tags=["Grid Analysis"])
+def grid_air_quality_endpoint(
+    geotiff: UploadFile = File(..., description="Air quality result GeoTIFF (from /calculate-air-quality)"),
+):
+    """Divide the AQI raster into adaptive-size cells and score each cell for QoL."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "aqi_result.tif"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geotiff.file, f)
+
+        grid_geojson = grid_from_raster(str(input_path), "air-quality")
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Air Quality failed: {e}")

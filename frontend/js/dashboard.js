@@ -103,9 +103,9 @@ const SERVICES = {
   },
   "air-quality": {
     title: "Air Quality Index",
-    desc: "Compute AQI for the selected area.",
+    desc: "Classify PM2.5, PM10, NO2, or AQI raster into 6 AQI categories and map air quality.",
     inputs: [
-      { type: "text", id: "areaName", label: "Area name (e.g. Downtown)" },
+      { type: "file", id: "tiffInput", label: "Upload pollutant raster (GeoTIFF — PM2.5, PM10, NO2, or AQI)" },
     ],
   },
   "expansion": {
@@ -313,6 +313,11 @@ function runAnalysis(key) {
 
   if (key === "informal-settlement") {
     runInformalSettlementAnalysis();
+    return;
+  }
+
+  if (key === "air-quality") {
+    runAirQualityAnalysis();
     return;
   }
 
@@ -2110,6 +2115,177 @@ function renderHeatIndexResults(stats, inputs) {
 }
 
 
+/* ---------- Air Quality Analysis - calls backend API ---------- */
+async function runAirQualityAnalysis() {
+  const tiffInput = document.getElementById("tiffInput");
+
+  if (!tiffInput || !tiffInput.files[0]) {
+    alert("Please upload a GeoTIFF file first.");
+    return;
+  }
+
+  const file = tiffInput.files[0];
+  const inputs = { fileName: file.name };
+
+  const formData = new FormData();
+  formData.append("geotiff", file);
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Air Quality Index — Processing</h3>
+      <p class="panel-desc">Classifying AQI from uploaded raster...</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const response = await fetch("http://localhost:8000/calculate-air-quality", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    }
+
+    const pollutant       = response.headers.get("X-Pollutant");
+    const validPixels     = response.headers.get("X-Valid-Pixels");
+    const goodPct         = response.headers.get("X-Good-Pct");
+    const moderatePct     = response.headers.get("X-Moderate-Pct");
+    const sensitivePct    = response.headers.get("X-Sensitive-Pct");
+    const unhealthyPct    = response.headers.get("X-Unhealthy-Pct");
+    const veryUnhealthyPct= response.headers.get("X-Very-Unhealthy-Pct");
+    const hazardousPct    = response.headers.get("X-Hazardous-Pct");
+
+    const arrayBuffer = await response.arrayBuffer();
+    lastResultBlob    = arrayBuffer.slice(0);
+    lastResultService = "air-quality";
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
+
+    resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+      opacity: 0.9,
+      resolution: 256,
+    });
+
+    renderAirQualityResults({
+      pollutant,
+      valid_pixels:      validPixels,
+      good_pct:          goodPct,
+      moderate_pct:      moderatePct,
+      sensitive_pct:     sensitivePct,
+      unhealthy_pct:     unhealthyPct,
+      very_unhealthy_pct: veryUnhealthyPct,
+      hazardous_pct:     hazardousPct,
+    }, inputs);
+
+  } catch (error) {
+    console.error("Air quality calculation error:", error);
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">Failed to calculate AQI: ${error.message}</p>
+        <div class="alert alert-warning mt-2">
+          <strong>Note:</strong> Upload a single-band GeoTIFF. Pollutant type is
+          auto-detected from the filename (include "pm25", "pm10", "no2", or "aqi").
+        </div>
+        <button class="btn btn-ghost btn-block mt-3"
+                onclick="renderServicePanel('air-quality')">
+          ← Back to inputs
+        </button>
+      </div>
+    `;
+  }
+}
+
+
+/* ---------- Render Air Quality Results ---------- */
+function renderAirQualityResults(stats, inputs) {
+  const inputsHtml = inputs ? `
+    <div class="insight-card">
+      <div class="label">GeoTIFF file</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Pollutant detected</div>
+      <div class="value">${stats.pollutant || "N/A"}</div>
+    </div>
+  ` : `<p class="text-muted">No input info available.</p>`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Air Quality Index — Results</h3>
+      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+
+      <div class="tabs">
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+      </div>
+
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
+      </div>
+
+      <div class="tab-content active" id="tab-full">
+        <div class="insight-card">
+          <div class="label">Valid Pixels</div>
+          <div class="value">${stats.valid_pixels || "N/A"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Good (class 0)</div>
+          <div class="value">${stats.good_pct || "N/A"}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Moderate (class 1)</div>
+          <div class="value">${stats.moderate_pct || "N/A"}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Sensitive groups (class 2)</div>
+          <div class="value">${stats.sensitive_pct || "N/A"}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Unhealthy (class 3)</div>
+          <div class="value">${stats.unhealthy_pct || "N/A"}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Very Unhealthy (class 4)</div>
+          <div class="value">${stats.very_unhealthy_pct || "N/A"}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Hazardous (class 5)</div>
+          <div class="value">${stats.hazardous_pct || "N/A"}%</div>
+        </div>
+        <ul class="bullet-list">
+          <li>Class 0 — Good: AQI ≤ 50</li>
+          <li>Class 1 — Moderate: AQI 51–100</li>
+          <li>Class 2 — Unhealthy for Sensitive Groups: AQI 101–150</li>
+          <li>Class 3 — Unhealthy: AQI 151–200</li>
+          <li>Class 4 — Very Unhealthy: AQI 201–300</li>
+          <li>Class 5 — Hazardous: AQI > 300</li>
+        </ul>
+      </div>
+
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Click this tab to generate the cell grid…</p>
+      </div>
+
+      <button class="btn btn-ghost btn-block mt-3"
+              onclick="renderServicePanel('air-quality')">
+        ← Back to inputs
+      </button>
+    </div>
+  `;
+
+  wireTabSwitching();
+}
+
+
 /* ---------- Render the tabbed Results panel ---------- */
 function renderResults(service) {
   analysisPanel.innerHTML = `
@@ -2732,14 +2908,16 @@ async function fetchAndRenderGrid(service, blob) {
   const formData = new FormData();
   let endpoint;
 
-  if (service === "ndvi" || service === "heat-index") {
+  if (service === "ndvi" || service === "heat-index" || service === "air-quality") {
     // blob is an ArrayBuffer — wrap in a File
     const ext  = "tif";
     const file = new File([blob], `result.${ext}`, { type: "image/tiff" });
     formData.append("geotiff", file);
     endpoint = service === "ndvi"
       ? "http://localhost:8000/calculate-grid/ndvi"
-      : "http://localhost:8000/calculate-grid/heat-index";
+      : service === "heat-index"
+        ? "http://localhost:8000/calculate-grid/heat-index"
+        : "http://localhost:8000/calculate-grid/air-quality";
   } else {
     // blob is a plain JS object (GeoJSON) — serialise it
     const file = new File(
