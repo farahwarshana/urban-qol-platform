@@ -2546,7 +2546,11 @@ function wireTabSwitching() {
               </div>`;
 
             gridTabContent.innerHTML = `
-              <p class="text-muted" style="font-size:11px;">Cell size: ${cellLabel} × ${cellLabel} (auto-scaled). Score: 100 = best QoL, 0 = worst.</p>
+              <ul style="font-size:12px;color:var(--text-primary);line-height:1.8;padding-left:16px;margin:0 0 10px;">
+                <li>Cell size: <strong>${cellLabel} × ${cellLabel}</strong> (auto-scaled to area)</li>
+                <li>Score: <strong style="color:${qolScoreTextColor(88)};">100</strong> = best QoL &nbsp;·&nbsp; <strong style="color:${qolScoreTextColor(12)};">0</strong> = worst QoL</li>
+                <li>Click any cell on the map for its score</li>
+              </ul>
               <div class="insight-card">
                 <div class="label">Cells Analyzed</div>
                 <div class="value">${cellCount}</div>
