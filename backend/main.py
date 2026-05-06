@@ -24,6 +24,7 @@ from facility_Accessibility_index import calculate_facility_accessibility
 from public_transport import calculate_transit_coverage
 from vegetation_density import calculate_vegetation_density
 from traffic_analysis import calculate_traffic_analysis
+from informal_settlement import calculate_informal_settlement
 from grid_analysis import (
     grid_from_raster,
     grid_from_vector,
@@ -31,6 +32,7 @@ from grid_analysis import (
     grid_from_transit_coverage,
     grid_from_vegetation,
     grid_from_traffic,
+    grid_from_informal_settlement,
 )
 
 app = FastAPI(
@@ -58,6 +60,8 @@ app.add_middleware(
         "X-Road-Length-Km", "X-AOI-Area-Km2", "X-Road-Density",
         "X-Density-Class", "X-Traffic-Pressure", "X-High-Congestion-Pct",
         "X-Cell-Size-M",
+        "X-Avg-Irregularity", "X-High-Pct", "X-Medium-Pct", "X-Low-Pct",
+        "X-Overall-QoL-Score", "X-High-Zone-Count",
     ],
 )
 
@@ -719,3 +723,78 @@ def grid_traffic_endpoint(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Grid Traffic failed: {e}")
+
+
+# ── Informal Settlement Pattern Analysis ─────────────────────────────────────
+
+@app.post("/calculate-informal-settlement", tags=["Informal Settlement"])
+def calculate_informal_settlement_endpoint(
+    geotiff: UploadFile = File(..., description="Satellite or aerial imagery GeoTIFF"),
+):
+    """
+    Analyse informal settlement patterns from a GeoTIFF raster.
+
+    Uses texture irregularity, edge density, and built-up crowding to score
+    each cell 0–100 (0 = planned/formal, 100 = irregular/informal) and
+    classify as Low / Medium / High. High-irregularity cells are merged into
+    zone polygons. Returns a combined GeoJSON with statistics in headers.
+    """
+    job_id      = str(uuid.uuid4())
+    tmp_dir     = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    ispa_dir    = get_output_subdir("informal_settlement")
+
+    tiff_path   = tmp_dir / "input.tif"
+    output_path = ispa_dir / f"informal_settlement_{job_id}.geojson"
+
+    try:
+        with tiff_path.open("wb") as f:
+            shutil.copyfileobj(geotiff.file, f)
+
+        result = calculate_informal_settlement(
+            geotiff_path=str(tiff_path),
+            output_path=str(output_path),
+            tmp_dir=str(tmp_dir),
+        )
+
+        with open(str(output_path), "r", encoding="utf-8") as f:
+            geojson_data = json.load(f)
+
+        return JSONResponse(
+            content=geojson_data,
+            headers={
+                "X-Avg-Irregularity":  str(result["avg_irregularity"]),
+                "X-High-Pct":          str(result["high_pct"]),
+                "X-Medium-Pct":        str(result["medium_pct"]),
+                "X-Low-Pct":           str(result["low_pct"]),
+                "X-Overall-QoL-Score": str(result["overall_qol_score"]),
+                "X-Cell-Size-M":       str(result["cell_size_m"]),
+                "X-High-Zone-Count":   str(result["high_zone_count"]),
+            },
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Informal settlement analysis failed: {e}")
+
+
+@app.post("/calculate-grid/informal-settlement", tags=["Grid Analysis"])
+def grid_informal_settlement_endpoint(
+    geojson: UploadFile = File(..., description="Informal settlement result GeoJSON (from /calculate-informal-settlement)"),
+):
+    """Re-score the informal settlement grid GeoJSON and return it for the grid/cell tab."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "ispa_result.geojson"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        grid_geojson = grid_from_informal_settlement(str(input_path))
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Informal Settlement failed: {e}")

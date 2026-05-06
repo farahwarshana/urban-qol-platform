@@ -94,6 +94,13 @@ const SERVICES = {
       { type: "number", id: "populationInput", label: "Population (optional — enables traffic pressure)" },
     ],
   },
+  "informal-settlement": {
+    title: "Informal Settlement Pattern Analysis",
+    desc: "Detect informal settlement patterns from satellite/aerial imagery using texture, edge density, and built-up crowding analysis.",
+    inputs: [
+      { type: "file", id: "tiffInput", label: "Upload satellite/aerial imagery (GeoTIFF)" },
+    ],
+  },
   "air-quality": {
     title: "Air Quality Index",
     desc: "Compute AQI for the selected area.",
@@ -301,6 +308,11 @@ function runAnalysis(key) {
 
   if (key === "traffic") {
     runTrafficAnalysis();
+    return;
+  }
+
+  if (key === "informal-settlement") {
+    runInformalSettlementAnalysis();
     return;
   }
 
@@ -1533,6 +1545,282 @@ function renderTrafficResults(stats, inputs) {
 }
 
 
+/* ============================================================
+   INFORMAL SETTLEMENT PATTERN ANALYSIS — analysis and results
+   ============================================================ */
+
+let lastISPAResult = null;
+
+/* ---------- Irregularity score → fill colour ---------- */
+function irregularityColor(score) {
+  // 0 (planned/good) = green, 33 = yellow, 67+ = red
+  if (score === null || score === undefined) return "rgba(150,150,150,0.3)";
+  const s = Math.max(0, Math.min(100, score));
+  if (s <= 33) {
+    const t = s / 33;
+    return `rgba(${Math.round((1-t)*46+t*240)},${Math.round((1-t)*180+t*200)},${Math.round((1-t)*50+t*0)},0.72)`;
+  }
+  if (s <= 66) {
+    const t = (s - 33) / 33;
+    return `rgba(${Math.round((1-t)*240+t*220)},${Math.round((1-t)*200+t*60)},0,0.72)`;
+  }
+  const t = (s - 66) / 34;
+  return `rgba(${Math.round((1-t)*220+t*180)},${Math.round((1-t)*60+t*20)},0,0.72)`;
+}
+
+/* ---------- Informal Settlement Analysis — calls backend API ---------- */
+async function runInformalSettlementAnalysis() {
+  const tiffInput = document.getElementById("tiffInput");
+
+  if (!tiffInput || !tiffInput.files[0]) {
+    alert("Please upload a satellite/aerial GeoTIFF file.");
+    return;
+  }
+
+  const tiffFile = tiffInput.files[0];
+  const inputs   = { fileName: tiffFile.name };
+
+  const formData = new FormData();
+  formData.append("geotiff", tiffFile);
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Informal Settlement — Processing</h3>
+      <p class="panel-desc">Computing texture irregularity, edge density, and built-up crowding…</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading…</span>
+        </div>
+      </div>
+    </div>`;
+
+  try {
+    const response = await fetch(
+      "http://localhost:8000/calculate-informal-settlement",
+      { method: "POST", body: formData }
+    );
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+
+    const avgIrregularity  = parseFloat(response.headers.get("X-Avg-Irregularity") || "0");
+    const highPct          = parseFloat(response.headers.get("X-High-Pct")          || "0");
+    const mediumPct        = parseFloat(response.headers.get("X-Medium-Pct")        || "0");
+    const lowPct           = parseFloat(response.headers.get("X-Low-Pct")           || "0");
+    const overallQoL       = parseFloat(response.headers.get("X-Overall-QoL-Score") || "0");
+    const cellSizeM        = parseInt(response.headers.get("X-Cell-Size-M")         || "0");
+    const highZoneCount    = parseInt(response.headers.get("X-High-Zone-Count")     || "0");
+
+    const geojsonData = await response.json();
+
+    lastISPAResult    = geojsonData;
+    lastResultBlob    = geojsonData;
+    lastResultService = "informal-settlement";
+
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
+    if (inputLayer) map.removeLayer(inputLayer);
+    clearMap();
+
+    // Render: cells coloured by irregularity score, high-zone outlines on top
+    resultLayer = L.geoJSON(geojsonData, {
+      style: function(feature) {
+        const p = feature.properties;
+        if (p.type === "high_irregularity_zone") {
+          return {
+            fillColor:   "transparent",
+            fillOpacity: 0,
+            color:       "#e74c3c",
+            weight:      2.5,
+            dashArray:   "5,4",
+          };
+        }
+        return {
+          fillColor:   irregularityColor(p.irregularity_score),
+          fillOpacity: 0.7,
+          color:       "rgba(0,0,0,0.18)",
+          weight:      0.7,
+        };
+      },
+      onEachFeature: function(feature, layer) {
+        const p = feature.properties;
+        if (p.type === "high_irregularity_zone") {
+          layer.bindPopup("<strong>High Irregularity Zone</strong><br>Potential informal settlement area");
+          return;
+        }
+        const cls   = p.classification || "—";
+        const score = p.irregularity_score !== null ? p.irregularity_score : "—";
+        const qol   = p.qol_score !== null ? p.qol_score + "/100" : "—";
+        layer.bindPopup(
+          `<strong>Irregularity Score:</strong> ${score}/100<br>` +
+          `<strong>Classification:</strong> ${cls}<br>` +
+          `<strong>QoL Score:</strong> ${qol}<br>` +
+          `<strong>Built-up Ratio:</strong> ${(p.buildup_ratio * 100).toFixed(1)}%`
+        );
+      },
+    }).addTo(map);
+
+    try {
+      const b = resultLayer.getBounds();
+      if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+    } catch(e) {}
+
+    renderInformalSettlementResults({
+      avg_irregularity: avgIrregularity,
+      high_pct:         highPct,
+      medium_pct:       mediumPct,
+      low_pct:          lowPct,
+      overall_qol:      overallQoL,
+      cell_size_m:      cellSizeM,
+      high_zone_count:  highZoneCount,
+    }, inputs);
+
+  } catch (error) {
+    console.error("Informal settlement analysis error:", error);
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">Failed to analyse informal settlement patterns: ${error.message}</p>
+        <button class="btn btn-ghost btn-block mt-3"
+                onclick="renderServicePanel('informal-settlement')">
+          ← Back to inputs
+        </button>
+      </div>`;
+  }
+}
+
+
+/* ---------- Render Informal Settlement Results ---------- */
+function renderInformalSettlementResults(stats, inputs) {
+  const scoreColor = qolScoreTextColor(stats.overall_qol);
+
+  const highColor   = stats.high_pct   > 30 ? "var(--danger)"  : stats.high_pct   > 10 ? "var(--warning)" : "var(--success)";
+  const lowColor    = stats.low_pct    > 50 ? "var(--success)" : "var(--text-muted)";
+
+  const classLabel = stats.avg_irregularity <= 33
+    ? `<span style="color:var(--success)">Low — Mostly Planned</span>`
+    : stats.avg_irregularity <= 66
+      ? `<span style="color:var(--warning)">Medium — Mixed Patterns</span>`
+      : `<span style="color:var(--danger)">High — Informal Patterns Detected</span>`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Informal Settlement — Results</h3>
+      <p class="panel-desc">Analysis complete. Explore tabs below.</p>
+
+      <div class="tabs">
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+      </div>
+
+      <!-- RAW tab -->
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        <div class="insight-card">
+          <div class="label">Imagery file</div>
+          <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Metrics computed</div>
+          <div class="value" style="font-size:11px;">Texture irregularity · Edge density · Built-up crowding</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Cell size (approx.)</div>
+          <div class="value">${stats.cell_size_m >= 1000 ? (stats.cell_size_m/1000).toFixed(1)+" km" : stats.cell_size_m+" m"} × ${stats.cell_size_m >= 1000 ? (stats.cell_size_m/1000).toFixed(1)+" km" : stats.cell_size_m+" m"}</div>
+        </div>
+      </div>
+
+      <!-- FULL AREA tab -->
+      <div class="tab-content active" id="tab-full">
+        <div class="insight-card" style="border-left:3px solid ${stats.avg_irregularity > 66 ? 'var(--danger)' : stats.avg_irregularity > 33 ? 'var(--warning)' : 'var(--success)'};">
+          <div class="label">Overall Classification</div>
+          <div class="value">${classLabel}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Avg Irregularity Score</div>
+          <div class="value">${stats.avg_irregularity.toFixed(1)} / 100</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Overall QoL Score</div>
+          <div class="value" style="color:${scoreColor}">${stats.overall_qol} / 100</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">High-Irregularity Cells</div>
+          <div class="value" style="color:${highColor}">${stats.high_pct.toFixed(1)}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Medium-Irregularity Cells</div>
+          <div class="value" style="color:var(--warning)">${stats.medium_pct.toFixed(1)}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Low-Irregularity Cells</div>
+          <div class="value" style="color:${lowColor}">${stats.low_pct.toFixed(1)}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Merged High-Irregularity Zones</div>
+          <div class="value">${stats.high_zone_count}</div>
+        </div>
+        <ul class="bullet-list">
+          <li>Green = planned / regular, Red = irregular / potentially informal</li>
+          <li>Red dashed outlines = merged high-irregularity zones</li>
+          <li>Score 0–33 = Low (planned), 34–66 = Medium, 67–100 = High (informal)</li>
+          <li>Irregularity computed from texture variance, edge density, and built-up ratio</li>
+        </ul>
+      </div>
+
+      <!-- GRID tab -->
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Click this tab to score cells…</p>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-top:12px;">
+        <button class="btn btn-ghost btn-block"
+                onclick="downloadISPACSV()"
+                style="flex:1;font-size:12px;">⬇ Download CSV</button>
+        <button class="btn btn-ghost btn-block"
+                onclick="renderServicePanel('informal-settlement')"
+                style="flex:1;font-size:12px;">← Back</button>
+      </div>
+    </div>`;
+
+  wireTabSwitching();
+}
+
+
+/* ---------- CSV export for informal settlement cells ---------- */
+function downloadISPACSV() {
+  if (!lastISPAResult || !lastISPAResult.features) {
+    alert("Run the analysis first.");
+    return;
+  }
+  const rows = [["cell_lat","cell_lon","irregularity_score","classification","qol_score","texture_val","edge_val","buildup_ratio"]];
+  lastISPAResult.features.forEach(f => {
+    const p = f.properties;
+    if (p.type === "high_irregularity_zone") return;
+    rows.push([
+      p.cell_cy ?? "",
+      p.cell_cx ?? "",
+      p.irregularity_score ?? "",
+      p.classification ?? "",
+      p.qol_score ?? "",
+      p.texture_val ?? "",
+      p.edge_val ?? "",
+      p.buildup_ratio ?? "",
+    ]);
+  });
+  const csv  = rows.map(r => r.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = "informal_settlement_report.csv";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+
 /* ---------- Render Crime Results with stats ---------- */
 function renderCrimeResults(stats, inputs) {
   const inputsHtml = inputs ? `
@@ -1969,6 +2257,7 @@ function wireTabSwitching() {
           if (gridTabContent) {
             const isVegGrid     = lastResultService === "vegetation";
             const isTrafficGrid = lastResultService === "traffic";
+            const isISPAGrid    = lastResultService === "informal-settlement";
 
             // Vegetation-specific: count passing / failing cells against benchmark
             let vegPassCount = 0, vegFailCount = 0, vegPctValues = [];
@@ -1993,6 +2282,22 @@ function wireTabSwitching() {
                 else trafficLow++;
               });
             }
+
+            // ISPA-specific: count classification tiers
+            let ispaLow = 0, ispaMed = 0, ispaHigh = 0, ispaIrrValues = [];
+            if (isISPAGrid) {
+              geojson.features.forEach(f => {
+                const cls = f.properties.classification;
+                if (cls === "high")   ispaHigh++;
+                else if (cls === "medium") ispaMed++;
+                else ispaLow++;
+                if (f.properties.value !== null && f.properties.value !== undefined)
+                  ispaIrrValues.push(f.properties.value);
+              });
+            }
+            const ispaAvgIrr = ispaIrrValues.length
+              ? (ispaIrrValues.reduce((a,b) => a+b, 0) / ispaIrrValues.length).toFixed(1)
+              : null;
 
             const tiersHtml = isVegGrid ? `
               <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Vegetation tiers vs. 30% standard</div>
@@ -2027,6 +2332,21 @@ function wireTabSwitching() {
                 <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
                   <div style="width:14px;height:14px;background:#e74c3c;border-radius:3px;flex-shrink:0;"></div>
                   <span><strong>High</strong> &nbsp;congestion hotspot</span>
+                </div>
+              </div>` : isISPAGrid ? `
+              <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Irregularity tiers</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${irregularityColor(10)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Low (Planned)</strong> &nbsp;0–33</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${irregularityColor(50)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>Medium</strong> &nbsp;34–66</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:14px;height:14px;background:${irregularityColor(85)};border-radius:3px;flex-shrink:0;"></div>
+                  <span><strong>High (Informal)</strong> &nbsp;67–100</span>
                 </div>
               </div>` : `
               <div style="margin:12px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers</div>
@@ -2083,6 +2403,26 @@ function wireTabSwitching() {
               <div class="insight-card">
                 <div class="label">Average QoL Score</div>
                 <div class="value" style="color:${qolScoreTextColor(avg)}">${avg !== null ? avg + "/100" : "N/A"}</div>
+              </div>` : isISPAGrid ? `
+              <div class="insight-card">
+                <div class="label">Avg Irregularity Score</div>
+                <div class="value">${ispaAvgIrr !== null ? ispaAvgIrr + "/100" : "N/A"}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Low (Planned) Cells</div>
+                <div class="value" style="color:var(--success)">${ispaLow}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Medium Cells</div>
+                <div class="value" style="color:var(--warning)">${ispaMed}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">High (Informal) Cells</div>
+                <div class="value" style="color:var(--danger)">${ispaHigh}</div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Average QoL Score</div>
+                <div class="value" style="color:${qolScoreTextColor(avg)}">${avg !== null ? avg + "/100" : "N/A"}</div>
               </div>` : `
               <div class="insight-card">
                 <div class="label">Average QoL Score</div>
@@ -2097,7 +2437,8 @@ function wireTabSwitching() {
                 <div class="value" style="color:${qolScoreTextColor(worst)}">${worst !== null ? worst + "/100" : "N/A"}</div>
               </div>`}
               ${tiersHtml}
-              ${isVegGrid ? `<button class="btn btn-ghost btn-block mt-3" style="font-size:12px;" onclick="downloadVegCSV()">⬇ Download CSV report</button>` : ""}`;
+              ${isVegGrid ? `<button class="btn btn-ghost btn-block mt-3" style="font-size:12px;" onclick="downloadVegCSV()">⬇ Download CSV report</button>` : ""}
+              ${isISPAGrid ? `<button class="btn btn-ghost btn-block mt-3" style="font-size:12px;" onclick="downloadISPACSV()">⬇ Download CSV report</button>` : ""}`;
           }
 
         } catch (err) {
@@ -2417,7 +2758,9 @@ async function fetchAndRenderGrid(service, blob) {
             ? "http://localhost:8000/calculate-grid/vegetation"
             : service === "traffic"
               ? "http://localhost:8000/calculate-grid/traffic"
-              : "http://localhost:8000/calculate-grid/facility-accessibility";
+              : service === "informal-settlement"
+                ? "http://localhost:8000/calculate-grid/informal-settlement"
+                : "http://localhost:8000/calculate-grid/facility-accessibility";
   }
 
   const response = await fetch(endpoint, { method: "POST", body: formData });
@@ -2428,8 +2771,9 @@ async function fetchAndRenderGrid(service, blob) {
 
   const geojson = await response.json();
 
-  const isVeg     = service === "vegetation";
+  const isVeg   = service === "vegetation";
   const isTraffic = service === "traffic";
+  const isISPA  = service === "informal-settlement";
 
   gridLayer = L.geoJSON(geojson, {
     style: function(feature) {
@@ -2440,6 +2784,8 @@ async function fetchAndRenderGrid(service, blob) {
         fillColor = vegPctColor(p.value ?? 0);
       } else if (isTraffic) {
         fillColor = congestionColor(p.congestion || "low");
+      } else if (isISPA) {
+        fillColor = irregularityColor(p.value ?? 0);
       } else {
         fillColor = qolScoreColor(score);
       }
@@ -2469,6 +2815,13 @@ async function fetchAndRenderGrid(service, blob) {
           `<strong>Road Density:</strong> ${(p.value ?? 0).toFixed(2)} km/km²` +
           `<br><strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100` +
           pressure
+        );
+      } else if (isISPA) {
+        const cls = p.classification || "—";
+        layer.bindPopup(
+          `<strong>Irregularity Score:</strong> ${p.value ?? "—"}/100<br>` +
+          `<strong>Classification:</strong> ${cls}<br>` +
+          `<strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100`
         );
       } else {
         const scoreText = p.qol_score !== null ? `${p.qol_score}/100` : "No data";
