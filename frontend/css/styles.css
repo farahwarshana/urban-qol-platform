@@ -342,6 +342,53 @@ input:focus, select:focus, textarea:focus {
 }
 .map-controls .btn { padding: 6px 10px; font-size: 12px; }
 
+.btn-active {
+  background: var(--accent) !important;
+  color: #06212e !important;
+  border-color: var(--accent) !important;
+}
+
+.measure-label {
+  background: rgba(15, 20, 24, 0.82);
+  color: #4cc2ff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(76, 194, 255, 0.35);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -130%);
+  display: inline-block;
+}
+
+.measure-total {
+  background: rgba(15, 20, 24, 0.88);
+  color: #4cc2ff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(76, 194, 255, 0.35);
+  white-space: nowrap;
+  align-self: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.measure-clear-btn {
+  background: transparent;
+  border: 1px solid rgba(76, 194, 255, 0.5);
+  color: #4cc2ff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.measure-clear-btn:hover { background: rgba(76, 194, 255, 0.15); }
+
 /* ---------- Right sidebar / analysis panel ---------- */
 .analysis-panel { padding: 12px 16px; }
 

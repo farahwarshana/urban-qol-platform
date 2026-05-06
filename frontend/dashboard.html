@@ -160,7 +160,8 @@
             </div>
           </div>
 
-          <button onclick="ndvi()" class="btn" title="measure"><img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Measure</button>  
+          <button class="btn" id="measureBtn" title="measure" onclick="toggleMeasure()"><img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Measure</button>
+          <div id="measureTotal" class="measure-total" style="display:none;"></div>
 
           <div class="user-menu" id="exportMenu">
             <button class="btn" id="export-btn" onclick="toggleExportMenu()">

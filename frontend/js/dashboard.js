@@ -2711,6 +2711,182 @@ function initMap() {
 
 window.addEventListener("load", initMap);
 
+/* ============================================================
+   MEASURE TOOL
+   ============================================================ */
+const measureState = {
+  active: false,
+  sessionPoints: [], // points in the CURRENT active session only — resets on each activation
+  totalDistance: 0,  // accumulated metres across ALL past sessions — never reset except by Clear
+  markers: [],       // [L.CircleMarker, ...]
+  lines: [],         // [L.Polyline, ...]
+  labels: [],        // [L.Marker with divIcon, ...]
+  previewLine: null  // ghosted line following cursor
+};
+
+function haversineMeters(a, b) {
+  const R = 6371000;
+  const φ1 = a.lat * Math.PI / 180, φ2 = b.lat * Math.PI / 180;
+  const Δφ = (b.lat - a.lat) * Math.PI / 180;
+  const Δλ = (b.lng - a.lng) * Math.PI / 180;
+  const s = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+function formatDist(m) {
+  return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m';
+}
+
+function measureMidpoint(a, b) {
+  return L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
+}
+
+function measureDistLabel(mid, text) {
+  return L.marker(mid, {
+    icon: L.divIcon({
+      className: '',
+      html: `<div class="measure-label">${text}</div>`,
+      iconAnchor: [0, 0]
+    }),
+    interactive: false,
+    zIndexOffset: 500
+  }).addTo(map);
+}
+
+function measureDrawSegment(a, b) {
+  const line = L.polyline([a, b], {
+    color: '#4cc2ff',
+    weight: 2,
+    dashArray: '6 5',
+    opacity: 0.7,
+    interactive: false
+  }).addTo(map);
+  const dist = haversineMeters(a, b);
+  const label = measureDistLabel(measureMidpoint(a, b), formatDist(dist));
+  measureState.lines.push(line);
+  measureState.labels.push(label);
+  return dist;
+}
+
+// Transparent div that sits over the entire map during measure mode,
+// capturing all pointer events so vector layers can't swallow clicks.
+let _measureOverlay = null;
+
+function measureGetOverlay() {
+  if (_measureOverlay) return _measureOverlay;
+  _measureOverlay = document.createElement('div');
+  _measureOverlay.style.cssText = 'position:absolute;inset:0;z-index:650;cursor:crosshair;display:none;';
+  map.getContainer().appendChild(_measureOverlay);
+  return _measureOverlay;
+}
+
+// dblclick fires a click first; ignore that extra click.
+let _measureIgnoreNextClick = false;
+
+function measureOnOverlayClick(e) {
+  if (_measureIgnoreNextClick) { _measureIgnoreNextClick = false; return; }
+  const latlng = map.containerPointToLatLng(
+    L.point(e.clientX - map.getContainer().getBoundingClientRect().left,
+            e.clientY - map.getContainer().getBoundingClientRect().top)
+  );
+  const pts = measureState.sessionPoints;
+  const marker = L.circleMarker(latlng, {
+    radius: 5,
+    color: '#4cc2ff',
+    fillColor: '#ffffff',
+    fillOpacity: 1,
+    weight: 2,
+    interactive: false
+  }).addTo(map);
+  measureState.markers.push(marker);
+  if (pts.length > 0) {
+    const segDist = measureDrawSegment(pts[pts.length - 1], latlng);
+    measureState.totalDistance += segDist;
+  }
+  pts.push(latlng);
+  measureUpdateTotal();
+}
+
+function measureOnOverlayDblClick(e) {
+  _measureIgnoreNextClick = true;
+  measureDeactivate();
+}
+
+function measureOnOverlayMouseMove(e) {
+  if (measureState.sessionPoints.length === 0) return;
+  const rect = map.getContainer().getBoundingClientRect();
+  const latlng = map.containerPointToLatLng(L.point(e.clientX - rect.left, e.clientY - rect.top));
+  const last = measureState.sessionPoints[measureState.sessionPoints.length - 1];
+  if (measureState.previewLine) measureState.previewLine.setLatLngs([last, latlng]);
+  else {
+    measureState.previewLine = L.polyline([last, latlng], {
+      color: '#4cc2ff',
+      weight: 1.5,
+      dashArray: '4 6',
+      opacity: 0.45,
+      interactive: false
+    }).addTo(map);
+  }
+}
+
+function measureClearAll() {
+  measureState.markers.forEach(m => map.removeLayer(m));
+  measureState.lines.forEach(l => map.removeLayer(l));
+  measureState.labels.forEach(l => map.removeLayer(l));
+  if (measureState.previewLine) map.removeLayer(measureState.previewLine);
+  Object.assign(measureState, { sessionPoints: [], totalDistance: 0, markers: [], lines: [], labels: [], previewLine: null });
+  const el = document.getElementById('measureTotal');
+  el.style.display = 'none';
+  el.innerHTML = '';
+}
+
+function measureUpdateTotal() {
+  const el = document.getElementById('measureTotal');
+  if (measureState.totalDistance === 0 && measureState.sessionPoints.length < 2) { el.style.display = 'none'; return; }
+  el.innerHTML = 'Total: ' + formatDist(measureState.totalDistance);
+  el.style.display = 'flex';
+}
+
+function measureDeactivate() {
+  measureState.active = false;
+  measureState.sessionPoints = []; // reset session; drawn visuals and totalDistance persist
+  const btn = document.getElementById('measureBtn');
+  btn.innerHTML = '<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Measure';
+  btn.classList.remove('btn-active');
+
+  const overlay = measureGetOverlay();
+  overlay.style.display = 'none';
+  overlay.removeEventListener('click', measureOnOverlayClick);
+  overlay.removeEventListener('dblclick', measureOnOverlayDblClick);
+  overlay.removeEventListener('mousemove', measureOnOverlayMouseMove);
+
+  if (measureState.previewLine) { map.removeLayer(measureState.previewLine); measureState.previewLine = null; }
+
+  if (measureState.totalDistance > 0) {
+    const el = document.getElementById('measureTotal');
+    el.innerHTML = `Total: ${formatDist(measureState.totalDistance)} <button class="measure-clear-btn" onclick="measureClearAll()">Clear</button>`;
+    el.style.display = 'flex';
+  }
+}
+
+function toggleMeasure() {
+  if (measureState.active) {
+    measureDeactivate();
+    return;
+  }
+  measureState.sessionPoints = []; // fresh session, no link to previous lines
+  measureState.active = true;
+  const btn = document.getElementById('measureBtn');
+  btn.innerHTML = '<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Cancel';
+  btn.classList.add('btn-active');
+
+  const overlay = measureGetOverlay();
+  overlay.style.display = 'block';
+  overlay.addEventListener('click', measureOnOverlayClick);
+  overlay.addEventListener('dblclick', measureOnOverlayDblClick);
+  overlay.addEventListener('mousemove', measureOnOverlayMouseMove);
+}
+
 /* changning basemap*/
 
 function changeBasemap(new_basemap) { // value passed directly
