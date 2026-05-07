@@ -644,6 +644,11 @@ async function runUrbanDensityAnalysis() {
     // Render the urban density result on the map as GeoJSON
     const geojsonData = await response.json();
 
+    // Detect the name field from the first feature's properties
+    const nameFieldPatterns = /\b(name|nombre|nom|bezeichnung|area|region|district|zone|ward|neighborhood|neighbourhood|locality|title|label|admin)\b/i;
+    const firstProps = geojsonData.features?.[0]?.properties || {};
+    const nameKey = Object.keys(firstProps).find(k => nameFieldPatterns.test(k) && k !== "area_km2") || null;
+
     // Store for grid analysis
     lastResultBlob    = geojsonData;
     lastResultService = "urban-density";
@@ -672,10 +677,11 @@ async function runUrbanDensityAnalysis() {
       },
       onEachFeature: function(feature, layer) {
         const props = feature.properties;
+        const areaName = (nameKey && props[nameKey]) ? props[nameKey] : 'Unknown';
         const info = `
-          <strong>Area:</strong> ${props.NBHD_NAME || props.name || 'Unknown'}<br>
+          <strong>Area:</strong> ${areaName}<br>
           <strong>Population:</strong> ${props[populationFieldValue] || 0}<br>
-          <strong>Area:</strong> ${props.area_km2?.toFixed(2) || 0} km²<br>
+          <strong>Area (km²):</strong> ${props.area_km2?.toFixed(2) || 0} km²<br>
           <strong>Urban Density:</strong> ${props.urban_density?.toFixed(2) || 0} /km²
         `;
         layer.bindPopup(info);
