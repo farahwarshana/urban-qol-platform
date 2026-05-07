@@ -2187,7 +2187,7 @@ function renderUrbanDensityResults(stats, inputs) {
           <div class="value" style="color:${scoreColor}">${densityScore} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Performance</div>
+          <div class="label">Overall Density Distribution</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>
         <div class="insight-card">
@@ -3019,6 +3019,14 @@ function wireTabSwitching() {
                   <div style="width:12px;height:12px;background:${irregularityColor(v)};border-radius:2px;flex-shrink:0;"></div>
                   <span><strong>${l}</strong> ${r}</span>
                 </div>`).join("")}
+              </div>` : lastResultService === "urban-density" ? `
+              <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers (target: 5,000 pop/km²)</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                ${[[88,"Excellent","near 5,000 pop/km²"],[62,"Good","2,500–10,000 pop/km²"],[37,"Fair","500–2,500 or 10,000–20,000"],[12,"Poor","< 500 or > 20,000 pop/km²"]].map(([v,l,r])=>`
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:12px;height:12px;background:${qolScoreColor(v)};border-radius:2px;flex-shrink:0;"></div>
+                  <span><strong>${l}</strong> ${r}</span>
+                </div>`).join("")}
               </div>` : `
               <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers</div>
               <div style="display:flex;flex-direction:column;gap:4px;">
@@ -3029,8 +3037,12 @@ function wireTabSwitching() {
                 </div>`).join("")}
               </div>`;
 
+            const isUrbanDensityGrid = lastResultService === "urban-density";
             gridTabContent.innerHTML = `
               <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px;">Cell size: <strong>${cellLabel} × ${cellLabel}</strong> · Click any cell on the map for details.</p>
+              ${isUrbanDensityGrid ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:var(--text-primary);">
+                💡 Scores are based on the healthy recommended population density of <strong>5,000 pop/km²</strong>. Cells closer to this target score higher — both under- and over-populated areas score lower.
+              </div>` : ""}
               <div class="insight-card">
                 <div class="label">Total Cells</div>
                 <div class="value">${cellCount}</div>
@@ -3898,6 +3910,14 @@ async function fetchAndRenderGrid(service, blob) {
           `<strong>Irregularity Score:</strong> ${p.value ?? "—"}/100<br>` +
           `<strong>Classification:</strong> ${cls}<br>` +
           `<strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100`
+        );
+      } else if (service === "urban-density") {
+        const density   = p.value !== null && p.value !== undefined ? Math.round(p.value) : "—";
+        const scoreText = p.qol_score !== null ? `${p.qol_score}/100` : "No data";
+        layer.bindPopup(
+          `<strong>Density:</strong> ${density} pop/km²<br>` +
+          `<strong>Score:</strong> ${scoreText}<br>` +
+          `<span style="font-size:11px;color:#aaa;">Score is based on proximity to the healthy recommended density of 5,000 pop/km²</span>`
         );
       } else {
         const scoreText = p.qol_score !== null ? `${p.qol_score}/100` : "No data";
