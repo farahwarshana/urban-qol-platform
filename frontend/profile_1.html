@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Profile — Urban QOL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222636;
+      --border: rgba(255,255,255,0.07);
+      --border2: rgba(255,255,255,0.12);
+      --accent: #00d4aa;
+      --accent2: #0099ff;
+      --text: #e8eaf0;
+      --muted: #7a7f94;
+      --danger: #ff4d6d;
+      --warn: #f59e0b;
+      --success: #10b981;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Navbar ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: 60px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .nav-logo svg {
+      width: 28px; height: 28px;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .nav-btn {
+      background: none;
+      border: 1px solid var(--border2);
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2.5rem 2rem;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    /* ── Profile Card ── */
+    .profile-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      position: sticky;
+      top: 80px;
+    }
+
+    .profile-banner {
+      height: 80px;
+      background: linear-gradient(135deg, #0f4c3a 0%, #1a3a5c 100%);
+      position: relative;
+    }
+
+    .profile-banner::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        rgba(0,212,170,0.04) 10px,
+        rgba(0,212,170,0.04) 20px
+      );
+    }
+
+    .avatar-wrap {
+      padding: 0 1.5rem;
+      margin-top: -32px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 3px solid var(--surface);
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 600;
+      color: #0f1117;
+      position: relative;
+      cursor: pointer;
+      overflow: hidden;
+    }
+
+    .avatar-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s;
+      font-size: 18px;
+    }
+
+    .avatar:hover .avatar-overlay { opacity: 1; }
+
+    .profile-info {
+      padding: 1rem 1.5rem 1.5rem;
+    }
+
+    .profile-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .profile-email {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    .profile-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(0,212,170,0.1);
+      border: 1px solid rgba(0,212,170,0.25);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-bottom: 1.25rem;
+    }
+
+    .profile-badge span { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+    .profile-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 1.25rem;
+    }
+
+    .stat-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem;
+      text-align: center;
+    }
+
+    .stat-num {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--accent);
+      display: block;
+      font-family: 'DM Mono', monospace;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 1rem 0;
+    }
+
+    .info-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .info-row svg { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.6; }
+    .info-row span { color: var(--text); }
+
+    .edit-btn {
+      width: 100%;
+      padding: 10px;
+      background: rgba(0,212,170,0.08);
+      border: 1px solid rgba(0,212,170,0.2);
+      color: var(--accent);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 1rem;
+    }
+
+    .edit-btn:hover {
+      background: rgba(0,212,170,0.15);
+      border-color: var(--accent);
+    }
+
+    /* ── Right Column ── */
+    .right-col { display: flex; flex-direction: column; gap: 1.5rem; }
+
+    /* ── Section Header ── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title svg { width: 16px; height: 16px; color: var(--accent); }
+
+    .section-count {
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 2px 10px;
+      border-radius: 20px;
+    }
+
+    /* ── Edit Form Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"],
+    select,
+    textarea {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+    }
+
+    textarea { resize: vertical; min-height: 80px; }
+
+    select option { background: var(--surface); }
+
+    .form-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 1.25rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn-cancel {
+      background: none;
+      border: 1px solid var(--border2);
+      color: var(--muted);
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-cancel:hover { border-color: var(--border2); color: var(--text); }
+
+    .btn-save {
+      background: var(--accent);
+      border: none;
+      color: #0f1117;
+      padding: 9px 24px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-save:hover { background: #00f0c0; }
+
+    /* ── Analysis History ── */
+    .filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-btn.active, .filter-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,212,170,0.07);
+    }
+
+    .analysis-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .analysis-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 1rem;
+      align-items: center;
+      transition: border-color 0.2s;
+      cursor: pointer;
+    }
+
+    .analysis-item:hover { border-color: var(--border2); }
+
+    .analysis-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .analysis-icon.ndvi    { background: rgba(16,185,129,0.12); }
+    .analysis-icon.heat    { background: rgba(245,158,11,0.12); }
+    .analysis-icon.crime   { background: rgba(255,77,109,0.12); }
+    .analysis-icon.transit { background: rgba(0,153,255,0.12); }
+    .analysis-icon.urban   { background: rgba(168,85,247,0.12); }
+    .analysis-icon.air     { background: rgba(0,212,170,0.12); }
+
+    .analysis-meta h4 {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+
+    .analysis-meta p {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .analysis-meta p span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .analysis-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    .score-badge {
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+
+    .score-high   { background: rgba(16,185,129,0.12); color: #10b981; }
+    .score-mid    { background: rgba(245,158,11,0.12);  color: #f59e0b; }
+    .score-low    { background: rgba(255,77,109,0.12);  color: #ff4d6d; }
+
+    .dl-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s;
+    }
+
+    .dl-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .dl-btn svg { width: 12px; height: 12px; }
+
+    /* ── Empty State ── */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 2rem;
+      color: var(--muted);
+    }
+
+    .empty-state svg { width: 48px; height: 48px; opacity: 0.3; margin-bottom: 1rem; }
+    .empty-state p { font-size: 14px; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s ease;
+      z-index: 999;
+    }
+
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+    @media (max-width: 768px) {
+      .container { grid-template-columns: 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
+      .profile-card { position: static; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav>
+  <a href="#" class="nav-logo">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="28" height="28" rx="7" fill="#00d4aa" fill-opacity="0.15"/>
+      <path d="M7 20L11 12L15 16L19 8L21 12" stroke="#00d4aa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="21" cy="12" r="2" fill="#00d4aa"/>
+    </svg>
+    Urban Quality of Life Analysis Platform
+  </a>
+  <div class="nav-right">
+    <button class="nav-btn">← Back to Map</button>
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="container">
+
+  <!-- Left: Profile Card -->
+  <aside>
+    <div class="profile-card">
+      <div class="profile-banner"></div>
+      <div class="avatar-wrap">
+        <div class="avatar" id="avatarEl" onclick="document.getElementById('avatarInput').click()">
+          <span id="avatarInitials">NF</span>
+          <div class="avatar-overlay">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" width="18" height="18"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </div>
+        </div>
+        <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="handleAvatar(event)"/>
+      </div>
+      <div class="profile-info">
+        <div class="profile-name" id="displayName">Nada Faroha</div>
+        <div class="profile-email" id="displayEmail">nada@urbanqol.io</div>
+        <div class="profile-badge"><span></span> Active Researcher</div>
+        <div class="profile-stats">
+          <div class="stat-box">
+            <span class="stat-num" id="statTotal">12</span>
+            <div class="stat-label">Analyses</div>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num" id="statLayers">7</span>
+            <div class="stat-label">Layer Types</div>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num">Cairo</span>
+            <div class="stat-label">Region</div>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num">2025</span>
+            <div class="stat-label">Member Since</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="info-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span id="displayCity">Cairo, Egypt</span>
+        </div>
+        <div class="info-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          <span id="displayOrg">ITI — Urban Planning Dept.</span>
+        </div>
+        <button class="edit-btn" onclick="toggleEdit()">
+          ✏️ Edit Profile
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Column -->
+  <main class="right-col">
+
+    <!-- Edit Form (hidden by default) -->
+    <div class="card" id="editForm" style="display:none">
+      <div class="section-header">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit Profile
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>First Name</label>
+          <input type="text" id="firstName" value="Nada" placeholder="First name"/>
+        </div>
+        <div class="form-group">
+          <label>Last Name</label>
+          <input type="text" id="lastName" value="Faroha" placeholder="Last name"/>
+        </div>
+        <div class="form-group full">
+          <label>Email Address</label>
+          <input type="email" id="emailInput" value="nada@urbanqol.io" placeholder="email@example.com"/>
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="tel" id="phoneInput" value="+20 100 000 0000" placeholder="+20 ..."/>
+        </div>
+        <div class="form-group">
+          <label>City</label>
+          <input type="text" id="cityInput" value="Cairo" placeholder="Your city"/>
+        </div>
+        <div class="form-group full">
+          <label>Organization</label>
+          <input type="text" id="orgInput" value="ITI — Urban Planning Dept." placeholder="Your organization"/>
+        </div>
+        <div class="form-group full">
+          <label>Bio</label>
+          <textarea id="bioInput" placeholder="Tell us about your research focus...">Urban GIS analyst focused on quality of life metrics across Egyptian cities.</textarea>
+        </div>
+        <div class="form-group">
+          <label>Research Focus</label>
+          <select id="focusInput">
+            <option>Urban Planning</option>
+            <option>Environmental Analysis</option>
+            <option>Transportation</option>
+            <option>Public Health</option>
+            <option>Informal Settlements</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Country</label>
+          <select id="countryInput">
+            <option>Egypt</option>
+            <option>Saudi Arabia</option>
+            <option>UAE</option>
+            <option>Jordan</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleEdit()">Cancel</button>
+        <button class="btn-save" onclick="saveProfile()">Save Changes</button>
+      </div>
+    </div>
+
+    <!-- Analysis History -->
+    <div class="card">
+      <div class="section-header">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Analysis History
+        </div>
+        <span class="section-count" id="historyCount">12 runs</span>
+      </div>
+
+      <div class="filters">
+        <button class="filter-btn active" onclick="filterHistory('all', this)">All</button>
+        <button class="filter-btn" onclick="filterHistory('ndvi', this)">NDVI</button>
+        <button class="filter-btn" onclick="filterHistory('heat', this)">Heat Index</button>
+        <button class="filter-btn" onclick="filterHistory('transit', this)">Transport</button>
+        <button class="filter-btn" onclick="filterHistory('crime', this)">Crime</button>
+        <button class="filter-btn" onclick="filterHistory('urban', this)">Urban Density</button>
+        <button class="filter-btn" onclick="filterHistory('air', this)">Air Quality</button>
+      </div>
+
+      <div class="analysis-list" id="analysisList"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toastMsg">Changes saved successfully</span>
+</div>
+
+<script>
+//   const analyses = [
+//     { id:1, type:'ndvi',    icon:'🌿', title:'NDVI Analysis — New Cairo',          area:'New Cairo District',      date:'May 6, 2026',  time:'11:34 PM', score:78,  status:'high'  },
+//     { id:2, type:'heat',    icon:'🌡️', title:'Heat Index — Heliopolis',            area:'Heliopolis Zone',          date:'May 5, 2026',  time:'10:12 PM', score:42,  status:'mid'   },
+//     { id:3, type:'transit', icon:'🚌', title:'Public Transport Coverage — Maadi',  area:'Maadi District',           date:'May 5, 2026',  time:'03:44 AM', score:61,  status:'mid'   },
+//     { id:4, type:'urban',   icon:'🏙️', title:'Urban Density — Downtown Cairo',     area:'Cairo Governorate',        date:'May 4, 2026',  time:'08:20 PM', score:85,  status:'high'  },
+//     { id:5, type:'crime',   icon:'🔴', title:'Crime Density — Ain Shams',          area:'Ain Shams',                date:'May 3, 2026',  time:'01:15 AM', score:29,  status:'low'   },
+//     { id:6, type:'air',     icon:'💨', title:'Air Quality Index — 6th October',    area:'6th October City',         date:'May 3, 2026',  time:'12:00 AM', score:55,  status:'mid'   },
+//     { id:7, type:'ndvi',    icon:'🌿', title:'NDVI Analysis — Zamalek',            area:'Zamalek Island',           date:'May 2, 2026',  time:'07:00 PM', score:91,  status:'high'  },
+//     { id:8, type:'heat',    icon:'🌡️', title:'Heat Index — Shubra',               area:'Shubra El-Kheima',         date:'May 1, 2026',  time:'09:30 PM', score:37,  status:'low'   },
+//     { id:9, type:'transit', icon:'🚌', title:'Public Transport — Giza',            area:'Giza Governorate',         date:'Apr 30, 2026', time:'05:15 PM', score:48,  status:'mid'   },
+//     { id:10,type:'urban',   icon:'🏙️', title:'Urban Density — 10th of Ramadan',   area:'10th of Ramadan City',     date:'Apr 29, 2026', time:'11:00 AM', score:72,  status:'high'  },
+//     { id:11,type:'crime',   icon:'🔴', title:'Crime Density — Imbaba',             area:'Imbaba District',          date:'Apr 28, 2026', time:'02:00 AM', score:18,  status:'low'   },
+//     { id:12,type:'air',     icon:'💨', title:'Air Quality — Helwan',              area:'Helwan Industrial Zone',   date:'Apr 27, 2026', time:'04:45 PM', score:22,  status:'low'   },
+//   ];
+
+const analyses = [];
+
+  let currentFilter = 'all';
+  async function loadAnalyses() {
+  const token = localStorage.getItem('token');
+  
+  const res = await fetch('http://localhost:8000/analyses', {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  
+  const data = await res.json();
+  analyses.push(...data);
+  renderList('all');
+}
+
+  function renderList(filter) {
+    const list = document.getElementById('analysisList');
+    const count = document.getElementById('historyCount');
+    const filtered = filter === 'all' ? analyses : analyses.filter(a => a.type === filter);
+    count.textContent = filtered.length + ' runs';
+
+    if (!filtered.length) {
+      list.innerHTML = `<div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <p>No analyses found for this filter.</p>
+      </div>`;
+      return;
+    }
+
+    list.innerHTML = filtered.map(a => `
+      <div class="analysis-item">
+        <div class="analysis-icon ${a.type}">${a.icon}</div>
+        <div class="analysis-meta">
+          <h4>${a.title}</h4>
+          <p>
+            <span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              ${a.area}
+            </span>
+            <span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              ${a.date} · ${a.time}
+            </span>
+          </p>
+        </div>
+        <div class="analysis-right">
+          <span class="score-badge score-${a.status}">${a.score}/100</span>
+          <button class="dl-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function filterHistory(type, btn) {
+    currentFilter = type;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderList(type);
+  }
+
+  function toggleEdit() {
+    const form = document.getElementById('editForm');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    if (form.style.display === 'block') form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function saveProfile() {
+    const first = document.getElementById('firstName').value.trim();
+    const last  = document.getElementById('lastName').value.trim();
+    const email = document.getElementById('emailInput').value.trim();
+    const city  = document.getElementById('cityInput').value.trim();
+    const country = document.getElementById('countryInput').value;
+    const org   = document.getElementById('orgInput').value.trim();
+
+    document.getElementById('displayName').textContent = first + ' ' + last;
+    document.getElementById('displayEmail').textContent = email;
+    document.getElementById('displayCity').textContent = city + ', ' + country;
+    document.getElementById('displayOrg').textContent = org;
+
+    const initials = (first[0] || '') + (last[0] || '');
+    document.getElementById('avatarInitials').textContent = initials.toUpperCase();
+
+    toggleEdit();
+    showToast('Profile updated successfully');
+  }
+
+  function handleAvatar(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      const av = document.getElementById('avatarEl');
+      av.style.backgroundImage = `url(${ev.target.result})`;
+      av.style.backgroundSize = 'cover';
+      av.style.backgroundPosition = 'center';
+      document.getElementById('avatarInitials').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+async function loadProfile() {
+  const token = localStorage.getItem('token');
+  
+  const res = await fetch('http://localhost:8000/profile', {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  
+  const data = await res.json();
+  
+  document.getElementById('displayName').textContent = data.full_name;
+  document.getElementById('displayEmail').textContent = data.email;
+  document.getElementById('displayCity').textContent = data.city;
+  document.getElementById('displayOrg').textContent = data.organization;
+  document.getElementById('avatarInitials').textContent = data.initials;
+}
+
+loadProfile();
+
+loadAnalyses();
+
+</script>
+</body>
+</html>
