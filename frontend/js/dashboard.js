@@ -705,7 +705,7 @@ async function runUrbanDensityAnalysis() {
       area_count: areaCount,
       avg_density: avgDensity,
       max_density: maxDensity,
-    }, inputs);
+    }, inputs, geojsonData, nameKey);
 
   } catch (error) {
     console.error("Urban density calculation error:", error);
@@ -2106,27 +2106,58 @@ function renderCrimeResults(stats, inputs) {
 
 
 /* ---------- Render Urban Density Results with stats ---------- */
-function renderUrbanDensityResults(stats, inputs) {
-  const avgDen = parseFloat(stats.avg_density) || 0;
-  const maxDen = parseFloat(stats.max_density) || 0;
+function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
+  const avgDen    = parseFloat(stats.avg_density) || 0;
+  const maxDen    = parseFloat(stats.max_density) || 0;
   const areaCount = parseInt(stats.area_count) || 0;
   const totalArea = parseFloat(stats.total_area) || 0;
 
-  // Score: well-distributed density is good; extreme peaks indicate stress
-  const densityScore = maxDen > 0 ? Math.max(0, Math.round(100 - Math.min(80, (maxDen / Math.max(avgDen, 1)) * 10))) : 50;
-  const cat = perfCategory(densityScore);
-  const scoreColor = qolScoreTextColor(densityScore);
+  // Average density classification based on 5,000 pop/km² standard
+  function avgDensityClass(d) {
+    if (d <= 0)     return { label: "No Data",  color: "var(--text-muted)" };
+    if (d < 1000)   return { label: "Low",      color: "#4cc2ff" };
+    if (d <= 5000)  return { label: "Medium",   color: "#f39c12" };
+    return               { label: "High",      color: "var(--danger)" };
+  }
+  const avgClass = avgDensityClass(avgDen);
+
+  // Per-feature data for hotspot / lowest-zone cards (requires nameKey)
+  let hotspotHtml = "";
+  let lowzoneHtml = "";
+  if (nameKey && geojsonData && geojsonData.features) {
+    const areas = geojsonData.features
+      .map(f => ({ name: f.properties[nameKey], density: f.properties.urban_density || 0 }))
+      .filter(a => a.name);
+    if (areas.length) {
+      const sorted = [...areas].sort((a, b) => b.density - a.density);
+      const top    = sorted.slice(0, 3);
+      const bottom = sorted.slice(-3).reverse();
+      hotspotHtml = `
+        <div class="insight-card">
+          <div class="label">High-Density Clusters (Hotspots)</div>
+          <div class="value" style="font-size:12px;line-height:1.8;">
+            ${top.map((a, i) => `<span style="color:var(--danger);">${i + 1}. ${a.name}</span> <span style="color:var(--text-muted);font-size:11px;">${Math.round(a.density).toLocaleString()} pop/km²</span>`).join("<br>")}
+          </div>
+        </div>`;
+      lowzoneHtml = `
+        <div class="insight-card">
+          <div class="label">Lowest-Density Zones (Underutilized Land)</div>
+          <div class="value" style="font-size:12px;line-height:1.8;">
+            ${bottom.map((a, i) => `<span style="color:#4cc2ff;">${i + 1}. ${a.name}</span> <span style="color:var(--text-muted);font-size:11px;">${Math.round(a.density).toLocaleString()} pop/km²</span>`).join("<br>")}
+          </div>
+        </div>`;
+    }
+  }
+
+  // Store per-feature data for the grid tab histogram
+  lastUrbanDensityFeatures = geojsonData && geojsonData.features
+    ? geojsonData.features.map(f => ({
+        name:    nameKey ? f.properties[nameKey] : null,
+        density: f.properties.urban_density || 0,
+      }))
+    : null;
 
   const ineq = maxDen > 0 ? inequalityLabel(calcStdDev([avgDen, maxDen])) : null;
-
-  const highDen = maxDen;
-  const lowDen  = Math.max(0, 2 * avgDen - maxDen);
-  const chartHtml = miniBarChart(
-    [lowDen.toFixed(0), avgDen.toFixed(0), highDen.toFixed(0)],
-    3,
-    ["#4cc2ff", "#f39c12", "#e74c3c"],
-    ["Low", "Avg", "Peak"]
-  );
 
   const keyInsight = maxDen > 0
     ? (maxDen / Math.max(avgDen, 0.01)) > 3
@@ -2183,16 +2214,14 @@ function renderUrbanDensityResults(stats, inputs) {
           <div class="value">${areaCount.toLocaleString()}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Overall Score</div>
-          <div class="value" style="color:${scoreColor}">${densityScore} / 100</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Overall Density Distribution</div>
-          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
-        </div>
-        <div class="insight-card">
           <div class="label">Avg Density</div>
           <div class="value">${stats.avg_density || "N/A"} pop/km²</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Avg Density Classification</div>
+          <div class="value" style="color:${avgClass.color};font-size:15px;">${avgClass.label}
+            <span style="font-size:10px;color:var(--text-muted);font-weight:normal;"> (standard: 5,000 pop/km²)</span>
+          </div>
         </div>
         <div class="insight-card">
           <div class="label">Peak Density Zone</div>
@@ -2202,7 +2231,8 @@ function renderUrbanDensityResults(stats, inputs) {
           <div class="label">Distribution Balance</div>
           <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
         </div>` : ""}
-        ${chartHtml}
+        ${hotspotHtml}
+        ${lowzoneHtml}
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
@@ -3038,6 +3068,38 @@ function wireTabSwitching() {
               </div>`;
 
             const isUrbanDensityGrid = lastResultService === "urban-density";
+
+            // ---- Urban density histogram (pop/km² bins) ----
+            let densityHistogramHtml = "";
+            if (isUrbanDensityGrid && lastUrbanDensityFeatures && lastUrbanDensityFeatures.length) {
+              const denBins  = [0, 0, 0, 0, 0];  // <500, 500–2500, 2500–5000, 5000–10000, >10000
+              const denLabels = ["<500", "500–2.5k", "2.5k–5k", "5k–10k", ">10k"];
+              const denColors = ["#4cc2ff", "#7ecbff", "#f39c12", "#e67e22", "#e74c3c"];
+              lastUrbanDensityFeatures.forEach(({ density: d }) => {
+                if (d < 500)        denBins[0]++;
+                else if (d < 2500)  denBins[1]++;
+                else if (d < 5000)  denBins[2]++;
+                else if (d < 10000) denBins[3]++;
+                else                denBins[4]++;
+              });
+              const maxBin = Math.max(...denBins, 1);
+              densityHistogramHtml = `
+                <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Density Histogram (pop/km²)</div>
+                <div style="display:flex;align-items:flex-end;gap:3px;height:48px;margin-bottom:4px;">
+                  ${denBins.map((v, i) => {
+                    const h = Math.max(3, Math.round((v / maxBin) * 46));
+                    const isOptimal = i === 2;
+                    return `<div title="${denLabels[i]}: ${v} area(s)" style="flex:1;height:${h}px;background:${denColors[i]};border-radius:2px 2px 0 0;position:relative;">
+                      ${isOptimal ? `<div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--accent);white-space:nowrap;">★ target</div>` : ""}
+                    </div>`;
+                  }).join("")}
+                </div>
+                <div style="display:flex;gap:3px;">
+                  ${denLabels.map(l => `<div style="flex:1;font-size:9px;color:var(--text-muted);text-align:center;overflow:hidden;white-space:nowrap;">${l}</div>`).join("")}
+                </div>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">★ 2,500–5,000 band is closest to the 5,000 pop/km² healthy target</div>`;
+            }
+
             gridTabContent.innerHTML = `
               <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px;">Cell size: <strong>${cellLabel} × ${cellLabel}</strong> · Click any cell on the map for details.</p>
               ${isUrbanDensityGrid ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:var(--text-primary);">
@@ -3047,6 +3109,11 @@ function wireTabSwitching() {
                 <div class="label">Total Cells</div>
                 <div class="value">${cellCount}</div>
               </div>
+              ${avg !== null ? `
+              <div class="insight-card">
+                <div class="label">Average Score</div>
+                <div class="value" style="color:${qolScoreTextColor(avg)}">${avg} / 100</div>
+              </div>` : ""}
               ${isVegGrid ? `
               <div class="insight-card">
                 <div class="label">Cells meeting 30% benchmark</div>
@@ -3081,6 +3148,7 @@ function wireTabSwitching() {
                 <div class="label">Spatial Clustering</div>
                 <div class="value" style="color:${clusterInfo.color};font-size:13px;">${clusterInfo.text}</div>
               </div>` : ""}
+              ${densityHistogramHtml}
               ${gridChartHtml}
               ${tiersHtml}
               <div style="display:flex;gap:6px;margin-top:12px;">
@@ -3666,6 +3734,9 @@ let gridLayer   = null;  // 200 m cell QoL layer — shown when Grid/Cell tab is
 // Holds the last analysis result so the grid endpoint can re-use it
 let lastResultBlob    = null;  // ArrayBuffer (rasters) or object (geojson)
 let lastResultService = null;  // e.g. "ndvi", "heat-index", "crime", "urban-density"
+
+// Holds per-feature urban density data so the grid tab can build a histogram
+let lastUrbanDensityFeatures = null;  // array of {name, density} from the full-area result
 
 /* ---------- QoL score → colour (4-tier: green / yellow-green / orange / red) ---------- */
 function _qolRGB(score) {
