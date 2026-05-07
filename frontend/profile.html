@@ -9,7 +9,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Profile · Urban QoL Platform</title>
+  <title>Malaz · User Profile</title>
+  <link type="image/png" sizes="16x16" rel="icon" href="https://img.icons8.com/isometric-line/50/ffffff/building.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <link
@@ -22,16 +23,23 @@
 
   <!-- Top navbar (same component as dashboard) -->
   <nav class="navbar-app">
-    <div class="brand">
-      <span>🌆</span>
-      <span>Urban QoL Platform</span>
-    </div>
+    <div class="brand"><a href="dashboard.html">
+      <span>
+        <img width="45" height="45" src="https://img.icons8.com/isometric-line/50/4cc2ff/building.png" alt="building"/>
+      </span>
+      <span>Malaz · Urban Quality of Life Analysis</span>
+    </a></div>
+
     <div class="nav-actions">
-      <a href="dashboard.html" class="btn btn-ghost">Dashboard</a>
+      <a href="dashboard.html" class="btn btn-ghost">
+        <img width="20" height="20" src="https://img.icons8.com/fluency/48/dashboard-layout.png" alt="dashboard-layout"/>
+        Dashboard</a>
       <div class="user-menu" id="userMenu">
         <button class="user-btn" onclick="toggleUserMenu()">
-          <span>👤</span>
-          <span>User</span>
+          <span>
+            <img width="24" height="24" src="https://img.icons8.com/material-rounded/24/FFFFFF/name.png" alt="name"/>
+          </span>
+          <span>Profile</span>
           <span>▾</span>
         </button>
         <div class="dropdown">
@@ -45,8 +53,8 @@
   <!-- Page body -->
   <div class="page-container fade-in">
     <div class="page-header">
-      <h1>My Profile</h1>
-      <p>Past analyses you've run on the platform.</p>
+      <h1>My History</h1>
+      <p>Past analyses you've run on Malaz.</p>
     </div>
 
     <!--

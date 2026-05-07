@@ -243,34 +243,45 @@ def _score_urban_density(density):
     """
     Population density (people / km²) → QoL score.
 
-    Urban QoL peaks at moderate density: enough people for good services,
-    parks, transit, but not so many that overcrowding degrades livability.
+    The WHO / urban-planning recommended healthy density is 5,000 pop/km².
+    Scores peak at exactly 5,000 and fall symmetrically in both directions:
+    too sparse means poor services; too dense means overcrowding.
 
-    Tier 4 Excellent : 1 000 – 5 000 /km² → 75–100  (vibrant mixed-use urban)
-    Tier 3 Good      :   200 – 1 000 /km² → 50– 74  (suburban / low urban)
-                      : 5 000 –12 000 /km² → 74– 50  (dense urban, still OK)
-    Tier 2 Poor      :    50 –   200 /km² → 25– 49  (sparse, poor services)
-                      :12 000 –25 000 /km² → 49– 25  (overcrowded)
-    Tier 1 Bad       :     0 –    50 /km² →  0– 24  (rural / no services)
-                      :   >25 000    /km² →  0– 24  (extreme overcrowding)
+    Below 5,000 (under-populated):
+      5 000 → 100   (optimal)
+      2 500 →  75   (good)
+        500 →  50   (fair — suburban fringe)
+        100 →  25   (poor — sparse)
+          0 →   0   (no population)
+
+    Above 5,000 (over-populated):
+      5 000 → 100   (optimal)
+     10 000 →  75   (still liveable)
+     20 000 →  50   (crowded)
+     35 000 →  25   (severely overcrowded)
+     50 000 →   0   (extreme)
     """
-    if np.isnan(density) or density < 0:
+    if density is None or (isinstance(density, float) and np.isnan(density)) or density < 0:
         return None
-    # rising side
-    if density < 50:
-        return int(np.interp(density, [0, 50], [0, 24]))
-    if density < 200:
-        return int(np.interp(density, [50, 200], [25, 49]))
-    if density < 1000:
-        return int(np.interp(density, [200, 1000], [50, 74]))
-    if density < 5000:
-        return int(np.interp(density, [1000, 5000], [75, 100]))
-    # falling side — overcrowding
-    if density < 12000:
-        return int(np.interp(density, [5000, 12000], [100, 50]))
-    if density < 25000:
-        return int(np.interp(density, [12000, 25000], [49, 25]))
-    return int(np.interp(min(density, 50000), [25000, 50000], [24, 0]))
+    OPTIMAL = 5000
+    if density <= OPTIMAL:
+        # under-populated side
+        if density >= 2500:
+            return int(np.interp(density, [2500, OPTIMAL], [75, 100]))
+        if density >= 500:
+            return int(np.interp(density, [500, 2500], [50, 75]))
+        if density >= 100:
+            return int(np.interp(density, [100, 500], [25, 50]))
+        return int(np.interp(density, [0, 100], [0, 25]))
+    else:
+        # over-populated side
+        if density <= 10000:
+            return int(np.interp(density, [OPTIMAL, 10000], [100, 75]))
+        if density <= 20000:
+            return int(np.interp(density, [10000, 20000], [75, 50]))
+        if density <= 35000:
+            return int(np.interp(density, [20000, 35000], [50, 25]))
+        return int(np.interp(min(density, 50000), [35000, 50000], [25, 0]))
 
 
 def _score_aqi(cls_value):

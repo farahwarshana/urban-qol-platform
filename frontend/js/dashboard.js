@@ -192,7 +192,8 @@ function renderServicePanel(key) {
     return `
       <div class="form-group">
         <label for="${field.id}">${field.label}</label>
-        <input type="text" id="${field.id}" />
+        <input type="text" id="${field.id}" placeholder="${field.placeholder || ""}" />
+        ${field.id === "populationField" ? `<small id="populationFieldHint" class="text-muted" style="display:none;">Auto-detected — you can edit this.</small>` : ""}
       </div>`;
   }).join("");
 
@@ -643,6 +644,11 @@ async function runUrbanDensityAnalysis() {
     // Render the urban density result on the map as GeoJSON
     const geojsonData = await response.json();
 
+    // Detect the name field from the first feature's properties
+    const nameFieldPatterns = /\b(name|nombre|nom|bezeichnung|area|region|district|zone|ward|neighborhood|neighbourhood|locality|title|label|admin)\b/i;
+    const firstProps = geojsonData.features?.[0]?.properties || {};
+    const nameKey = Object.keys(firstProps).find(k => nameFieldPatterns.test(k) && k !== "area_km2") || null;
+
     // Store for grid analysis
     lastResultBlob    = geojsonData;
     lastResultService = "urban-density";
@@ -671,10 +677,11 @@ async function runUrbanDensityAnalysis() {
       },
       onEachFeature: function(feature, layer) {
         const props = feature.properties;
+        const areaName = (nameKey && props[nameKey]) ? props[nameKey] : 'Unknown';
         const info = `
-          <strong>Area:</strong> ${props.NBHD_NAME || props.name || 'Unknown'}<br>
+          <strong>Area:</strong> ${areaName}<br>
           <strong>Population:</strong> ${props[populationFieldValue] || 0}<br>
-          <strong>Area:</strong> ${props.area_km2?.toFixed(2) || 0} km²<br>
+          <strong>Area (km²):</strong> ${props.area_km2?.toFixed(2) || 0} km²<br>
           <strong>Urban Density:</strong> ${props.urban_density?.toFixed(2) || 0} /km²
         `;
         layer.bindPopup(info);
@@ -698,7 +705,7 @@ async function runUrbanDensityAnalysis() {
       area_count: areaCount,
       avg_density: avgDensity,
       max_density: maxDensity,
-    }, inputs);
+    }, inputs, geojsonData, nameKey);
 
   } catch (error) {
     console.error("Urban density calculation error:", error);
@@ -1336,26 +1343,25 @@ function downloadVegCSV() {
     alert("Run the analysis first.");
     return;
   }
-  const BENCHMARK = 30;
-  const rows = [["cell_lat","cell_lon","vegetation_pct","qol_score","passes_30pct","status"]];
+  const rows = [["lat","lon","vegetation_pct","qol_score","passes_30pct","status"]];
   lastVegResult.features.forEach(f => {
-    const p    = f.properties;
-    const pass = p.passes_30pct ? "PASS" : "FAIL";
+    const p = f.properties;
+    const [geoLon, geoLat] = featureCentroid(f);
     rows.push([
-      p.cell_cy ?? "",
-      p.cell_cx ?? "",
+      p.cell_cy ?? geoLat ?? "",
+      p.cell_cx ?? geoLon ?? "",
       p.vegetation_pct ?? "",
       p.qol_score ?? "",
       p.passes_30pct ? "true" : "false",
-      pass,
+      p.passes_30pct ? "PASS" : "FAIL",
     ]);
   });
-  const csv     = rows.map(r => r.join(",")).join("\n");
-  const blob    = new Blob([csv], { type: "text/csv" });
-  const url     = URL.createObjectURL(blob);
-  const a       = document.createElement("a");
-  a.href        = url;
-  a.download    = "vegetation_density_report.csv";
+  const csv  = rows.map(r => r.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = "vegetation_density_report.csv";
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
@@ -1911,13 +1917,14 @@ function downloadISPACSV() {
     alert("Run the analysis first.");
     return;
   }
-  const rows = [["cell_lat","cell_lon","irregularity_score","classification","qol_score","texture_val","edge_val","buildup_ratio"]];
+  const rows = [["lat","lon","irregularity_score","classification","qol_score","texture_val","edge_val","buildup_ratio"]];
   lastISPAResult.features.forEach(f => {
     const p = f.properties;
     if (p.type === "high_irregularity_zone") return;
+    const [geoLon, geoLat] = featureCentroid(f);
     rows.push([
-      p.cell_cy ?? "",
-      p.cell_cx ?? "",
+      p.cell_cy ?? geoLat ?? "",
+      p.cell_cx ?? geoLon ?? "",
       p.irregularity_score ?? "",
       p.classification ?? "",
       p.qol_score ?? "",
@@ -1937,32 +1944,59 @@ function downloadISPACSV() {
 }
 
 
+/* ---------- Extract centroid [lon, lat] from a GeoJSON feature ---------- */
+function featureCentroid(feature) {
+  try {
+    const coords = feature.geometry?.coordinates;
+    const type   = feature.geometry?.type;
+    if (!coords) return [null, null];
+    if (type === "Point") return [coords[0], coords[1]];
+    // Polygon: average the outer ring
+    const ring = type === "MultiPolygon" ? coords[0][0] : coords[0];
+    const n = ring.length;
+    const lon = ring.reduce((s, c) => s + c[0], 0) / n;
+    const lat = ring.reduce((s, c) => s + c[1], 0) / n;
+    return [lon, lat];
+  } catch { return [null, null]; }
+}
+
 /* ---------- Universal grid CSV export (all services) ---------- */
 function downloadGridCSV(geojson, service) {
   if (!geojson || !geojson.features) { alert("No grid data to export."); return; }
 
-  // Build header from all unique property keys (excluding geometry styling props)
-  const excludeKeys = new Set(["fill_color", "stroke", "stroke_width", "fill_opacity", "type"]);
+  // Property keys to exclude from CSV (Simplestyle visual props only)
+  const excludeKeys = new Set(["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "type", "fill_color", "fill_opacity", "stroke_width"]);
   const allKeys = new Set();
   geojson.features.forEach(f => {
     if (f.properties?.type === "high_irregularity_zone") return;
     Object.keys(f.properties || {}).forEach(k => { if (!excludeKeys.has(k)) allKeys.add(k); });
   });
 
-  // Preferred column order
-  const preferred = ["cell_cy","cell_cx","qol_score","value","classification","congestion",
+  // Preferred column order — lat/lon always first
+  const preferred = ["lat","lon","qol_score","value","classification","congestion",
     "vegetation_pct","passes_30pct","irregularity_score","local_density","local_pressure",
     "density","texture_val","edge_val","buildup_ratio"];
+
+  // Map internal cell_cy/cell_cx → lat/lon; drop the originals
+  const skipInternals = new Set(["cell_cy","cell_cx"]);
+  const dataKeys = [...allKeys].filter(k => !skipInternals.has(k));
   const orderedKeys = [
-    ...preferred.filter(k => allKeys.has(k)),
-    ...[...allKeys].filter(k => !preferred.includes(k)),
+    "lat", "lon",
+    ...preferred.filter(k => k !== "lat" && k !== "lon" && dataKeys.includes(k)),
+    ...dataKeys.filter(k => !preferred.includes(k)),
   ];
 
   const rows = [orderedKeys];
   geojson.features.forEach(f => {
     if (f.properties?.type === "high_irregularity_zone") return;
     const p = f.properties || {};
+    // Derive lat/lon: prefer stored cell centroid, fall back to geometry centroid
+    const [geoLon, geoLat] = featureCentroid(f);
+    const lat = p.cell_cy ?? geoLat ?? "";
+    const lon = p.cell_cx ?? geoLon ?? "";
     rows.push(orderedKeys.map(k => {
+      if (k === "lat") return lat;
+      if (k === "lon") return lon;
       const v = p[k];
       if (v === null || v === undefined) return "";
       if (typeof v === "number") return isNaN(v) ? "" : v;
@@ -2099,27 +2133,58 @@ function renderCrimeResults(stats, inputs) {
 
 
 /* ---------- Render Urban Density Results with stats ---------- */
-function renderUrbanDensityResults(stats, inputs) {
-  const avgDen = parseFloat(stats.avg_density) || 0;
-  const maxDen = parseFloat(stats.max_density) || 0;
+function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
+  const avgDen    = parseFloat(stats.avg_density) || 0;
+  const maxDen    = parseFloat(stats.max_density) || 0;
   const areaCount = parseInt(stats.area_count) || 0;
   const totalArea = parseFloat(stats.total_area) || 0;
 
-  // Score: well-distributed density is good; extreme peaks indicate stress
-  const densityScore = maxDen > 0 ? Math.max(0, Math.round(100 - Math.min(80, (maxDen / Math.max(avgDen, 1)) * 10))) : 50;
-  const cat = perfCategory(densityScore);
-  const scoreColor = qolScoreTextColor(densityScore);
+  // Average density classification based on 5,000 pop/km² standard
+  function avgDensityClass(d) {
+    if (d <= 0)     return { label: "No Data",  color: "var(--text-muted)" };
+    if (d < 1000)   return { label: "Low",      color: "#4cc2ff" };
+    if (d <= 5000)  return { label: "Medium",   color: "#f39c12" };
+    return               { label: "High",      color: "var(--danger)" };
+  }
+  const avgClass = avgDensityClass(avgDen);
+
+  // Per-feature data for hotspot / lowest-zone cards (requires nameKey)
+  let hotspotHtml = "";
+  let lowzoneHtml = "";
+  if (nameKey && geojsonData && geojsonData.features) {
+    const areas = geojsonData.features
+      .map(f => ({ name: f.properties[nameKey], density: f.properties.urban_density || 0 }))
+      .filter(a => a.name);
+    if (areas.length) {
+      const sorted = [...areas].sort((a, b) => b.density - a.density);
+      const top    = sorted.slice(0, 3);
+      const bottom = sorted.slice(-3).reverse();
+      hotspotHtml = `
+        <div class="insight-card">
+          <div class="label">High-Density Clusters (Hotspots)</div>
+          <div class="value" style="font-size:12px;line-height:1.8;">
+            ${top.map((a, i) => `<span style="color:var(--danger);">${i + 1}. ${a.name}</span> <span style="color:var(--text-muted);font-size:11px;">${Math.round(a.density).toLocaleString()} pop/km²</span>`).join("<br>")}
+          </div>
+        </div>`;
+      lowzoneHtml = `
+        <div class="insight-card">
+          <div class="label">Lowest-Density Zones (Underutilized Land)</div>
+          <div class="value" style="font-size:12px;line-height:1.8;">
+            ${bottom.map((a, i) => `<span style="color:#4cc2ff;">${i + 1}. ${a.name}</span> <span style="color:var(--text-muted);font-size:11px;">${Math.round(a.density).toLocaleString()} pop/km²</span>`).join("<br>")}
+          </div>
+        </div>`;
+    }
+  }
+
+  // Store per-feature data for the grid tab histogram
+  lastUrbanDensityFeatures = geojsonData && geojsonData.features
+    ? geojsonData.features.map(f => ({
+        name:    nameKey ? f.properties[nameKey] : null,
+        density: f.properties.urban_density || 0,
+      }))
+    : null;
 
   const ineq = maxDen > 0 ? inequalityLabel(calcStdDev([avgDen, maxDen])) : null;
-
-  const highDen = maxDen;
-  const lowDen  = Math.max(0, 2 * avgDen - maxDen);
-  const chartHtml = miniBarChart(
-    [lowDen.toFixed(0), avgDen.toFixed(0), highDen.toFixed(0)],
-    3,
-    ["#4cc2ff", "#f39c12", "#e74c3c"],
-    ["Low", "Avg", "Peak"]
-  );
 
   const keyInsight = maxDen > 0
     ? (maxDen / Math.max(avgDen, 0.01)) > 3
@@ -2176,16 +2241,14 @@ function renderUrbanDensityResults(stats, inputs) {
           <div class="value">${areaCount.toLocaleString()}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Overall Score</div>
-          <div class="value" style="color:${scoreColor}">${densityScore} / 100</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Performance</div>
-          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
-        </div>
-        <div class="insight-card">
           <div class="label">Avg Density</div>
           <div class="value">${stats.avg_density || "N/A"} pop/km²</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Avg Density Classification</div>
+          <div class="value" style="color:${avgClass.color};font-size:15px;">${avgClass.label}
+            <span style="font-size:10px;color:var(--text-muted);font-weight:normal;"> (standard: 5,000 pop/km²)</span>
+          </div>
         </div>
         <div class="insight-card">
           <div class="label">Peak Density Zone</div>
@@ -2195,7 +2258,8 @@ function renderUrbanDensityResults(stats, inputs) {
           <div class="label">Distribution Balance</div>
           <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
         </div>` : ""}
-        ${chartHtml}
+        ${hotspotHtml}
+        ${lowzoneHtml}
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
@@ -3012,6 +3076,14 @@ function wireTabSwitching() {
                   <div style="width:12px;height:12px;background:${irregularityColor(v)};border-radius:2px;flex-shrink:0;"></div>
                   <span><strong>${l}</strong> ${r}</span>
                 </div>`).join("")}
+              </div>` : lastResultService === "urban-density" ? `
+              <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers (target: 5,000 pop/km²)</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                ${[[88,"Excellent","near 5,000 pop/km²"],[62,"Good","2,500–10,000 pop/km²"],[37,"Fair","500–2,500 or 10,000–20,000"],[12,"Poor","< 500 or > 20,000 pop/km²"]].map(([v,l,r])=>`
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                  <div style="width:12px;height:12px;background:${qolScoreColor(v)};border-radius:2px;flex-shrink:0;"></div>
+                  <span><strong>${l}</strong> ${r}</span>
+                </div>`).join("")}
               </div>` : `
               <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Score tiers</div>
               <div style="display:flex;flex-direction:column;gap:4px;">
@@ -3022,12 +3094,53 @@ function wireTabSwitching() {
                 </div>`).join("")}
               </div>`;
 
+            const isUrbanDensityGrid = lastResultService === "urban-density";
+
+            // ---- Urban density histogram (pop/km² bins) ----
+            let densityHistogramHtml = "";
+            if (isUrbanDensityGrid && lastUrbanDensityFeatures && lastUrbanDensityFeatures.length) {
+              const denBins  = [0, 0, 0, 0, 0];  // <500, 500–2500, 2500–5000, 5000–10000, >10000
+              const denLabels = ["<500", "500–2.5k", "2.5k–5k", "5k–10k", ">10k"];
+              const denColors = ["#4cc2ff", "#7ecbff", "#f39c12", "#e67e22", "#e74c3c"];
+              lastUrbanDensityFeatures.forEach(({ density: d }) => {
+                if (d < 500)        denBins[0]++;
+                else if (d < 2500)  denBins[1]++;
+                else if (d < 5000)  denBins[2]++;
+                else if (d < 10000) denBins[3]++;
+                else                denBins[4]++;
+              });
+              const maxBin = Math.max(...denBins, 1);
+              densityHistogramHtml = `
+                <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Density Histogram (pop/km²)</div>
+                <div style="display:flex;align-items:flex-end;gap:3px;height:48px;margin-bottom:4px;">
+                  ${denBins.map((v, i) => {
+                    const h = Math.max(3, Math.round((v / maxBin) * 46));
+                    const isOptimal = i === 2;
+                    return `<div title="${denLabels[i]}: ${v} area(s)" style="flex:1;height:${h}px;background:${denColors[i]};border-radius:2px 2px 0 0;position:relative;">
+                      ${isOptimal ? `<div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--accent);white-space:nowrap;">★ target</div>` : ""}
+                    </div>`;
+                  }).join("")}
+                </div>
+                <div style="display:flex;gap:3px;">
+                  ${denLabels.map(l => `<div style="flex:1;font-size:9px;color:var(--text-muted);text-align:center;overflow:hidden;white-space:nowrap;">${l}</div>`).join("")}
+                </div>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">★ 2,500–5,000 band is closest to the 5,000 pop/km² healthy target</div>`;
+            }
+
             gridTabContent.innerHTML = `
               <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px;">Cell size: <strong>${cellLabel} × ${cellLabel}</strong> · Click any cell on the map for details.</p>
+              ${isUrbanDensityGrid ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:var(--text-primary);">
+                💡 Scores are based on the healthy recommended population density of <strong>5,000 pop/km²</strong>. Cells closer to this target score higher — both under- and over-populated areas score lower.
+              </div>` : ""}
               <div class="insight-card">
                 <div class="label">Total Cells</div>
                 <div class="value">${cellCount}</div>
               </div>
+              ${avg !== null ? `
+              <div class="insight-card">
+                <div class="label">Average Score</div>
+                <div class="value" style="color:${qolScoreTextColor(avg)}">${avg} / 100</div>
+              </div>` : ""}
               ${isVegGrid ? `
               <div class="insight-card">
                 <div class="label">Cells meeting 30% benchmark</div>
@@ -3062,6 +3175,7 @@ function wireTabSwitching() {
                 <div class="label">Spatial Clustering</div>
                 <div class="value" style="color:${clusterInfo.color};font-size:13px;">${clusterInfo.text}</div>
               </div>` : ""}
+              ${densityHistogramHtml}
               ${gridChartHtml}
               ${tiersHtml}
               <div style="display:flex;gap:6px;margin-top:12px;">
@@ -3648,6 +3762,9 @@ let gridLayer   = null;  // 200 m cell QoL layer — shown when Grid/Cell tab is
 let lastResultBlob    = null;  // ArrayBuffer (rasters) or object (geojson)
 let lastResultService = null;  // e.g. "ndvi", "heat-index", "crime", "urban-density"
 
+// Holds per-feature urban density data so the grid tab can build a histogram
+let lastUrbanDensityFeatures = null;  // array of {name, density} from the full-area result
+
 /* ---------- QoL score → colour (4-tier: green / yellow-green / orange / red) ---------- */
 function _qolRGB(score) {
   // Returns [r, g, b] — shared by map fill and text helpers
@@ -3783,8 +3900,32 @@ function clusteringLabel(scores) {
   return { text: "Well-mixed — scores spread evenly", color: "var(--success)" };
 }
 
+/* ---------- Convert rgba/rgb CSS string → "#rrggbb" hex ---------- */
+function cssColorToHex(css) {
+  const m = css.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (!m) return css; // already hex or unknown — pass through
+  const r = parseInt(m[1]).toString(16).padStart(2, "0");
+  const g = parseInt(m[2]).toString(16).padStart(2, "0");
+  const b = parseInt(m[3]).toString(16).padStart(2, "0");
+  return `#${r}${g}${b}`;
+}
+
+/* ---------- Derive hex fill colour for a grid feature ---------- */
+function featureFillHex(feature, service) {
+  const p = feature.properties;
+  const isVeg     = service === "vegetation";
+  const isTraffic = service === "traffic";
+  const isISPA    = service === "informal-settlement";
+  let rgba;
+  if (isVeg)     rgba = vegPctColor(p.value ?? 0);
+  else if (isTraffic) rgba = congestionColor(p.congestion || "low");
+  else if (isISPA)    rgba = irregularityColor(p.value ?? 0);
+  else                rgba = qolScoreColor(p.qol_score ?? 0);
+  return cssColorToHex(rgba);
+}
+
 function downloadGeoJSON(geojson, filename) {
-  const blob = new Blob([JSON.stringify(geojson)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/json" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href = url; a.download = filename; a.click();
@@ -3892,6 +4033,14 @@ async function fetchAndRenderGrid(service, blob) {
           `<strong>Classification:</strong> ${cls}<br>` +
           `<strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100`
         );
+      } else if (service === "urban-density") {
+        const density   = p.value !== null && p.value !== undefined ? Math.round(p.value) : "—";
+        const scoreText = p.qol_score !== null ? `${p.qol_score}/100` : "No data";
+        layer.bindPopup(
+          `<strong>Density:</strong> ${density} pop/km²<br>` +
+          `<strong>Score:</strong> ${scoreText}<br>` +
+          `<span style="font-size:11px;color:#aaa;">Score is based on proximity to the healthy recommended density of 5,000 pop/km²</span>`
+        );
       } else {
         const scoreText = p.qol_score !== null ? `${p.qol_score}/100` : "No data";
         const valText   = p.value     !== null ? p.value : "—";
@@ -3903,21 +4052,14 @@ async function fetchAndRenderGrid(service, blob) {
     },
   });
 
-  // Inject fill_color into each feature for styled GeoJSON export
+  // Inject Simplestyle-spec properties so any GeoJSON viewer renders the same colors as the map
   geojson.features.forEach(f => {
     const p = f.properties;
-    if (isVeg) {
-      p.fill_color = vegPctColor(p.value ?? 0);
-    } else if (isTraffic) {
-      p.fill_color = congestionColor(p.congestion || "low");
-    } else if (isISPA) {
-      p.fill_color = irregularityColor(p.value ?? 0);
-    } else {
-      p.fill_color = qolScoreColor(p.qol_score ?? 0);
-    }
-    p.stroke = "rgba(0,0,0,0.15)";
-    p.stroke_width = 0.5;
-    p.fill_opacity = 0.75;
+    p["fill"]           = featureFillHex(f, service);
+    p["fill-opacity"]   = 0.75;
+    p["stroke"]         = "#000000";
+    p["stroke-width"]   = 0.5;
+    p["stroke-opacity"] = 0.15;
   });
 
   return geojson;
@@ -3952,6 +4094,25 @@ function attachFileInputListeners() {
         const geojsonData = JSON.parse(event.target.result);
 
         console.log("Uploaded GeoJSON:", geojsonData);
+
+        // Auto-detect population field for urban density service
+        const popFieldInput = document.getElementById("populationField");
+        if (popFieldInput && !popFieldInput.value) {
+          const firstFeature = geojsonData.features && geojsonData.features[0];
+          if (firstFeature && firstFeature.properties) {
+            const popKey = Object.keys(firstFeature.properties)
+              .find(k => k.toLowerCase().includes("pop"));
+            if (popKey) {
+              popFieldInput.value = popKey;
+              const hint = document.getElementById("populationFieldHint");
+              if (hint) hint.style.display = "inline";
+              popFieldInput.addEventListener("input", function onEdit() {
+                if (hint) hint.style.display = "none";
+                popFieldInput.removeEventListener("input", onEdit);
+              });
+            }
+          }
+        }
 
         // ADD TO MAP (track as inputLayer so tab switching can restore it)
         if (inputLayer) map.removeLayer(inputLayer);
