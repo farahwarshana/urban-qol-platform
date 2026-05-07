@@ -301,6 +301,32 @@ input:focus, select:focus, textarea:focus {
   margin: 0;
 }
 
+/* ---------- Future Expansion Suitability — quiet distinction ---------- */
+.service-list li.expansion-star {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 14px;
+}
+.service-list li.expansion-star .dot {
+  box-shadow: 0 0 5px 1px rgba(76,194,255,0.5);
+}
+.service-list li.expansion-star.active .dot {
+  box-shadow: 0 0 8px 2px rgba(76,194,255,0.8);
+}
+
+.expansion-label {
+  flex: 1;
+  letter-spacing: 0.2px;
+}
+
+.expansion-desc {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 1px 4px 10px !important;
+  margin: 0;
+}
+
 /* ---------- Map area ---------- */
 .map-wrapper {
   flex: 1;
