@@ -338,6 +338,7 @@ def _score_facility_accessibility(walk_time_min):
 def grid_from_raster(raster_path, service_type):
     """
     Sample a single-band GeoTIFF on an adaptive grid and return a GeoJSON dict.
+    Only cells whose centroid falls on valid (non-nodata) raster pixels are kept.
     Cell size is chosen automatically based on extent (target ~600 cells max).
     """
     if service_type == "ndvi":
@@ -375,13 +376,20 @@ def grid_from_raster(raster_path, service_type):
         except Exception:
             val = np.nan
 
-        score = score_fn(val) if not np.isnan(val) else None
+        # Skip cells with no valid data — they are outside the analysis extent
+        if np.isnan(val):
+            continue
+
+        score = score_fn(val)
+        # Also skip if the scoring function itself considers the value out-of-range
+        if score is None:
+            continue
 
         features.append({
             "type": "Feature",
             "geometry": mapping(geom),
             "properties": {
-                "value":     round(val, 4) if not np.isnan(val) else None,
+                "value":     round(val, 4),
                 "qol_score": score,
                 "service":   service_type,
             }
@@ -398,6 +406,8 @@ def grid_from_vector(geojson_path, service_type, value_field):
     """
     Overlay an adaptive grid on a polygon GeoJSON, inherit each cell's value
     from the underlying polygon, and score it.
+    Cells whose centroid does not fall inside any input polygon are dropped —
+    they are outside the analysis boundary and must not affect statistics.
     Cell size is chosen automatically based on extent (target ~600 cells max).
     """
     score_fn = _score_crime if service_type == "crime" else _score_urban_density
@@ -410,6 +420,16 @@ def grid_from_vector(geojson_path, service_type, value_field):
     bounds       = gdf.total_bounds   # minx, miny, maxx, maxy
     grid, cell_m = _build_grid_cells(tuple(bounds))
 
+    # Boundary filter: keep only cells whose centroid is inside the data bbox
+    minx, miny, maxx, maxy = bounds
+    centroids = grid.geometry.centroid
+    in_bounds = (
+        (centroids.x >= minx) & (centroids.x <= maxx) &
+        (centroids.y >= miny) & (centroids.y <= maxy)
+    )
+    grid = grid[in_bounds].copy()
+
+    # Join values from the polygons
     joined = gpd.sjoin(grid, gdf[[value_field, "geometry"]], how="left", predicate="intersects")
 
     if joined.index.duplicated().any():
@@ -424,15 +444,17 @@ def grid_from_vector(geojson_path, service_type, value_field):
         geom = row.geometry
         val  = row.get(value_field, np.nan)
         if val is None or (isinstance(val, float) and np.isnan(val)):
-            val = np.nan
+            continue  # still no data after join — drop silently
 
-        score = score_fn(float(val)) if not (isinstance(val, float) and np.isnan(val)) else None
+        score = score_fn(float(val))
+        if score is None:
+            continue
 
         features.append({
             "type": "Feature",
             "geometry": mapping(geom),
             "properties": {
-                "value":     round(float(val), 4) if not (isinstance(val, float) and np.isnan(val)) else None,
+                "value":     round(float(val), 4),
                 "qol_score": score,
                 "service":   service_type,
             }
@@ -468,11 +490,22 @@ def _score_transit_coverage(coverage_fraction):
 
 def grid_from_transit_coverage(geojson_path):
     """
-    Score cells based on how much of each cell falls inside transit walking
-    coverage polygons.  Expects a GeoJSON with a 'type' property of
-    'covered' or 'uncovered' (as produced by calculate_transit_coverage).
+    Score cells for public-transport QoL.
 
-    Cell size is chosen automatically based on extent (target ~600 cells max).
+    The input GeoJSON (from calculate_transit_coverage) contains two kinds of
+    features, distinguished by their "type" property:
+        "covered"   — area within walking distance of a station
+        "uncovered" — rest of the AOI (no station nearby)
+
+    The union of both types defines the AOI boundary.  The grid is built over
+    that bounding box, then each cell is classified as:
+        • outside AOI  → dropped (centroid outside bbox of all features)
+        • inside covered area  → score 75–100
+        • inside uncovered area → score 0  (bad — no nearby transit)
+
+    Scoring uses a simple point-in-polygon check (sjoin "within") on the cell
+    centroid against the covered polygons only.  No union/intersection calls,
+    so topology errors from complex OSM buffers cannot occur.
     """
     gdf = gpd.read_file(geojson_path)
     if gdf.crs is None:
@@ -482,46 +515,93 @@ def grid_from_transit_coverage(geojson_path):
     if gdf.empty:
         return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
 
-    bounds       = gdf.total_bounds
+    bounds       = gdf.total_bounds          # minx, miny, maxx, maxy
     grid, cell_m = _build_grid_cells(tuple(bounds))
 
-    # Keep only covered polygons for intersection
-    covered_gdf = gdf[gdf.get("type", gdf.get("type", None)) == "covered"] if "type" in gdf.columns else gdf
-    if covered_gdf.empty:
-        # Fallback: treat all features as covered
-        covered_gdf = gdf
+    # Separate covered vs uncovered features
+    if "type" in gdf.columns:
+        covered_gdf   = gdf[gdf["type"] == "covered"].copy()
+        uncovered_gdf = gdf[gdf["type"] == "uncovered"].copy()
+    else:
+        # No type column — treat everything as covered
+        covered_gdf   = gdf.copy()
+        uncovered_gdf = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
 
-    covered_union = covered_gdf.geometry.union_all()
+    if covered_gdf.empty and uncovered_gdf.empty:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": cell_m}
 
-    # Determine UTM for accurate area fraction
-    cx = (bounds[0] + bounds[2]) / 2
-    cy = (bounds[1] + bounds[3]) / 2
-    utm_epsg = _get_utm_crs(cx, cy)
-    utm_crs  = f"EPSG:{utm_epsg}"
+    # --- Boundary filter: centroid must be inside the full data bbox ----------
+    minx, miny, maxx, maxy = bounds
+    centroids = grid.geometry.centroid
+    in_bounds = (
+        (centroids.x >= minx) & (centroids.x <= maxx) &
+        (centroids.y >= miny) & (centroids.y <= maxy)
+    )
+    grid = grid[in_bounds].copy()
+    if grid.empty:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": cell_m}
 
-    grid_utm         = grid.to_crs(utm_crs)
-    covered_gdf_utm  = covered_gdf.to_crs(utm_crs)
-    covered_union_utm = covered_gdf_utm.geometry.union_all()
+    # --- Point-in-polygon: which cell centroids fall inside covered area ------
+    # buffer(0) fixes any self-intersection issues without geometry union
+    covered_clean = covered_gdf.copy()
+    covered_clean["geometry"] = covered_clean.geometry.buffer(0)
+    covered_clean = covered_clean[covered_clean.geometry.is_valid]
+
+    centroids_gdf = gpd.GeoDataFrame(
+        {"cell_idx": grid.index},
+        geometry=grid.geometry.centroid.values,
+        crs="EPSG:4326",
+    ).set_index("cell_idx")
+
+    if not covered_clean.empty:
+        in_covered = gpd.sjoin(
+            centroids_gdf, covered_clean[["geometry"]],
+            how="left", predicate="within",
+        )
+        # A centroid is covered if it matched at least one covered polygon
+        covered_set = set(in_covered[in_covered["index_right"].notna()].index)
+    else:
+        covered_set = set()
+
+    # --- Also find which cells are inside the AOI at all (covered OR uncovered)
+    # Use uncovered polygons for the AOI-boundary check only if they exist
+    if not uncovered_gdf.empty:
+        uncovered_clean = uncovered_gdf.copy()
+        uncovered_clean["geometry"] = uncovered_clean.geometry.buffer(0)
+        uncovered_clean = uncovered_clean[uncovered_clean.geometry.is_valid]
+        in_uncovered = gpd.sjoin(
+            centroids_gdf, uncovered_clean[["geometry"]],
+            how="left", predicate="within",
+        )
+        uncovered_set = set(in_uncovered[in_uncovered["index_right"].notna()].index)
+    else:
+        uncovered_set = set()
+
+    # A cell is inside the AOI if its centroid is in either covered or uncovered
+    aoi_set = covered_set | uncovered_set
+    # If we have no uncovered data, fall back to all bbox-filtered cells
+    if uncovered_gdf.empty:
+        aoi_set = set(grid.index)
 
     features = []
-    for idx, row in grid_utm.iterrows():
-        cell_geom  = row.geometry
-        cell_area  = cell_geom.area
-        cell_wgs   = grid.loc[idx].geometry
+    for idx, row in grid.iterrows():
+        if idx not in aoi_set:
+            continue   # outside AOI — drop
 
-        if cell_area <= 0:
-            fraction = 0.0
+        if idx in covered_set:
+            # Covered: excellent transit access
+            score = 90
+            value = 1.0
         else:
-            intersection = cell_geom.intersection(covered_union_utm)
-            fraction     = intersection.area / cell_area if not intersection.is_empty else 0.0
-
-        score = _score_transit_coverage(fraction)
+            # Inside AOI but not covered: poor transit access
+            score = 10
+            value = 0.0
 
         features.append({
             "type": "Feature",
-            "geometry": cell_wgs.__geo_interface__,
+            "geometry": mapping(row.geometry),
             "properties": {
-                "value":     round(fraction, 4),
+                "value":     value,
                 "qol_score": score,
                 "service":   "public-transport",
             },
@@ -538,6 +618,8 @@ def grid_from_facility_accessibility(geojson_path):
     """
     Score cells based on the minimum walk time from a facility accessibility
     isochrone GeoJSON (zones for 5/10/15 min).
+    Only cells whose centroid falls inside an isochrone zone are kept —
+    cells outside all zones are outside the analysis boundary and are dropped.
     Cell size is chosen automatically based on extent (target ~600 cells max).
     """
     gdf = gpd.read_file(geojson_path)
@@ -548,31 +630,48 @@ def grid_from_facility_accessibility(geojson_path):
     bounds       = gdf.total_bounds
     grid, cell_m = _build_grid_cells(tuple(bounds))
 
+    # Boundary filter: keep only cells whose centroid is inside the data bbox
+    minx, miny, maxx, maxy = bounds
+    centroids = grid.geometry.centroid
+    in_bounds = (
+        (centroids.x >= minx) & (centroids.x <= maxx) &
+        (centroids.y >= miny) & (centroids.y <= maxy)
+    )
+    grid = grid[in_bounds].copy()
+
     time_col = None
     for candidate in ["walk_time", "time_min", "minutes", "travel_time"]:
         if candidate in gdf.columns:
             time_col = candidate
             break
 
+    # Vectorised sjoin: centroid within isochrone polygon
+    centroids_gdf = gpd.GeoDataFrame(
+        geometry=grid.geometry.centroid.values,
+        index=grid.index,
+        crs="EPSG:4326",
+    )
+    joined = gpd.sjoin(centroids_gdf, gdf, how="left", predicate="within")
+
     features = []
-    for _, row in grid.iterrows():
-        geom     = row.geometry
-        centroid = geom.centroid
-        pt       = gpd.GeoDataFrame(geometry=[centroid], crs="EPSG:4326")
+    for idx, row in grid.iterrows():
+        matches = joined.loc[[idx]] if idx in joined.index else joined.iloc[0:0]
 
-        joined = gpd.sjoin(pt, gdf, how="left", predicate="within")
+        if matches.empty or matches["index_right"].isna().all():
+            # Centroid outside all isochrone zones — outside analysis extent, skip
+            continue
 
-        if time_col and not joined.empty and time_col in joined.columns:
-            times     = joined[time_col].dropna()
+        if time_col and time_col in matches.columns:
+            times     = matches[time_col].dropna()
             walk_time = float(times.min()) if len(times) > 0 else None
         else:
-            walk_time = 5 if (not joined.empty and len(joined) > 0) else None
+            walk_time = 5  # inside a zone but no time column — assume closest
 
         score = _score_facility_accessibility(walk_time)
 
         features.append({
             "type": "Feature",
-            "geometry": mapping(geom),
+            "geometry": mapping(row.geometry),
             "properties": {
                 "value":     walk_time,
                 "qol_score": score,
