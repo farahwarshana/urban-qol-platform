@@ -163,9 +163,26 @@
           <button class="btn" id="measureBtn" title="measure" onclick="toggleMeasure()"><img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Measure</button>
           <div id="measureTotal" class="measure-total" style="display:none;"></div>
 
-          <button class="btn" id="annotateBtn" title="annotate">
-          <img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/>
-          Annotate</button>
+          <button class="btn" id="annotateBtn" title="annotate" onclick="toggleAnnotate()">
+            <img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/>
+            Annotate
+          </button>
+          <div id="annotateToolbar" class="annotate-toolbar">
+            <button class="annotate-color-btn selected" data-color="#e74c3c" style="background:#e74c3c;" title="Red" onclick="annotateSelectTool('color','#e74c3c',this)"></button>
+            <button class="annotate-color-btn" data-color="#f39c12" style="background:#f39c12;" title="Orange" onclick="annotateSelectTool('color','#f39c12',this)"></button>
+            <button class="annotate-color-btn" data-color="#f1c40f" style="background:#f1c40f;" title="Yellow" onclick="annotateSelectTool('color','#f1c40f',this)"></button>
+            <button class="annotate-color-btn" data-color="#2ecc71" style="background:#2ecc71;" title="Green" onclick="annotateSelectTool('color','#2ecc71',this)"></button>
+            <button class="annotate-color-btn" data-color="#3498db" style="background:#3498db;" title="Blue" onclick="annotateSelectTool('color','#3498db',this)"></button>
+            <button class="annotate-color-btn" data-color="#ffffff" style="background:#ffffff;" title="White" onclick="annotateSelectTool('color','#ffffff',this)"></button>
+            <div class="annotate-sep"></div>
+            <button class="annotate-eraser-btn" id="annotateEraserBtn" title="Eraser" onclick="annotateSelectTool('eraser',null,this)">
+              <img width="18" height="18" src="https://img.icons8.com/deco-glyph/48/FFFFFF/eraser.png" alt="eraser"/>
+            </button>
+            <div class="annotate-sep"></div>
+            <button class="annotate-clear-btn" onclick="annotateClearAll()">
+              <img width="18" height="18" src="https://img.icons8.com/ios-filled/50/FA5252/delete-forever.png" alt="delete-forever"/>
+            </button>
+          </div>
 
           <div class="user-menu" id="exportMenu">
             <button class="btn" id="export-btn" onclick="toggleExportMenu()">

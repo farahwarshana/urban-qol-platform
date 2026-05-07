@@ -3351,6 +3351,157 @@ function toggleMeasure() {
   overlay.addEventListener('mousemove', measureOnOverlayMouseMove);
 }
 
+/* =====================  ANNOTATE  ===================== */
+
+const annotateState = {
+  active: false,
+  drawing: false,
+  color: '#e74c3c',
+  eraser: false,
+  brushSize: 4,
+  eraserSize: 18
+};
+
+let _annotateCanvas = null;
+let _annotateCtx = null;
+let _annotateOverlay = null;
+
+function annotateGetCanvas() {
+  if (_annotateCanvas) return _annotateCanvas;
+  const container = map.getContainer();
+  _annotateCanvas = document.createElement('canvas');
+  _annotateCanvas.style.cssText = 'position:absolute;inset:0;z-index:640;pointer-events:none;';
+  _annotateCanvas.width = container.offsetWidth;
+  _annotateCanvas.height = container.offsetHeight;
+  container.appendChild(_annotateCanvas);
+  _annotateCtx = _annotateCanvas.getContext('2d');
+
+  // keep canvas sized to map container
+  new ResizeObserver(() => {
+    const imgData = _annotateCtx.getImageData(0, 0, _annotateCanvas.width, _annotateCanvas.height);
+    _annotateCanvas.width = container.offsetWidth;
+    _annotateCanvas.height = container.offsetHeight;
+    _annotateCtx.putImageData(imgData, 0, 0);
+  }).observe(container);
+
+  return _annotateCanvas;
+}
+
+function annotateGetOverlay() {
+  if (_annotateOverlay) return _annotateOverlay;
+  _annotateOverlay = document.createElement('div');
+  _annotateOverlay.style.cssText = 'position:absolute;inset:0;z-index:645;cursor:crosshair;display:none;';
+  map.getContainer().appendChild(_annotateOverlay);
+  return _annotateOverlay;
+}
+
+function annotatePos(e) {
+  const rect = map.getContainer().getBoundingClientRect();
+  const src = e.touches ? e.touches[0] : e;
+  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+}
+
+function annotateOnPointerDown(e) {
+  annotateState.drawing = true;
+  const ctx = _annotateCtx;
+  const { x, y } = annotatePos(e);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  if (annotateState.eraser) {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.lineWidth = annotateState.eraserSize;
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = annotateState.color;
+    ctx.lineWidth = annotateState.brushSize;
+  }
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+}
+
+function annotateOnPointerMove(e) {
+  if (!annotateState.drawing) return;
+  const { x, y } = annotatePos(e);
+  _annotateCtx.lineTo(x, y);
+  _annotateCtx.stroke();
+}
+
+function annotateOnPointerUp() {
+  if (!annotateState.drawing) return;
+  annotateState.drawing = false;
+  _annotateCtx.closePath();
+}
+
+function annotateClearAll() {
+  if (_annotateCtx && _annotateCanvas) {
+    _annotateCtx.clearRect(0, 0, _annotateCanvas.width, _annotateCanvas.height);
+  }
+}
+
+function annotateSelectTool(type, color, btnEl) {
+  // deselect all color buttons and eraser
+  document.querySelectorAll('.annotate-color-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('annotateEraserBtn').classList.remove('selected');
+
+  if (type === 'eraser') {
+    annotateState.eraser = true;
+    btnEl.classList.add('selected');
+  } else {
+    annotateState.eraser = false;
+    annotateState.color = color;
+    btnEl.classList.add('selected');
+  }
+}
+
+function annotateDeactivate() {
+  annotateState.active = false;
+  annotateState.drawing = false;
+
+  const btn = document.getElementById('annotateBtn');
+  btn.innerHTML = '<img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/>Annotate';
+  btn.classList.remove('btn-active');
+
+  document.getElementById('annotateToolbar').classList.remove('visible');
+
+  map.dragging.enable();
+  map.doubleClickZoom.enable();
+
+  const overlay = annotateGetOverlay();
+  overlay.style.display = 'none';
+  overlay.removeEventListener('mousedown', annotateOnPointerDown);
+  overlay.removeEventListener('mousemove', annotateOnPointerMove);
+  overlay.removeEventListener('mouseup', annotateOnPointerUp);
+  overlay.removeEventListener('mouseleave', annotateOnPointerUp);
+
+  if (_annotateCanvas) _annotateCanvas.style.pointerEvents = 'none';
+}
+
+function toggleAnnotate() {
+  if (annotateState.active) {
+    annotateDeactivate();
+    return;
+  }
+
+  annotateState.active = true;
+  annotateGetCanvas(); // ensure canvas exists
+
+  const btn = document.getElementById('annotateBtn');
+  btn.innerHTML = '<img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/>Cancel';
+  btn.classList.add('btn-active');
+
+  document.getElementById('annotateToolbar').classList.add('visible');
+
+  map.dragging.disable();
+  map.doubleClickZoom.disable();
+
+  const overlay = annotateGetOverlay();
+  overlay.style.display = 'block';
+  overlay.addEventListener('mousedown', annotateOnPointerDown);
+  overlay.addEventListener('mousemove', annotateOnPointerMove);
+  overlay.addEventListener('mouseup', annotateOnPointerUp);
+  overlay.addEventListener('mouseleave', annotateOnPointerUp);
+}
+
 /* changning basemap*/
 
 function changeBasemap(new_basemap) { // value passed directly
@@ -4250,7 +4401,9 @@ function buildCompositeCanvas(callback) {
     }
 
     // ── Layer 2: Canvas elements (georaster / WebGL raster layers) ────────
+    // Skip the annotation canvas here — it is painted last (topmost layer).
     mapContainer.querySelectorAll('canvas').forEach(function(sourceCanvas) {
+      if (sourceCanvas === _annotateCanvas) return;
       if (sourceCanvas.width === 0 || sourceCanvas.height === 0) return;
       try {
         const off = getElementOffsetInContainer(sourceCanvas, containerRect);
@@ -4262,19 +4415,28 @@ function buildCompositeCanvas(callback) {
 
     // ── Layer 3: SVG vector layers ─────────────────────────────────────────
     const svgElement = mapContainer.querySelector('.leaflet-overlay-pane svg');
+
+    function drawAnnotationCanvas() {
+      // ── Layer 5: Annotation (must be topmost) ──────────────────────────
+      if (_annotateCanvas && _annotateCanvas.width > 0 && _annotateCanvas.height > 0) {
+        try {
+          const off = getElementOffsetInContainer(_annotateCanvas, containerRect);
+          ctx.drawImage(_annotateCanvas, off.x, off.y);
+        } catch (e) {
+          console.warn('[buildCompositeCanvas] Annotation canvas tainted:', e.message);
+        }
+      }
+      ctx.restore();
+      callback(exportCanvas);
+    }
+
     if (svgElement) {
       drawSvgOntoCanvas(svgElement, mapContainer, ctx, mapWidth, mapHeight, function() {
         // ── Layer 4: Marker icons ───────────────────────────────────────────
-        drawMarkersOntoCanvas(mapContainer, ctx, function() {
-          ctx.restore();
-          callback(exportCanvas);
-        });
+        drawMarkersOntoCanvas(mapContainer, ctx, drawAnnotationCanvas);
       });
     } else {
-      drawMarkersOntoCanvas(mapContainer, ctx, function() {
-        ctx.restore();
-        callback(exportCanvas);
-      });
+      drawMarkersOntoCanvas(mapContainer, ctx, drawAnnotationCanvas);
     }
   });
 }
