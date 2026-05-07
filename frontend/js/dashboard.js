@@ -1343,26 +1343,25 @@ function downloadVegCSV() {
     alert("Run the analysis first.");
     return;
   }
-  const BENCHMARK = 30;
-  const rows = [["cell_lat","cell_lon","vegetation_pct","qol_score","passes_30pct","status"]];
+  const rows = [["lat","lon","vegetation_pct","qol_score","passes_30pct","status"]];
   lastVegResult.features.forEach(f => {
-    const p    = f.properties;
-    const pass = p.passes_30pct ? "PASS" : "FAIL";
+    const p = f.properties;
+    const [geoLon, geoLat] = featureCentroid(f);
     rows.push([
-      p.cell_cy ?? "",
-      p.cell_cx ?? "",
+      p.cell_cy ?? geoLat ?? "",
+      p.cell_cx ?? geoLon ?? "",
       p.vegetation_pct ?? "",
       p.qol_score ?? "",
       p.passes_30pct ? "true" : "false",
-      pass,
+      p.passes_30pct ? "PASS" : "FAIL",
     ]);
   });
-  const csv     = rows.map(r => r.join(",")).join("\n");
-  const blob    = new Blob([csv], { type: "text/csv" });
-  const url     = URL.createObjectURL(blob);
-  const a       = document.createElement("a");
-  a.href        = url;
-  a.download    = "vegetation_density_report.csv";
+  const csv  = rows.map(r => r.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = "vegetation_density_report.csv";
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
@@ -1918,13 +1917,14 @@ function downloadISPACSV() {
     alert("Run the analysis first.");
     return;
   }
-  const rows = [["cell_lat","cell_lon","irregularity_score","classification","qol_score","texture_val","edge_val","buildup_ratio"]];
+  const rows = [["lat","lon","irregularity_score","classification","qol_score","texture_val","edge_val","buildup_ratio"]];
   lastISPAResult.features.forEach(f => {
     const p = f.properties;
     if (p.type === "high_irregularity_zone") return;
+    const [geoLon, geoLat] = featureCentroid(f);
     rows.push([
-      p.cell_cy ?? "",
-      p.cell_cx ?? "",
+      p.cell_cy ?? geoLat ?? "",
+      p.cell_cx ?? geoLon ?? "",
       p.irregularity_score ?? "",
       p.classification ?? "",
       p.qol_score ?? "",
@@ -1944,32 +1944,59 @@ function downloadISPACSV() {
 }
 
 
+/* ---------- Extract centroid [lon, lat] from a GeoJSON feature ---------- */
+function featureCentroid(feature) {
+  try {
+    const coords = feature.geometry?.coordinates;
+    const type   = feature.geometry?.type;
+    if (!coords) return [null, null];
+    if (type === "Point") return [coords[0], coords[1]];
+    // Polygon: average the outer ring
+    const ring = type === "MultiPolygon" ? coords[0][0] : coords[0];
+    const n = ring.length;
+    const lon = ring.reduce((s, c) => s + c[0], 0) / n;
+    const lat = ring.reduce((s, c) => s + c[1], 0) / n;
+    return [lon, lat];
+  } catch { return [null, null]; }
+}
+
 /* ---------- Universal grid CSV export (all services) ---------- */
 function downloadGridCSV(geojson, service) {
   if (!geojson || !geojson.features) { alert("No grid data to export."); return; }
 
-  // Build header from all unique property keys (excluding geometry styling props)
-  const excludeKeys = new Set(["fill_color", "stroke", "stroke_width", "fill_opacity", "type"]);
+  // Property keys to exclude from CSV (Simplestyle visual props only)
+  const excludeKeys = new Set(["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "type", "fill_color", "fill_opacity", "stroke_width"]);
   const allKeys = new Set();
   geojson.features.forEach(f => {
     if (f.properties?.type === "high_irregularity_zone") return;
     Object.keys(f.properties || {}).forEach(k => { if (!excludeKeys.has(k)) allKeys.add(k); });
   });
 
-  // Preferred column order
-  const preferred = ["cell_cy","cell_cx","qol_score","value","classification","congestion",
+  // Preferred column order — lat/lon always first
+  const preferred = ["lat","lon","qol_score","value","classification","congestion",
     "vegetation_pct","passes_30pct","irregularity_score","local_density","local_pressure",
     "density","texture_val","edge_val","buildup_ratio"];
+
+  // Map internal cell_cy/cell_cx → lat/lon; drop the originals
+  const skipInternals = new Set(["cell_cy","cell_cx"]);
+  const dataKeys = [...allKeys].filter(k => !skipInternals.has(k));
   const orderedKeys = [
-    ...preferred.filter(k => allKeys.has(k)),
-    ...[...allKeys].filter(k => !preferred.includes(k)),
+    "lat", "lon",
+    ...preferred.filter(k => k !== "lat" && k !== "lon" && dataKeys.includes(k)),
+    ...dataKeys.filter(k => !preferred.includes(k)),
   ];
 
   const rows = [orderedKeys];
   geojson.features.forEach(f => {
     if (f.properties?.type === "high_irregularity_zone") return;
     const p = f.properties || {};
+    // Derive lat/lon: prefer stored cell centroid, fall back to geometry centroid
+    const [geoLon, geoLat] = featureCentroid(f);
+    const lat = p.cell_cy ?? geoLat ?? "";
+    const lon = p.cell_cx ?? geoLon ?? "";
     rows.push(orderedKeys.map(k => {
+      if (k === "lat") return lat;
+      if (k === "lon") return lon;
       const v = p[k];
       if (v === null || v === undefined) return "";
       if (typeof v === "number") return isNaN(v) ? "" : v;
@@ -3873,8 +3900,32 @@ function clusteringLabel(scores) {
   return { text: "Well-mixed — scores spread evenly", color: "var(--success)" };
 }
 
+/* ---------- Convert rgba/rgb CSS string → "#rrggbb" hex ---------- */
+function cssColorToHex(css) {
+  const m = css.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (!m) return css; // already hex or unknown — pass through
+  const r = parseInt(m[1]).toString(16).padStart(2, "0");
+  const g = parseInt(m[2]).toString(16).padStart(2, "0");
+  const b = parseInt(m[3]).toString(16).padStart(2, "0");
+  return `#${r}${g}${b}`;
+}
+
+/* ---------- Derive hex fill colour for a grid feature ---------- */
+function featureFillHex(feature, service) {
+  const p = feature.properties;
+  const isVeg     = service === "vegetation";
+  const isTraffic = service === "traffic";
+  const isISPA    = service === "informal-settlement";
+  let rgba;
+  if (isVeg)     rgba = vegPctColor(p.value ?? 0);
+  else if (isTraffic) rgba = congestionColor(p.congestion || "low");
+  else if (isISPA)    rgba = irregularityColor(p.value ?? 0);
+  else                rgba = qolScoreColor(p.qol_score ?? 0);
+  return cssColorToHex(rgba);
+}
+
 function downloadGeoJSON(geojson, filename) {
-  const blob = new Blob([JSON.stringify(geojson)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/json" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href = url; a.download = filename; a.click();
@@ -4001,21 +4052,14 @@ async function fetchAndRenderGrid(service, blob) {
     },
   });
 
-  // Inject fill_color into each feature for styled GeoJSON export
+  // Inject Simplestyle-spec properties so any GeoJSON viewer renders the same colors as the map
   geojson.features.forEach(f => {
     const p = f.properties;
-    if (isVeg) {
-      p.fill_color = vegPctColor(p.value ?? 0);
-    } else if (isTraffic) {
-      p.fill_color = congestionColor(p.congestion || "low");
-    } else if (isISPA) {
-      p.fill_color = irregularityColor(p.value ?? 0);
-    } else {
-      p.fill_color = qolScoreColor(p.qol_score ?? 0);
-    }
-    p.stroke = "rgba(0,0,0,0.15)";
-    p.stroke_width = 0.5;
-    p.fill_opacity = 0.75;
+    p["fill"]           = featureFillHex(f, service);
+    p["fill-opacity"]   = 0.75;
+    p["stroke"]         = "#000000";
+    p["stroke-width"]   = 0.5;
+    p["stroke-opacity"] = 0.15;
   });
 
   return geojson;
