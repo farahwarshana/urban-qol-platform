@@ -192,7 +192,8 @@ function renderServicePanel(key) {
     return `
       <div class="form-group">
         <label for="${field.id}">${field.label}</label>
-        <input type="text" id="${field.id}" />
+        <input type="text" id="${field.id}" placeholder="${field.placeholder || ""}" />
+        ${field.id === "populationField" ? `<small id="populationFieldHint" class="text-muted" style="display:none;">Auto-detected — you can edit this.</small>` : ""}
       </div>`;
   }).join("");
 
@@ -3952,6 +3953,25 @@ function attachFileInputListeners() {
         const geojsonData = JSON.parse(event.target.result);
 
         console.log("Uploaded GeoJSON:", geojsonData);
+
+        // Auto-detect population field for urban density service
+        const popFieldInput = document.getElementById("populationField");
+        if (popFieldInput && !popFieldInput.value) {
+          const firstFeature = geojsonData.features && geojsonData.features[0];
+          if (firstFeature && firstFeature.properties) {
+            const popKey = Object.keys(firstFeature.properties)
+              .find(k => k.toLowerCase().includes("pop"));
+            if (popKey) {
+              popFieldInput.value = popKey;
+              const hint = document.getElementById("populationFieldHint");
+              if (hint) hint.style.display = "inline";
+              popFieldInput.addEventListener("input", function onEdit() {
+                if (hint) hint.style.display = "none";
+                popFieldInput.removeEventListener("input", onEdit);
+              });
+            }
+          }
+        }
 
         // ADD TO MAP (track as inputLayer so tab switching can restore it)
         if (inputLayer) map.removeLayer(inputLayer);
