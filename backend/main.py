@@ -870,3 +870,48 @@ def grid_air_quality_endpoint(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Grid Air Quality failed: {e}")
+    
+#---------------------- endpoint profile_1 -------------------
+
+from pydantic import BaseModel
+from typing import Optional, List
+
+class UserProfile(BaseModel):
+    full_name: str
+    email: str
+    city: Optional[str] = ""
+    organization: Optional[str] = ""
+
+profiles_db = {}
+
+@app.get("/profile", tags=["User"])
+def get_profile(username: str = "default"):
+    if username not in profiles_db:
+        return {
+            "full_name": "",
+            "email": "",
+            "city": "",
+            "organization": "",
+            "initials": ""
+        }
+    return profiles_db[username]
+
+@app.post("/profile", tags=["User"])
+def save_profile(profile: UserProfile, username: str = "default"):
+    names = profile.full_name.strip().split()
+    initials = (names[0][0] + names[-1][0]).upper() if len(names) >= 2 else names[0][0].upper()
+    
+    profiles_db[username] = {
+        "full_name": profile.full_name,
+        "email": profile.email,
+        "city": profile.city,
+        "organization": profile.organization,
+        "initials": initials
+    }
+    return {"message": "Profile saved successfully"}
+
+analyses_db = {}
+
+@app.get("/analyses", tags=["User"])
+def get_analyses(username: str = "default"):
+    return analyses_db.get(username, [])

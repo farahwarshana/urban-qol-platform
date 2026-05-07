@@ -728,14 +728,8 @@
 
 const analyses = [];
 
-  let currentFilter = 'all';
-  async function loadAnalyses() {
-  const token = localStorage.getItem('token');
-  
-  const res = await fetch('http://localhost:8000/analyses', {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  
+async function loadAnalyses() {
+  const res = await fetch('http://localhost:8000/analyses');
   const data = await res.json();
   analyses.push(...data);
   renderList('all');
@@ -795,26 +789,37 @@ const analyses = [];
     if (form.style.display === 'block') form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function saveProfile() {
-    const first = document.getElementById('firstName').value.trim();
-    const last  = document.getElementById('lastName').value.trim();
-    const email = document.getElementById('emailInput').value.trim();
-    const city  = document.getElementById('cityInput').value.trim();
-    const country = document.getElementById('countryInput').value;
-    const org   = document.getElementById('orgInput').value.trim();
+async function saveProfile() {
+  const first = document.getElementById('firstName').value.trim();
+  const last  = document.getElementById('lastName').value.trim();
+  const email = document.getElementById('emailInput').value.trim();
+  const city  = document.getElementById('cityInput').value.trim();
+  const org   = document.getElementById('orgInput').value.trim();
 
-    document.getElementById('displayName').textContent = first + ' ' + last;
-    document.getElementById('displayEmail').textContent = email;
-    document.getElementById('displayCity').textContent = city + ', ' + country;
-    document.getElementById('displayOrg').textContent = org;
+  const res = await fetch('http://localhost:8000/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      full_name: first + ' ' + last,
+      email: email,
+      city: city,
+      organization: org
+    })
+  });
 
-    const initials = (first[0] || '') + (last[0] || '');
-    document.getElementById('avatarInitials').textContent = initials.toUpperCase();
+  const data = await res.json();
 
-    toggleEdit();
-    showToast('Profile updated successfully');
-  }
+  document.getElementById('displayName').textContent = first + ' ' + last;
+  document.getElementById('displayEmail').textContent = email;
+  document.getElementById('displayCity').textContent = city;
+  document.getElementById('displayOrg').textContent = org;
 
+  const initials = (first[0] || '') + (last[0] || '');
+  document.getElementById('avatarInitials').textContent = initials.toUpperCase();
+
+  toggleEdit();
+  showToast('Profile updated successfully');
+}
   function handleAvatar(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -837,12 +842,7 @@ const analyses = [];
   }
 
 async function loadProfile() {
-  const token = localStorage.getItem('token');
-  
-  const res = await fetch('http://localhost:8000/profile', {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  
+  const res = await fetch('http://localhost:8000/profile');
   const data = await res.json();
   
   document.getElementById('displayName').textContent = data.full_name;
@@ -853,7 +853,6 @@ async function loadProfile() {
 }
 
 loadProfile();
-
 loadAnalyses();
 
 </script>
