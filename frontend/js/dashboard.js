@@ -69,10 +69,6 @@ const SERVICES = {
     desc: "Normalized Difference Vegetation Index from raster.",
     inputs: [
       { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
-      { type: "select", id: "satelliteType", label: "Satellite type", options: [
-        { value: "landsat", label: "Landsat 8/9 (Band 4 Red, Band 5 NIR)", selected: true },
-        { value: "sentinel2", label: "Sentinel-2 (Band 4 Red, Band 8 NIR)" },
-      ]},
     ],
   },
   "crime": {
@@ -332,19 +328,14 @@ function runAnalysis(key) {
 /* ---------- NDVI Analysis - calls backend API ---------- */
 async function runNDVIAnalysis() {
   const tiffInput = document.getElementById("tiffInput");
-  const satelliteSelect = document.getElementById("satelliteType");
-  
+
   if (!tiffInput || !tiffInput.files[0]) {
     alert("Please upload a GeoTIFF file first.");
     return;
   }
 
   const file = tiffInput.files[0];
-  const satelliteType = satelliteSelect ? satelliteSelect.value : "landsat";
-  const inputs = {
-    fileName: file.name,
-    satelliteLabel: satelliteSelect ? satelliteSelect.options[satelliteSelect.selectedIndex].text : satelliteType,
-  };
+  const inputs = { fileName: file.name };
 
   const formData = new FormData();
   formData.append("geotiff", file);
@@ -363,10 +354,7 @@ async function runNDVIAnalysis() {
   `;
 
   try {
-    // Build URL with query parameter
-    const url = `http://localhost:8000/calculate-ndvi?satellite_type=${satelliteType}`;
-    
-    const response = await fetch(url, {
+    const response = await fetch("http://localhost:8000/calculate-ndvi", {
       method: "POST",
       body: formData,
     });
