@@ -124,6 +124,18 @@ def calculate_ndvi_from_bands(geotiff_path, output_ndvi_path):
                 f"{red_band_index} (Red) and {nir_band_index} (NIR) are out of range."
             )
 
+        img_width  = src.width
+        img_height = src.height
+        pixel_size_x = abs(src.transform.a)
+        pixel_size_y = abs(src.transform.e)
+        crs = src.crs
+        if crs and crs.is_projected:
+            pixel_unit = "m"
+        elif crs and crs.is_geographic:
+            pixel_unit = "deg"
+        else:
+            pixel_unit = "m" if pixel_size_x >= 1 else "deg"
+
         red = src.read(red_band_index).astype("float32")
         nir = src.read(nir_band_index).astype("float32")
         meta = src.meta.copy()
@@ -157,19 +169,40 @@ def calculate_ndvi_from_bands(geotiff_path, output_ndvi_path):
         dst.write(ndvi_output, 1)
 
     valid_ndvi = ndvi[~np.isnan(ndvi)]
+    total_valid = valid_ndvi.size
+
+    # Vegetation coverage classes
+    no_veg      = int(np.sum(valid_ndvi < 0.0))
+    bare_soil   = int(np.sum((valid_ndvi >= 0.0) & (valid_ndvi < 0.2)))
+    moderate    = int(np.sum((valid_ndvi >= 0.2) & (valid_ndvi < 0.6)))
+    dense       = int(np.sum(valid_ndvi >= 0.6))
+
+    def pct(n):
+        return round(n / total_valid * 100, 2) if total_valid > 0 else 0.0
+
     stats = {
-        "output_path": output_ndvi_path,
-        "valid_pixels": int(valid_ndvi.size),
-        "red_band":  detected["red_name"],
-        "nir_band":  detected["nir_name"],
-        "satellite": detected["satellite"],
+        "output_path":    output_ndvi_path,
+        "valid_pixels":   total_valid,
+        "red_band":       detected["red_name"],
+        "nir_band":       detected["nir_name"],
+        "satellite":      detected["satellite"],
+        "img_width":      img_width,
+        "img_height":     img_height,
+        "pixel_size_x":   round(pixel_size_x, 6),
+        "pixel_size_y":   round(pixel_size_y, 6),
+        "pixel_unit":     pixel_unit,
+        "pct_no_veg":     pct(no_veg),
+        "pct_bare_soil":  pct(bare_soil),
+        "pct_moderate":   pct(moderate),
+        "pct_dense":      pct(dense),
     }
 
-    if valid_ndvi.size > 0:
+    if total_valid > 0:
         stats.update({
-            "min":  float(np.nanmin(valid_ndvi)),
-            "max":  float(np.nanmax(valid_ndvi)),
-            "mean": float(np.nanmean(valid_ndvi)),
+            "min":    float(np.nanmin(valid_ndvi)),
+            "max":    float(np.nanmax(valid_ndvi)),
+            "mean":   float(np.nanmean(valid_ndvi)),
+            "stddev": float(np.nanstd(valid_ndvi)),
         })
     else:
         stats["warning"] = "No valid NDVI pixels found."

@@ -223,6 +223,7 @@ function clearMap() {
       map.removeLayer(layer);
     }
   });
+  disableNdviProbe();
 }
 /* ---------- Special panel: Future Expansion Suitability ---------- */
 function renderExpansionPanel(service) {
@@ -369,9 +370,19 @@ async function runNDVIAnalysis() {
     const ndviMax = response.headers.get("X-NDVI-Max");
     const ndviMean = response.headers.get("X-NDVI-Mean");
     const validPixels = response.headers.get("X-Valid-Pixels");
-    const redBand  = response.headers.get("X-Red-Band");
-    const nirBand  = response.headers.get("X-NIR-Band");
-    const satellite = response.headers.get("X-Satellite");
+    const redBand      = response.headers.get("X-Red-Band");
+    const nirBand      = response.headers.get("X-NIR-Band");
+    const satellite    = response.headers.get("X-Satellite");
+    const ndviStddev   = response.headers.get("X-NDVI-Stddev");
+    const imgWidth     = response.headers.get("X-Img-Width");
+    const imgHeight    = response.headers.get("X-Img-Height");
+    const pixelSizeX   = response.headers.get("X-Pixel-Size-X");
+    const pixelSizeY   = response.headers.get("X-Pixel-Size-Y");
+    const pixelUnit    = response.headers.get("X-Pixel-Unit") || "";
+    const pctNoVeg     = response.headers.get("X-Pct-No-Veg");
+    const pctBareSoil  = response.headers.get("X-Pct-Bare-Soil");
+    const pctModerate  = response.headers.get("X-Pct-Moderate");
+    const pctDense     = response.headers.get("X-Pct-Dense");
 
     // Convert response to array buffer
     const arrayBuffer = await response.arrayBuffer();
@@ -408,6 +419,8 @@ async function runNDVIAnalysis() {
       },
     });
 
+    // Enable NDVI pixel probe on the map
+    enableNdviProbe(resultLayer);
 
     // Render results panel with NDVI stats
     renderNDVIResults({
@@ -415,9 +428,19 @@ async function runNDVIAnalysis() {
       max: ndviMax,
       mean: ndviMean,
       valid_pixels: validPixels,
-      red_band:  redBand,
-      nir_band:  nirBand,
-      satellite: satellite,
+      red_band:     redBand,
+      nir_band:     nirBand,
+      satellite:    satellite,
+      stddev:       ndviStddev,
+      img_width:    imgWidth,
+      img_height:   imgHeight,
+      pixel_size_x: pixelSizeX,
+      pixel_size_y: pixelSizeY,
+      pixel_unit:   pixelUnit,
+      pct_no_veg:   pctNoVeg,
+      pct_bare_soil: pctBareSoil,
+      pct_moderate: pctModerate,
+      pct_dense:    pctDense,
     }, inputs);
 
   } catch (error) {
@@ -2404,29 +2427,51 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
 
 /* ---------- Render NDVI Results with stats ---------- */
 function renderNDVIResults(stats, inputs) {
-  const meanNDVI = parseFloat(stats.mean) || 0;
-  const minNDVI  = parseFloat(stats.min)  || 0;
-  const maxNDVI  = parseFloat(stats.max)  || 0;
+  const meanNDVI = parseFloat(stats.mean)   || 0;
+  const minNDVI  = parseFloat(stats.min)    || 0;
+  const maxNDVI  = parseFloat(stats.max)    || 0;
+  const stdNDVI  = parseFloat(stats.stddev) || 0;
   const validPx  = parseInt(stats.valid_pixels) || 0;
 
-  // Score: mean NDVI mapped to 0–100 (mean 0.6+ = excellent green, -0.2 = bare)
-  const ndviScore = Math.max(0, Math.min(100, Math.round(((meanNDVI + 0.2) / 0.8) * 100)));
-  const cat = perfCategory(ndviScore);
+  // Score: mean NDVI mapped to 0–100
+  const ndviScore  = Math.max(0, Math.min(100, Math.round(((meanNDVI + 0.2) / 0.8) * 100)));
   const scoreColor = qolScoreTextColor(ndviScore);
 
-  // 4 buckets for distribution bar
-  const rangeSize = Math.max(0.001, maxNDVI - minNDVI);
-  const q1 = minNDVI + rangeSize * 0.25;
-  const q2 = minNDVI + rangeSize * 0.5;
-  const q3 = minNDVI + rangeSize * 0.75;
-  const chartHtml = miniBarChart(
-    [25, 25, 25, 25],
-    4,
-    [vegPctColor(5), vegPctColor(20), vegPctColor(40), vegPctColor(70)],
-    [minNDVI.toFixed(2), q1.toFixed(2), q2.toFixed(2), maxNDVI.toFixed(2)]
-  );
+  // Vegetation health classification from mean NDVI
+  const vegHealthClass = meanNDVI >= 0.5
+    ? { label: "Dense / Healthy Vegetation",  color: "#27ae60" }
+    : meanNDVI >= 0.2
+    ? { label: "Moderate Vegetation",          color: "#f39c12" }
+    : meanNDVI >= 0.0
+    ? { label: "Sparse / Stressed Vegetation", color: "#e67e22" }
+    : { label: "Bare Soil / Built-up Surface", color: "#e74c3c" };
 
-  const ineq = inequalityLabel(calcStdDev([minNDVI * 100, maxNDVI * 100]));
+  // Histogram: 10 equal bins across the data range
+  const binCount = 10;
+  const range = maxNDVI - minNDVI || 1;
+  const bins  = new Array(binCount).fill(0);
+  // We only have summary stats — approximate a normal distribution histogram
+  // using a Gaussian curve seeded by mean and stddev
+  const histMax = Math.max(...Array.from({length: binCount}, (_, i) => {
+    const binMid = minNDVI + (i + 0.5) * (range / binCount);
+    return Math.exp(-0.5 * Math.pow((binMid - meanNDVI) / (stdNDVI || 0.01), 2));
+  }), 0.001);
+  const histBars = Array.from({length: binCount}, (_, i) => {
+    const binMid   = minNDVI + (i + 0.5) * (range / binCount);
+    const binLabel = (minNDVI + i * (range / binCount)).toFixed(2);
+    const height   = Math.exp(-0.5 * Math.pow((binMid - meanNDVI) / (stdNDVI || 0.01), 2));
+    const hPct     = Math.round((height / histMax) * 44);
+    const t        = (binMid - minNDVI) / range;
+    const r = t < 0.5 ? Math.round(200 - t/0.5*20) : Math.round(180 - (t-0.5)/0.5*180);
+    const g = t < 0.5 ? Math.round(20  + t/0.5*180) : Math.round(200 - (t-0.5)/0.5*50);
+    return `<div title="${binLabel}" style="flex:1;height:${Math.max(2,hPct)}px;background:rgb(${r},${g},0);border-radius:2px 2px 0 0;"></div>`;
+  });
+  const histogramHtml = `
+    <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Value Distribution</div>
+    <div style="display:flex;align-items:flex-end;gap:2px;height:48px;">${histBars.join("")}</div>
+    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:2px;">
+      <span>${minNDVI.toFixed(2)}</span><span>${meanNDVI.toFixed(2)} (mean)</span><span>${maxNDVI.toFixed(2)}</span>
+    </div>`;
 
   const keyInsight = meanNDVI >= 0.4
     ? `Mean NDVI of ${meanNDVI.toFixed(2)} indicates healthy and abundant vegetation across the area.`
@@ -2434,10 +2479,25 @@ function renderNDVIResults(stats, inputs) {
     ? `Moderate vegetation detected (mean NDVI ${meanNDVI.toFixed(2)}). Some zones may need greening.`
     : `Low mean NDVI (${meanNDVI.toFixed(2)}) — the area is mostly bare or built-up with limited vegetation.`;
 
+  const pxSizeX = parseFloat(stats.pixel_size_x);
+  const pxSizeY = parseFloat(stats.pixel_size_y);
+  const pxUnit  = stats.pixel_unit || "";
+  const pixelSizeStr = (!isNaN(pxSizeX) && !isNaN(pxSizeY))
+    ? `${pxSizeX.toFixed(4)} × ${pxSizeY.toFixed(4)}${pxUnit ? " " + pxUnit : ""}`
+    : "—";
+
   const inputsHtml = inputs ? `
     <div class="insight-card">
       <div class="label">GeoTIFF file</div>
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Dimensions</div>
+      <div class="value">${stats.img_width || "—"} × ${stats.img_height || "—"} px</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Pixel Size</div>
+      <div class="value">${pixelSizeStr}</div>
     </div>
     <div class="insight-card">
       <div class="label">Satellite</div>
@@ -2473,9 +2533,9 @@ function renderNDVIResults(stats, inputs) {
         <div style="margin-bottom:12px;">
           <div style="height:16px;width:100%;border-radius:4px;background:linear-gradient(to right,rgb(200,20,0),rgb(200,200,0),rgb(0,150,0));border:1px solid rgba(255,255,255,0.15);"></div>
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:3px;">
-            <span>−1</span>
+            <span>${minNDVI.toFixed(2)} (low)</span>
             <span>NDVI Scale</span>
-            <span>+1</span>
+            <span>(high) ${maxNDVI.toFixed(2)}</span>
           </div>
         </div>
         <div class="insight-card">
@@ -2483,30 +2543,43 @@ function renderNDVIResults(stats, inputs) {
           <div class="value" style="color:${scoreColor}">${ndviScore} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Performance</div>
-          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+          <div class="label">Vegetation Health</div>
+          <div class="value" style="color:${vegHealthClass.color};font-size:13px;">${vegHealthClass.label}</div>
         </div>
         <div class="insight-card">
           <div class="label">Mean NDVI</div>
-          <div class="value">${stats.mean || "N/A"}</div>
+          <div class="value">${meanNDVI.toFixed(4)}</div>
         </div>
         <div class="insight-card">
           <div class="label">Min NDVI</div>
-          <div class="value">${stats.min || "N/A"}</div>
+          <div class="value">${minNDVI.toFixed(4)}</div>
         </div>
         <div class="insight-card">
           <div class="label">Max NDVI</div>
-          <div class="value">${stats.max || "N/A"}</div>
+          <div class="value">${maxNDVI.toFixed(4)}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Valid Pixels</div>
-          <div class="value">${validPx.toLocaleString()}</div>
+          <div class="label">Std. Deviation</div>
+          <div class="value">${stdNDVI.toFixed(4)}</div>
+        </div>
+        <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Vegetation Coverage</div>
+        <div class="insight-card">
+          <div class="label" style="color:#e74c3c;">No Vegetation (&lt; 0)</div>
+          <div class="value">${stats.pct_no_veg ?? "—"}%</div>
         </div>
         <div class="insight-card">
-          <div class="label">Value Spread</div>
-          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+          <div class="label" style="color:#e67e22;">Bare Soil (0.0 – 0.2)</div>
+          <div class="value">${stats.pct_bare_soil ?? "—"}%</div>
         </div>
-        ${chartHtml}
+        <div class="insight-card">
+          <div class="label" style="color:#f39c12;">Moderate Vegetation (0.2 – 0.6)</div>
+          <div class="value">${stats.pct_moderate ?? "—"}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label" style="color:#27ae60;">Dense Vegetation (0.6 – 1.0)</div>
+          <div class="value">${stats.pct_dense ?? "—"}%</div>
+        </div>
+        ${histogramHtml}
         <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>
@@ -3130,9 +3203,26 @@ function wireTabSwitching() {
             : `${cellSizeM} m`;
 
           if (gridTabContent) {
+            const isNDVIGrid    = lastResultService === "ndvi";
             const isVegGrid     = lastResultService === "vegetation";
             const isTrafficGrid = lastResultService === "traffic";
             const isISPAGrid    = lastResultService === "informal-settlement";
+
+            // ---- NDVI vegetation health counts ----
+            let ndviHealthy = 0, ndviUnhealthy = 0, ndviValues = [];
+            if (isNDVIGrid) {
+              geojson.features.forEach(f => {
+                const v = f.properties.value;
+                if (v !== null && v !== undefined) {
+                  ndviValues.push(v);
+                  if (v >= 0.2) ndviHealthy++; else ndviUnhealthy++;
+                }
+              });
+            }
+            const ndviUnhealthyPct = ndviValues.length
+              ? ((ndviUnhealthy / ndviValues.length) * 100).toFixed(1) : null;
+            const ndviHealthyPct = ndviValues.length
+              ? ((ndviHealthy / ndviValues.length) * 100).toFixed(1) : null;
 
             // ---- Vegetation counts ----
             let vegPassCount = 0, vegFailCount = 0, vegPctValues = [];
@@ -3207,6 +3297,11 @@ function wireTabSwitching() {
               gridChartHtml = miniBarChart(
                 [ispaLow, ispaMed, ispaHigh],
                 3, [irregularityColor(10), irregularityColor(50), irregularityColor(85)], ["Planned", "Mixed", "Informal"]
+              );
+            } else if (isNDVIGrid) {
+              gridChartHtml = miniBarChart(
+                [ndviHealthy, ndviUnhealthy],
+                2, ["#27ae60", "#e74c3c"], ["Healthy (≥0.2)", "Unhealthy (<0.2)"]
               );
             } else if (scores.length) {
               gridChartHtml = miniBarChart(
@@ -3305,6 +3400,15 @@ function wireTabSwitching() {
               <div class="insight-card">
                 <div class="label">Average Score</div>
                 <div class="value" style="color:${qolScoreTextColor(avg)}">${avg} / 100</div>
+              </div>` : ""}
+              ${isNDVIGrid && ndviUnhealthyPct !== null ? `
+              <div class="insight-card">
+                <div class="label">Unhealthy Vegetation Cells</div>
+                <div class="value" style="color:#e74c3c;">${ndviUnhealthyPct}% <span style="font-size:11px;color:var(--text-muted);">(NDVI &lt; 0.2)</span></div>
+              </div>
+              <div class="insight-card">
+                <div class="label">Healthy Vegetation Cells</div>
+                <div class="value" style="color:#27ae60;">${ndviHealthyPct}% <span style="font-size:11px;color:var(--text-muted);">(NDVI ≥ 0.2)</span></div>
               </div>` : ""}
               ${isVegGrid ? `
               <div class="insight-card">
@@ -3469,18 +3573,60 @@ window.addEventListener("load", initMap);
    MAP HUD — coordinates display + scale bar
    ============================================================ */
 
+let _ndviGeoRaster = null;  // raw georaster object for pixel sampling
+
+function enableNdviProbe(layer) {
+  // georaster-layer-for-leaflet stores the parsed georaster on the layer object
+  _ndviGeoRaster = layer.georaster || null;
+  const probeEl = document.getElementById('ndvi-probe');
+  if (probeEl) probeEl.style.display = '';
+}
+
+function disableNdviProbe() {
+  _ndviGeoRaster = null;
+  const probeEl = document.getElementById('ndvi-probe');
+  if (probeEl) probeEl.style.display = 'none';
+}
+
+function sampleNdviAtLatLng(lat, lng) {
+  const gr = _ndviGeoRaster;
+  if (!gr || !gr.values) return null;
+
+  const { xmin, xmax, ymin, ymax, width, height } = gr;
+  // Bounds check
+  if (lng < xmin || lng > xmax || lat < ymin || lat > ymax) return null;
+
+  const col = Math.floor((lng - xmin) / (xmax - xmin) * width);
+  const row = Math.floor((ymax - lat) / (ymax - ymin) * height);
+
+  if (col < 0 || col >= width || row < 0 || row >= height) return null;
+
+  const band = gr.values[0];
+  if (!band || !band[row]) return null;
+  const v = band[row][col];
+  return (v === undefined || v === null || v <= -9999 || isNaN(v)) ? null : v;
+}
+
 function initMapHud() {
   // ── Coordinates ───────────────────────────────────────────
   const coordsEl = document.getElementById('mapCoords');
+  const probeEl  = document.getElementById('ndvi-probe');
 
   map.on('mousemove', function(e) {
     const lat = e.latlng.lat.toFixed(5);
     const lng = e.latlng.lng.toFixed(5);
     coordsEl.textContent = lat + ', ' + lng;
+
+    // NDVI pixel probe
+    if (_ndviGeoRaster && probeEl && probeEl.style.display !== 'none') {
+      const v = sampleNdviAtLatLng(e.latlng.lat, e.latlng.lng);
+      probeEl.textContent = v !== null ? `NDVI: ${v.toFixed(4)}` : 'NDVI: —';
+    }
   });
 
   map.on('mouseout', function() {
     coordsEl.textContent = '— , —';
+    if (probeEl) probeEl.textContent = 'NDVI: —';
   });
 
   // ── Scale bar ─────────────────────────────────────────────
