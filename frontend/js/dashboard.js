@@ -78,7 +78,8 @@ const SERVICES = {
       { type: "file", id: "csvInput", label: "Upload crime data (CSV)" },
       { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" },
       { type: "text", id: "latField", label: "Latitude column name", placeholder: "Auto-detected from CSV", autoDetect: true },
-      { type: "text", id: "lonField", label: "Longitude column name", placeholder: "Auto-detected from CSV", autoDetect: true }
+      { type: "text", id: "lonField", label: "Longitude column name", placeholder: "Auto-detected from CSV", autoDetect: true },
+      { type: "number", id: "crimePopInput", label: "Total population (optional — enables per-capita comparison)" },
     ],
   },
   "traffic": {
@@ -163,9 +164,12 @@ function renderServicePanel(key) {
         </div>`;
     }
     if (field.type === "number") {
+      const labelHtml = field.label.replace(/\(optional\b([^)]*)\)/i, (m, rest) =>
+        `(<em style="color:var(--accent);font-style:italic;font-weight:500;">optional</em>${rest})`
+      );
       return `
         <div class="form-group">
-          <label for="${field.id}">${field.label}</label>
+          <label for="${field.id}">${labelHtml}</label>
           <input type="number" id="${field.id}" value="${field.value ?? ""}" />
         </div>`;
     }
@@ -488,6 +492,8 @@ async function runCrimeAnalysis() {
 
   const latFieldValue = latField ? latField.value.trim() : "";
   const lonFieldValue = lonField ? lonField.value.trim() : "";
+  const popEl = document.getElementById("crimePopInput");
+  const totalPopulation = popEl && popEl.value ? parseInt(popEl.value) : null;
 
   const csvFile = csvInput.files[0];
   const geoJsonFile = geoJsonInput.files[0];
@@ -496,7 +502,35 @@ async function runCrimeAnalysis() {
     geoJsonFileName: geoJsonFile.name,
     latField: latFieldValue || "auto-detected",
     lonField: lonFieldValue || "auto-detected",
+    totalPopulation,
   };
+
+  // Parse crime type counts directly from the CSV file
+  window._crimeTypeCounts = {};
+  await new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const lines = e.target.result.trim().split('\n');
+        if (lines.length < 2) { resolve(); return; }
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        const _typeRoots = ["offense","crime","incident","violation","charge","category","classification","nature","description","ucr","primary_type","event_type","call_type","report_type"];
+        const typeCol = headers.find(h => _typeRoots.some(root => h.toLowerCase().replace(/\s+/g, "_").includes(root)));
+        if (typeCol != null) {
+          const typeIndex = headers.indexOf(typeCol);
+          for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+            if (values[typeIndex]) {
+              const t = values[typeIndex];
+              window._crimeTypeCounts[t] = (window._crimeTypeCounts[t] || 0) + 1;
+            }
+          }
+        }
+      } catch(err) { console.warn("Crime type parsing failed:", err); }
+      resolve();
+    };
+    reader.readAsText(csvFile);
+  });
 
   const formData = new FormData();
   formData.append("csv", csvFile);
@@ -593,7 +627,7 @@ async function runCrimeAnalysis() {
       area_count: areaCount,
       avg_density: avgDensity,
       max_density: maxDensity,
-    }, inputs);
+    }, inputs, geojsonData);
 
   } catch (error) {
     console.error("Crime density calculation error:", error);
@@ -2174,7 +2208,7 @@ function downloadGridCSV(geojson, service) {
 
 
 /* ---------- Render Crime Results with stats ---------- */
-function renderCrimeResults(stats, inputs) {
+function renderCrimeResults(stats, inputs, geojsonData) {
   const avgDen = parseFloat(stats.avg_density) || 0;
   const maxDen = parseFloat(stats.max_density) || 0;
   const crimeCount = parseInt(stats.crime_count) || 0;
@@ -2193,13 +2227,108 @@ function renderCrimeResults(stats, inputs) {
     ["Safe", "Hotspot"]
   );
 
-  const ineq = maxDen > 0 ? inequalityLabel(calcStdDev([avgDen, maxDen])) : null;
-
   const keyInsight = maxDen > 0
     ? maxDen / Math.max(avgDen, 0.01) > 5
       ? `Crime is heavily concentrated in a few hotspot zones — the rest of the area is relatively safe.`
       : `Crime incidents are spread more evenly across the area with no dominant single hotspot.`
     : "";
+
+  // ---- Per-capita comparison ----
+  const totalPop = inputs && inputs.totalPopulation ? parseInt(inputs.totalPopulation) : null;
+  let perCapitaHtml = "";
+  if (totalPop && totalPop > 0 && crimeCount > 0) {
+    const per1000 = (crimeCount / totalPop) * 1000;
+    const benchmark = 1; // incidents per 1,000 residents (WHO / urban safety standard)
+    const ratio = per1000 / benchmark;
+    let ratingLabel, ratingColor, ratingDesc;
+    if (per1000 <= 1)       { ratingLabel = "Safe";     ratingColor = "#2ecc71"; ratingDesc = "At or below the safe urban benchmark (< 1 / 1,000)."; }
+    else if (per1000 <= 3)  { ratingLabel = "Moderate"; ratingColor = "#f39c12"; ratingDesc = `${ratio.toFixed(1)}× above the safe benchmark.`; }
+    else if (per1000 <= 7)  { ratingLabel = "High";     ratingColor = "#e67e22"; ratingDesc = `${ratio.toFixed(1)}× above the safe benchmark.`; }
+    else                    { ratingLabel = "Critical";  ratingColor = "#e74c3c"; ratingDesc = `${ratio.toFixed(1)}× above the safe benchmark — urgent intervention needed.`; }
+
+    perCapitaHtml = `<div class="insight-card">
+      <div class="label">Per-Capita Crime Rate</div>
+      <div class="value" style="color:${ratingColor};">${per1000.toFixed(2)} per 1,000 residents</div>
+      <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">
+        Based on ${crimeCount.toLocaleString()} incidents · population ${totalPop.toLocaleString()}
+      </div>
+      <div style="margin-top:4px;display:flex;align-items:center;gap:6px;">
+        <span style="font-size:11px;font-weight:600;color:${ratingColor};">${ratingLabel}</span>
+        <span style="font-size:11px;color:var(--text-muted);">${ratingDesc}</span>
+      </div>
+      <div style="margin-top:6px;background:rgba(255,255,255,0.08);border-radius:3px;height:6px;overflow:hidden;">
+        <div style="width:${Math.min(100, (per1000 / 10) * 100).toFixed(1)}%;height:100%;background:${ratingColor};border-radius:3px;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-top:2px;">
+        <span>0</span><span>▲ benchmark (1)</span><span>10+ /1,000</span>
+      </div>
+    </div>`;
+  }
+
+  // ---- Top safe / unsafe areas from geojson features ----
+  let topUnsafeHtml = "", topSafeHtml = "";
+  if (geojsonData && geojsonData.features && geojsonData.features.length) {
+    const nameKey = ["NBHD_NAME","name","NAME","district","area_name","neighborhood"]
+      .find(k => geojsonData.features[0]?.properties?.[k] !== undefined);
+    const featuresWithName = geojsonData.features
+      .filter(f => f.properties && f.properties.crime_density !== undefined)
+      .map(f => ({
+        name: nameKey ? f.properties[nameKey] : null,
+        density: parseFloat(f.properties.crime_density) || 0,
+      }))
+      .filter(f => f.name);
+
+    if (featuresWithName.length) {
+      const sorted = [...featuresWithName].sort((a, b) => b.density - a.density);
+      const top3Unsafe = sorted.slice(0, 3);
+      const top3Safe   = sorted.slice(-3).reverse();
+      topUnsafeHtml = `<div class="insight-card">
+        <div class="label" style="color:var(--danger);">Top Unsafe Areas</div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">
+          ${top3Unsafe.map((f, i) => `
+            <div style="display:flex;justify-content:space-between;font-size:12px;">
+              <span>${i + 1}. ${f.name}</span>
+              <span style="color:var(--danger);font-weight:600;">${f.density.toFixed(2)}/km²</span>
+            </div>`).join("")}
+        </div>
+      </div>`;
+      topSafeHtml = `<div class="insight-card">
+        <div class="label" style="color:#2ecc71;">Top Safe Areas</div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">
+          ${top3Safe.map((f, i) => `
+            <div style="display:flex;justify-content:space-between;font-size:12px;">
+              <span>${i + 1}. ${f.name}</span>
+              <span style="color:#2ecc71;font-weight:600;">${f.density.toFixed(2)}/km²</span>
+            </div>`).join("")}
+        </div>
+      </div>`;
+    }
+  }
+
+  // ---- Crime type breakdown from the uploaded CSV (available via lastCrimeCSVHeaders) ----
+  let crimeTypeHtml = "";
+  if (window._crimeTypeCounts && Object.keys(window._crimeTypeCounts).length) {
+    const entries = Object.entries(window._crimeTypeCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const total = entries.reduce((s, [, v]) => s + v, 0);
+    crimeTypeHtml = `
+      <div class="insight-card">
+        <div class="label">Crime Type Breakdown</div>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">
+          ${entries.map(([type, count]) => {
+            const pct = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+            return `<div style="font-size:11px;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                <span style="color:var(--text-primary);">${type}</span>
+                <span style="color:var(--text-muted);">${count} (${pct}%)</span>
+              </div>
+              <div style="background:rgba(255,255,255,0.08);border-radius:3px;height:5px;overflow:hidden;">
+                <div style="width:${pct}%;height:100%;background:#e74c3c;border-radius:3px;"></div>
+              </div>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+  }
 
   const inputsHtml = inputs ? `
     <div class="insight-card">
@@ -2207,8 +2336,12 @@ function renderCrimeResults(stats, inputs) {
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.csvFileName}</div>
     </div>
     <div class="insight-card">
-      <div class="label">Total Records (Features)</div>
-      <div class="value">${crimeCount.toLocaleString()} incidents</div>
+      <div class="label">Total Incidents</div>
+      <div class="value">${crimeCount.toLocaleString()}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Areas Analyzed</div>
+      <div class="value">${stats.area_count || "N/A"}</div>
     </div>
     <div class="insight-card">
       <div class="label">Boundary data (GeoJSON)</div>
@@ -2222,12 +2355,31 @@ function renderCrimeResults(stats, inputs) {
       <div class="label">Longitude field</div>
       <div class="value">${inputs.lonField}</div>
     </div>
+    ${crimeTypeHtml}
+    ${perCapitaHtml}
   ` : `<p class="text-muted">No input info available.</p>`;
+
+  // ---- Color scale for full area tab ----
+  const colorScaleHtml = `
+    <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Crime density color scale</div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      ${[
+        ["#2ecc71", "0 – 5",   "Safe"],
+        ["#f1c40f", "5 – 10",  "Low risk"],
+        ["#e67e22", "10 – 15", "Moderate"],
+        ["#e74c3c", "15 – 20", "High risk"],
+        ["#891508", "20 +",    "Hotspot"],
+      ].map(([color, range, label]) => `
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+          <div style="width:12px;height:12px;background:${color};border-radius:2px;flex-shrink:0;"></div>
+          <span><strong>${label}</strong> — ${range} crimes/km²</span>
+        </div>`).join("")}
+    </div>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Crime Density — Results</h3>
-      <p class="panel-desc">Crime density = incidents per km². Higher values = more crime. Color gradient from safe (green) to hotspot (red).</p>
+      <p class="panel-desc">Crime density = incidents per km². Higher values = more crime.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -2241,14 +2393,8 @@ function renderCrimeResults(stats, inputs) {
       </div>
 
       <div class="tab-content active" id="tab-full">
-        <div class="insight-card">
-          <div class="label">Total Crimes</div>
-          <div class="value">${crimeCount.toLocaleString()}</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Areas Analyzed</div>
-          <div class="value">${stats.area_count || "N/A"}</div>
-        </div>
+        ${chartHtml}
+        ${colorScaleHtml}
         <div class="insight-card">
           <div class="label">Overall Safety Score</div>
           <div class="value" style="color:${scoreColor}">${safetyScore} / 100</div>
@@ -2265,11 +2411,8 @@ function renderCrimeResults(stats, inputs) {
           <div class="label">Peak Hotspot Density</div>
           <div class="value" style="color:var(--danger)">${stats.max_density || "N/A"} crimes/km²</div>
         </div>
-        ${ineq ? `<div class="insight-card">
-          <div class="label">Distribution Balance</div>
-          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
-        </div>` : ""}
-        ${chartHtml}
+        ${topUnsafeHtml}
+        ${topSafeHtml}
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
@@ -3168,14 +3311,30 @@ function wireTabSwitching() {
       analysisPanel.querySelector("#tab-" + target).classList.add("active");
 
       if (target === "raw") {
-        if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
-        if (gridLayer   && map.hasLayer(gridLayer))   map.removeLayer(gridLayer);
-        if (inputLayer && !map.hasLayer(inputLayer)) {
-          try {
-            inputLayer.addTo(map);
-            const b = inputLayer.getBounds ? inputLayer.getBounds() : null;
-            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
-          } catch (e) { console.warn("Could not restore input layer:", e); }
+        if (gridLayer && map.hasLayer(gridLayer)) map.removeLayer(gridLayer);
+        // For crime: show both the boundary result layer and the crime point input layer
+        if (lastResultService === "crime") {
+          if (resultLayer && !map.hasLayer(resultLayer)) {
+            try { resultLayer.addTo(map); } catch (e) {}
+          }
+          if (inputLayer && !map.hasLayer(inputLayer)) {
+            try { inputLayer.addTo(map); } catch (e) {}
+          }
+          if (resultLayer) {
+            try {
+              const b = resultLayer.getBounds ? resultLayer.getBounds() : null;
+              if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+            } catch (e) {}
+          }
+        } else {
+          if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+          if (inputLayer && !map.hasLayer(inputLayer)) {
+            try {
+              inputLayer.addTo(map);
+              const b = inputLayer.getBounds ? inputLayer.getBounds() : null;
+              if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+            } catch (e) { console.warn("Could not restore input layer:", e); }
+          }
         }
 
       } else if (target === "full") {
@@ -3478,10 +3637,26 @@ function wireTabSwitching() {
                 <div class="label">Worst Cell</div>
                 <div class="value" style="color:${qolScoreTextColor(worst)}">${worst}/100 <span style="font-size:11px;color:var(--text-muted);">(value: ${typeof worstVal === "number" ? worstVal.toFixed ? worstVal.toFixed(2) : worstVal : worstVal})</span></div>
               </div>` : ""}
-              ${clusterInfo && lastResultService !== "public-transport" ? `<div class="insight-card">
+              ${clusterInfo && lastResultService !== "public-transport" && lastResultService !== "crime" ? `<div class="insight-card">
                 <div class="label">Spatial Clustering</div>
                 <div class="value" style="color:${clusterInfo.color};font-size:13px;">${clusterInfo.text}</div>
               </div>` : ""}
+              ${lastResultService === "crime" && scores.length >= 2 ? (() => {
+                const scoreMin = Math.min(...scores);
+                const scoreMax = Math.max(...scores);
+                const scoreRange = scoreMax - scoreMin;
+                const scoreAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                const cv = scoreAvg > 0 ? (Math.sqrt(scores.reduce((s, v) => s + Math.pow(v - scoreAvg, 2), 0) / scores.length) / scoreAvg * 100) : 0;
+                let ineqLabel, ineqColor;
+                if (cv < 15)       { ineqLabel = "Low inequality — safety is fairly uniform"; ineqColor = "#2ecc71"; }
+                else if (cv < 35)  { ineqLabel = "Moderate inequality — some unsafe pockets"; ineqColor = "#f39c12"; }
+                else               { ineqLabel = "High inequality — large safety disparities"; ineqColor = "#e74c3c"; }
+                return `<div class="insight-card">
+                  <div class="label">Safety Inequality</div>
+                  <div class="value" style="color:${ineqColor};font-size:13px;">${ineqLabel}</div>
+                  <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Score range: ${scoreMin}–${scoreMax} · CV: ${cv.toFixed(1)}%</div>
+                </div>`;
+              })() : ""}
               ${densityHistogramHtml}
               ${gridChartHtml}
               ${tiersHtml}
@@ -3518,6 +3693,8 @@ function wireTabSwitching() {
 
   // Wire the download button for the initially-active full tab
   _wireFullDownloadBtn();
+  // Inject the PDF export button into the raw data tab
+  _injectPdfBtn();
 }
 
 function _wireFullDownloadBtn() {
@@ -3525,6 +3702,18 @@ function _wireFullDownloadBtn() {
   if (!fullTab) return;
   const btn = fullTab.querySelector("[data-full-dl]");
   if (btn) btn.onclick = downloadFullAnalysisResult;
+}
+
+function _injectPdfBtn() {
+  const rawTab = analysisPanel.querySelector("#tab-raw");
+  if (!rawTab || rawTab.querySelector("[data-pdf-dl]")) return;
+  const btn = document.createElement("button");
+  btn.className = "btn btn-ghost btn-block";
+  btn.setAttribute("data-pdf-dl", "true");
+  btn.style.cssText = "margin-top:14px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;";
+  btn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/pulsar-line/48/FFFFFF/export-pdf.png" alt="export-pdf" style="flex-shrink:0;"/> Download PDF Report`;
+  btn.onclick = downloadAnalysisPDF;
+  rawTab.appendChild(btn);
 }
 
 
@@ -4827,8 +5016,24 @@ function attachFileInputListeners() {
           });
         }
 
+        // Detect a crime type column for breakdown (runs regardless of coord detection)
+        const _typeRoots = ["offense","crime","incident","violation","charge","category","classification","nature","description","ucr","primary_type","event_type","call_type","report_type"];
+        const typeCol = headers.find(h => _typeRoots.some(root => h.toLowerCase().replace(/\s+/g, "_").includes(root)));
+        const typeIndex = typeCol != null ? headers.indexOf(typeCol) : -1;
+        window._crimeTypeCounts = {};
+
         if (!lonHeader || !latHeader) {
           console.warn("Could not detect lat/lon columns from CSV headers:", headers);
+          // Still count types from all rows even without coordinates
+          if (typeIndex >= 0) {
+            for (let i = 1; i < lines.length; i++) {
+              const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+              if (values[typeIndex]) {
+                const t = values[typeIndex];
+                window._crimeTypeCounts[t] = (window._crimeTypeCounts[t] || 0) + 1;
+              }
+            }
+          }
           return;
         }
 
@@ -4845,16 +5050,15 @@ function attachFileInputListeners() {
             const lon = parseFloat(values[lonIndex]);
             const lat = parseFloat(values[latIndex]);
             if (!isNaN(lon) && !isNaN(lat)) {
+              const crimeLabel = typeIndex >= 0 && values[typeIndex] ? values[typeIndex] : null;
               features.push({
                 type: "Feature",
-                geometry: {
-                  type: "Point",
-                  coordinates: [lon, lat]
-                },
-                properties: {
-                  row: i
-                }
+                geometry: { type: "Point", coordinates: [lon, lat] },
+                properties: { row: i, crime: crimeLabel }
               });
+              if (crimeLabel) {
+                window._crimeTypeCounts[crimeLabel] = (window._crimeTypeCounts[crimeLabel] || 0) + 1;
+              }
             }
           }
         }
@@ -4882,6 +5086,11 @@ function attachFileInputListeners() {
               opacity: 1,
               fillOpacity: 0.8
             });
+          },
+          onEachFeature: function (feature, layer) {
+            if (feature.properties.crime) {
+              layer.bindPopup(`<strong>${feature.properties.crime}</strong>`, { maxWidth: 200 });
+            }
           }
         }).addTo(map);
 
@@ -5620,4 +5829,631 @@ function showToast(message, type = 'info') {
     toast.style.transform = 'translateY(8px)';
     setTimeout(() => toast.remove(), 300);
   }, 3500);
+}
+
+
+/* ============================================================
+   PDF REPORT EXPORT
+   ============================================================ */
+async function downloadAnalysisPDF() {
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { alert("PDF library not loaded. Try refreshing the page."); return; }
+
+  const panel = document.getElementById("analysisPanel");
+  if (!panel) return;
+
+  const titleEl = panel.querySelector(".panel-title");
+  const title   = titleEl ? titleEl.textContent.trim() : "Urban QoL Analysis";
+  const service = lastResultService || "analysis";
+
+  // ── Extract insight-cards from a tab element ──────────────
+  function extractCards(tabEl) {
+    if (!tabEl) return [];
+    const cards = [];
+    tabEl.querySelectorAll(".insight-card").forEach(card => {
+      const label = card.querySelector(".label")?.textContent.trim() || "";
+      const value = card.querySelector(".value")?.textContent.trim().replace(/\s+/g, " ") || "";
+      if (label) cards.push({ label, value });
+    });
+    return cards;
+  }
+
+  // ── Extract insight paragraphs (💡 boxes) ────────────────
+  function extractInsights(tabEl) {
+    if (!tabEl) return [];
+    const texts = [];
+    tabEl.querySelectorAll("div[style*='border-left']").forEach(el => {
+      const t = el.textContent.trim().replace(/\s+/g, " ");
+      if (t.length > 4) texts.push(t.replace(/^💡\s*/, ""));
+    });
+    return texts;
+  }
+
+  // ── Compute visual data from live GeoJSON ─────────────────
+  function computeFullVisuals() {
+    if (!lastResultBlob || !lastResultBlob.features) return null;
+    const feats = lastResultBlob.features;
+    switch (service) {
+      case "crime": {
+        const bins  = [0,0,0,0,0];
+        feats.forEach(f => {
+          const d = f.properties.crime_density || 0;
+          if (d <= 5)  bins[0]++;
+          else if (d <= 10) bins[1]++;
+          else if (d <= 15) bins[2]++;
+          else if (d <= 20) bins[3]++;
+          else bins[4]++;
+        });
+        return { type:"bar", title:"Crime Density Distribution",
+          labels:["0–5","5–10","10–15","15–20",">20"], values:bins,
+          colors:["#2ecc71","#f1c40f","#e67e22","#e74c3c","#891508"], unit:"/km²" };
+      }
+      case "urban-density": {
+        const bins  = [0,0,0,0,0];
+        feats.forEach(f => {
+          const d = f.properties.urban_density || 0;
+          if (d < 500)        bins[0]++;
+          else if (d < 2000)  bins[1]++;
+          else if (d < 5000)  bins[2]++;
+          else if (d < 10000) bins[3]++;
+          else bins[4]++;
+        });
+        return { type:"bar", title:"Population Density Distribution",
+          labels:["<500","500–2k","2k–5k","5k–10k",">10k"], values:bins,
+          colors:["#add8e6","#87ceeb","#4682b4","#4169e1","#000080"], unit:"pop/km²" };
+      }
+      case "public-transport": {
+        const covered   = feats.filter(f => f.properties.type === "covered").length;
+        const uncovered = feats.filter(f => f.properties.type === "uncovered").length;
+        if (!covered && !uncovered) return null;
+        return { type:"bar", title:"Coverage Breakdown",
+          labels:["Covered","Uncovered"], values:[covered, uncovered],
+          colors:["#4cc2ff","#e74c3c"], unit:"zones" };
+      }
+      case "facility-accessibility": {
+        const t5 = feats.filter(f => f.properties.time_min === 5).length;
+        const t10= feats.filter(f => f.properties.time_min === 10).length;
+        const t15= feats.filter(f => f.properties.time_min === 15).length;
+        if (!t5 && !t10 && !t15) return null;
+        return { type:"bar", title:"Accessibility Walk-Time Zones",
+          labels:["≤5 min","≤10 min","≤15 min"], values:[t5,t10,t15],
+          colors:["#198754","#ffc107","#dc3545"], unit:"zones" };
+      }
+      case "vegetation": {
+        const bins = [0,0,0,0];
+        feats.forEach(f => {
+          const p = f.properties.vegetation_pct ?? 0;
+          if (p >= 50)      bins[0]++;
+          else if (p >= 30) bins[1]++;
+          else if (p >= 15) bins[2]++;
+          else              bins[3]++;
+        });
+        return { type:"bar", title:"Vegetation Coverage Distribution",
+          labels:["≥50%","30–50%","15–30%","<15%"], values:bins,
+          colors:["#27ae60","#8bc34a","#f39c12","#c0392b"], unit:"cells" };
+      }
+      case "traffic": {
+        const gridFeats = feats.filter(f => f.properties.type !== "hotspot");
+        const bins = [0,0,0];
+        gridFeats.forEach(f => {
+          const c = f.properties.congestion;
+          if (c === "high")   bins[2]++;
+          else if (c==="medium") bins[1]++;
+          else bins[0]++;
+        });
+        return { type:"bar", title:"Congestion Level Distribution",
+          labels:["Low","Medium","High"], values:bins,
+          colors:["#2ecc71","#f39c12","#e74c3c"], unit:"cells" };
+      }
+      case "informal-settlement": {
+        const gridFeats = feats.filter(f => f.properties.type !== "high_irregularity_zone");
+        const bins = [0,0,0];
+        gridFeats.forEach(f => {
+          const s = f.properties.irregularity_score ?? 0;
+          if (s <= 33)      bins[0]++;
+          else if (s <= 66) bins[1]++;
+          else              bins[2]++;
+        });
+        return { type:"bar", title:"Irregularity Classification",
+          labels:["Planned (0–33)","Mixed (34–66)","Informal (67–100)"], values:bins,
+          colors:["#2ecc71","#f39c12","#e74c3c"], unit:"cells" };
+      }
+      default:
+        return null;
+    }
+  }
+
+  // ── Compute QoL score gauge value from full cards ─────────
+  function extractOverallScore(cards) {
+    for (const c of cards) {
+      const m = c.value.match(/^(\d+(?:\.\d+)?)\s*\/\s*100/);
+      if (m && (c.label.toLowerCase().includes("score") || c.label.toLowerCase().includes("overall")))
+        return parseFloat(m[1]);
+    }
+    return null;
+  }
+
+  // ── Compute grid cell tier distribution ───────────────────
+  function computeGridVisuals() {
+    if (!gridLayer) return null;
+    const feats = [];
+    gridLayer.eachLayer(l => { if (l.feature) feats.push(l.feature); });
+    if (!feats.length) return null;
+
+    const isVeg     = service === "vegetation";
+    const isTraffic = service === "traffic";
+    const isISPA    = service === "informal-settlement";
+    const isNDVI    = service === "ndvi";
+
+    if (isVeg) {
+      const pass = feats.filter(f => f.properties.passes_30pct).length;
+      const fail = feats.length - pass;
+      return { type:"bar", title:"Grid: Greenery Standard",
+        labels:["≥30% (Pass)","<30% (Fail)"], values:[pass,fail],
+        colors:["#27ae60","#c0392b"], unit:"cells" };
+    }
+    if (isTraffic) {
+      const lo = feats.filter(f=>f.properties.congestion==="low").length;
+      const me = feats.filter(f=>f.properties.congestion==="medium").length;
+      const hi = feats.filter(f=>f.properties.congestion==="high").length;
+      return { type:"bar", title:"Grid: Congestion Levels",
+        labels:["Low","Medium","High"], values:[lo,me,hi],
+        colors:["#2ecc71","#f39c12","#e74c3c"], unit:"cells" };
+    }
+    if (isISPA) {
+      const lo = feats.filter(f=>(f.properties.value??0)<=33).length;
+      const me = feats.filter(f=>{const v=f.properties.value??0;return v>33&&v<=66;}).length;
+      const hi = feats.filter(f=>(f.properties.value??0)>66).length;
+      return { type:"bar", title:"Grid: Irregularity Tiers",
+        labels:["Planned","Mixed","Informal"], values:[lo,me,hi],
+        colors:["#2ecc71","#f39c12","#e74c3c"], unit:"cells" };
+    }
+    if (isNDVI) {
+      const healthy   = feats.filter(f=>(f.properties.value??-1)>=0.2).length;
+      const unhealthy = feats.length - healthy;
+      return { type:"bar", title:"Grid: Vegetation Health",
+        labels:["Healthy (≥0.2)","Unhealthy (<0.2)"], values:[healthy,unhealthy],
+        colors:["#27ae60","#e74c3c"], unit:"cells" };
+    }
+    // Generic QoL tiers
+    const exc = feats.filter(f=>(f.properties.qol_score??0)>=75).length;
+    const goo = feats.filter(f=>{const s=f.properties.qol_score??0;return s>=50&&s<75;}).length;
+    const fai = feats.filter(f=>{const s=f.properties.qol_score??0;return s>=25&&s<50;}).length;
+    const poo = feats.filter(f=>(f.properties.qol_score??0)<25).length;
+    return { type:"bar", title:"Grid: QoL Score Tiers",
+      labels:["Excellent (75–100)","Good (50–74)","Fair (25–49)","Poor (0–24)"],
+      values:[exc,goo,fai,poo],
+      colors:["#2ecc71","#8bc34a","#f39c12","#e74c3c"], unit:"cells" };
+  }
+
+  // ── Capture map ───────────────────────────────────────────
+  let mapDataUrl = null;
+  try {
+    const mapCanvas = document.querySelector("#map canvas");
+    if (mapCanvas) mapDataUrl = mapCanvas.toDataURL("image/jpeg", 0.85);
+  } catch(e) {}
+
+  // ── PDF setup ─────────────────────────────────────────────
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const PW  = 210, PH = 297, ML = 14, MR = 14;
+  const CW  = PW - ML - MR;
+  let   y   = 0;
+
+  const C = {
+    bg:        [15,  17,  26],
+    panel:     [22,  26,  40],
+    card:      [28,  33,  50],
+    accent:    [76, 194, 255],
+    accentDim: [40, 100, 140],
+    textMain:  [220, 225, 240],
+    textMuted: [130, 140, 165],
+    border:    [45,  52,  75],
+    white:     [255, 255, 255],
+  };
+
+  function setFill(rgb)  { doc.setFillColor(rgb[0], rgb[1], rgb[2]); }
+  function setDraw(rgb)  { doc.setDrawColor(rgb[0], rgb[1], rgb[2]); }
+  function setTextC(rgb) { doc.setTextColor(rgb[0], rgb[1], rgb[2]); }
+  function rect(x, yw, w, h, style="F") { doc.rect(x, yw, w, h, style); }
+
+  function hexToRgb(hex) {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    return [r,g,b];
+  }
+
+  function ensurePage(needed) {
+    if (y + needed > PH - 12) {
+      doc.addPage();
+      setFill(C.bg); rect(0, 0, PW, PH);
+      y = 14;
+    }
+  }
+
+  function wrapText(text, maxWidth, fontSize) {
+    doc.setFontSize(fontSize);
+    return doc.splitTextToSize(text, maxWidth);
+  }
+
+  // ── Section header ────────────────────────────────────────
+  function sectionHeader(text) {
+    ensurePage(12);
+    setFill(C.panel); rect(ML, y, CW, 9);
+    setFill(C.accent); rect(ML, y, 3, 9);
+    setTextC(C.white); doc.setFontSize(9); doc.setFont("helvetica", "bold");
+    doc.text(text, ML + 5, y + 6);
+    y += 12;
+  }
+
+  // ── Insight callout box ───────────────────────────────────
+  function insightBox(text) {
+    if (!text) return;
+    const lines = wrapText(text, CW - 10, 8);
+    const bh = lines.length * 4.5 + 5;
+    ensurePage(bh + 3);
+    setFill(C.panel); rect(ML, y, CW, bh);
+    setFill(C.accentDim); rect(ML, y, 2.5, bh);
+    setTextC(C.textMain); doc.setFont("helvetica", "italic"); doc.setFontSize(8);
+    lines.forEach((line, i) => doc.text(line, ML + 5, y + 4.5 + i * 4.5));
+    y += bh + 3;
+  }
+
+  // ── Two-column card grid ──────────────────────────────────
+  function cardGrid(cards) {
+    if (!cards.length) return;
+    const colW = (CW - 2) / 2, cardH = 10, gap = 1.5;
+    let rowY = y;
+    cards.forEach((card, i) => {
+      if (i % 2 === 0) { ensurePage(cardH + gap); rowY = y; }
+      const col = i % 2;
+      const cx  = ML + col * (colW + 2);
+      setFill(C.card); rect(cx, rowY, colW, cardH);
+      setDraw(C.border); doc.setLineWidth(0.15); rect(cx, rowY, colW, cardH, "S");
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); setTextC(C.textMuted);
+      doc.text(card.label, cx + 3, rowY + 3.5);
+      doc.setFont("helvetica","bold"); doc.setFontSize(8); setTextC(C.textMain);
+      const vl = doc.splitTextToSize(card.value, colW - 6);
+      doc.text(vl[0] || card.value, cx + 3, rowY + 7.5);
+      if (col === 1 || i === cards.length - 1) y = rowY + cardH + gap;
+    });
+  }
+
+  // ── Score gauge bar ───────────────────────────────────────
+  // Draws a full-width horizontal bar: track + filled portion + score label
+  function scoreGauge(score) {
+    if (score === null || score === undefined) return;
+    ensurePage(22);
+    const bx = ML, bw = CW, bh = 12, by = y + 4;
+    // background panel
+    setFill(C.panel); rect(ML, y, CW, 20);
+    // label
+    setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+    doc.text("Overall QoL Score", ML + 2, y + 3.5);
+    // track
+    setFill(C.card); rect(bx, by, bw, bh);
+    setDraw(C.border); doc.setLineWidth(0.2); rect(bx, by, bw, bh, "S");
+    // filled portion — colour based on score
+    const fillW = Math.max(2, (score / 100) * bw);
+    let fillColor;
+    if      (score >= 75) fillColor = [46, 204, 113];
+    else if (score >= 50) fillColor = [139, 195,  74];
+    else if (score >= 25) fillColor = [243, 156,  18];
+    else                  fillColor = [231,  76,  60];
+    setFill(fillColor); rect(bx, by, fillW, bh);
+    // tick marks every 25
+    setDraw(C.border); doc.setLineWidth(0.3);
+    [25,50,75].forEach(v => {
+      const tx = bx + (v / 100) * bw;
+      doc.line(tx, by, tx, by + bh);
+    });
+    // score text centred on fill
+    setTextC(C.white); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+    doc.text(`${Math.round(score)} / 100`, bx + fillW / 2, by + bh / 2 + 2.5, { align:"center" });
+    // tier labels below track
+    setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
+    ["Poor","Fair","Good","Excellent"].forEach((lbl, i) => {
+      doc.text(lbl, bx + (i * 25 + 12.5) / 100 * bw, by + bh + 3.5, { align:"center" });
+    });
+    y += 24;
+  }
+
+  // ── Vertical bar chart ────────────────────────────────────
+  // data = { title, labels[], values[], colors[], unit }
+  function barChart(data) {
+    if (!data) return;
+    const { title: chartTitle, labels, values, colors, unit } = data;
+    const n      = labels.length;
+    const maxVal = Math.max(...values, 1);
+    const chartH = 38;   // height of bar area
+    const totalH = chartH + 22;  // + title + labels
+    ensurePage(totalH + 4);
+
+    // panel bg
+    setFill(C.panel); rect(ML, y, CW, totalH + 2);
+
+    // chart title
+    setTextC(C.textMuted); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
+    doc.text(chartTitle, ML + CW / 2, y + 5, { align:"center" });
+
+    const chartTop = y + 8;
+    const barAreaW = CW - 16;
+    const barAreaX = ML + 8;
+
+    // horizontal gridlines at 0%, 50%, 100%
+    setDraw(C.border); doc.setLineWidth(0.15);
+    [0, 0.5, 1].forEach(frac => {
+      const lineY = chartTop + chartH * (1 - frac);
+      doc.line(barAreaX, lineY, barAreaX + barAreaW, lineY);
+      if (frac > 0) {
+        setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+        doc.text(`${Math.round(maxVal * frac)}`, barAreaX - 1, lineY + 1, { align:"right" });
+      }
+    });
+
+    // bars
+    const slotW = barAreaW / n;
+    const barW  = Math.min(slotW * 0.62, 18);
+    values.forEach((val, i) => {
+      const barH   = Math.max(1, (val / maxVal) * chartH);
+      const bx     = barAreaX + i * slotW + (slotW - barW) / 2;
+      const by     = chartTop + chartH - barH;
+      const rgb    = hexToRgb(colors[i] || "#4cc2ff");
+      // bar shadow / glow
+      setFill([rgb[0]*0.4, rgb[1]*0.4, rgb[2]*0.4]);
+      rect(bx + 0.5, by + 0.5, barW, barH);
+      // bar
+      setFill(rgb); rect(bx, by, barW, barH);
+      // value label above bar
+      setTextC(C.textMain); doc.setFont("helvetica","bold"); doc.setFontSize(6.5);
+      doc.text(`${val}`, bx + barW / 2, by - 1.2, { align:"center" });
+      // axis label below
+      setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+      const lbl = doc.splitTextToSize(labels[i], slotW - 1);
+      lbl.forEach((ln, li) => doc.text(ln, bx + barW / 2, chartTop + chartH + 4 + li * 3.5, { align:"center" }));
+    });
+
+    // unit label bottom-right
+    setTextC(C.textMuted); doc.setFont("helvetica","italic"); doc.setFontSize(6);
+    doc.text(`(${unit})`, barAreaX + barAreaW, chartTop + chartH + 4, { align:"right" });
+
+    y += totalH + 5;
+  }
+
+  // ── Score heatmap strip ───────────────────────────────────
+  // Renders a row of small coloured squares — one per grid cell, sorted by score
+  function scoreHeatmapStrip() {
+    if (!gridLayer) return;
+    const scores = [];
+    gridLayer.eachLayer(l => {
+      const s = l.feature?.properties?.qol_score;
+      if (s !== null && s !== undefined) scores.push(s);
+    });
+    if (!scores.length) return;
+    scores.sort((a,b) => a - b);
+
+    ensurePage(28);
+    setFill(C.panel); rect(ML, y, CW, 26);
+    setTextC(C.textMuted); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
+    doc.text("Grid Cell Score Distribution (sorted low → high)", ML + CW/2, y + 5, { align:"center" });
+
+    const stripY = y + 8;
+    const stripH = 10;
+    const n      = scores.length;
+    const cellW  = Math.max(0.3, CW / n);
+    scores.forEach((s, i) => {
+      let r, g, b;
+      if (s >= 75)      { r=46;  g=204; b=113; }
+      else if (s >= 50) { r=139; g=195; b=74;  }
+      else if (s >= 25) { r=243; g=156; b=18;  }
+      else              { r=231; g=76;  b=60;  }
+      doc.setFillColor(r, g, b);
+      doc.rect(ML + i * cellW, stripY, cellW + 0.1, stripH, "F");
+    });
+
+    // legend under strip
+    const legItems = [
+      { label:"Excellent (75–100)", r:46,  g:204, b:113 },
+      { label:"Good (50–74)",       r:139, g:195, b:74  },
+      { label:"Fair (25–49)",       r:243, g:156, b:18  },
+      { label:"Poor (0–24)",        r:231, g:76,  b:60  },
+    ];
+    const legW = CW / legItems.length;
+    legItems.forEach((item, i) => {
+      const lx = ML + i * legW;
+      doc.setFillColor(item.r, item.g, item.b);
+      doc.rect(lx, stripY + stripH + 2, 4, 3, "F");
+      setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+      doc.text(item.label, lx + 5.5, stripY + stripH + 4.5);
+    });
+
+    y += 30;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Gather all data before drawing
+  // ═══════════════════════════════════════════════════════
+  const tabRaw  = panel.querySelector("#tab-raw");
+  const tabFull = panel.querySelector("#tab-full");
+  const tabGrid = panel.querySelector("#tab-grid");
+
+  const rawCards     = extractCards(tabRaw);
+  const fullCards    = extractCards(tabFull);
+  const gridCards    = extractCards(tabGrid);
+  const fullInsights = extractInsights(tabFull);
+  const gridInsights = extractInsights(tabGrid);
+  const overallScore = extractOverallScore(fullCards);
+  const fullVisData  = computeFullVisuals();
+  const gridVisData  = computeGridVisuals();
+
+  // ═══════════════════════════════════════════════════════
+  // PAGE 1 — Cover
+  // ═══════════════════════════════════════════════════════
+  setFill(C.bg); rect(0, 0, PW, PH);
+  setFill(C.panel); rect(0, 0, PW, 38);
+  setFill(C.accent); rect(0, 35.5, PW, 2.5);
+
+  setTextC(C.accent); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+  doc.text("MALAZ", ML, 12);
+  setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+  doc.text("Urban Quality of Life Platform", ML, 17);
+
+  setTextC(C.white); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.splitTextToSize(title, CW - 20).forEach((line, i) => doc.text(line, ML, 27 + i * 7));
+
+  setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+  const dateStr = new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" });
+  doc.text(`Generated: ${dateStr}`, PW - MR, 12, { align:"right" });
+  doc.text(`Service: ${service}`,   PW - MR, 17, { align:"right" });
+
+  y = 44;
+
+  // Map image
+  if (mapDataUrl) {
+    const mapH = 68;
+    ensurePage(mapH + 8);
+    setFill(C.panel); rect(ML, y, CW, mapH + 4);
+    try { doc.addImage(mapDataUrl, "JPEG", ML + 1, y + 1, CW - 2, mapH + 2); } catch(e) {}
+    setTextC(C.textMuted); doc.setFont("helvetica","italic"); doc.setFontSize(7);
+    doc.text("Map — Full Area view at time of export", ML + 2, y + mapH + 5);
+    y += mapH + 9;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SECTION 1 — Raw Data
+  // ═══════════════════════════════════════════════════════
+  if (rawCards.length) {
+    sectionHeader("RAW DATA  /  INPUT SUMMARY");
+    cardGrid(rawCards);
+    y += 3;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SECTION 1b — Crime-specific: Type Breakdown + Area Rankings
+  // (data sourced directly from globals, not DOM scraping)
+  // ═══════════════════════════════════════════════════════
+  if (service === "crime") {
+    // ── Crime Type Breakdown ──────────────────────────────
+    const typeCounts = window._crimeTypeCounts || {};
+    const typeEntries = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    if (typeEntries.length) {
+      const typeTotal = typeEntries.reduce((s, [, v]) => s + v, 0);
+      sectionHeader("CRIME TYPE BREAKDOWN");
+      typeEntries.forEach(([type, count]) => {
+        const pct = typeTotal > 0 ? (count / typeTotal) * 100 : 0;
+        const rowH = 7;
+        ensurePage(rowH + 2);
+        // row bg
+        setFill(C.card); rect(ML, y, CW, rowH);
+        // label
+        doc.setFont("helvetica","normal"); doc.setFontSize(7.5); setTextC(C.textMain);
+        doc.text(type, ML + 3, y + 4.5);
+        // count + pct right-aligned
+        doc.setFont("helvetica","bold"); doc.setFontSize(7); setTextC(C.textMuted);
+        doc.text(`${count}  (${pct.toFixed(1)}%)`, ML + CW - 3, y + 4.5, { align:"right" });
+        // bar track
+        const barX = ML + 3, barY = y + 5.5, barH = 1.2;
+        const barMaxW = CW - 6;
+        setFill(C.border); rect(barX, barY, barMaxW, barH);
+        setFill(hexToRgb("#e74c3c")); rect(barX, barY, (pct / 100) * barMaxW, barH);
+        y += rowH + 1;
+      });
+      y += 4;
+    }
+
+    // ── Top Unsafe / Safe Areas ───────────────────────────
+    if (lastResultBlob && lastResultBlob.features && lastResultBlob.features.length) {
+      const nameKey = ["NBHD_NAME","name","NAME","district","area_name","neighborhood"]
+        .find(k => lastResultBlob.features[0]?.properties?.[k] !== undefined);
+      const areaList = lastResultBlob.features
+        .filter(f => f.properties && f.properties.crime_density !== undefined && nameKey && f.properties[nameKey])
+        .map(f => ({ name: f.properties[nameKey], density: parseFloat(f.properties.crime_density) || 0 }))
+        .sort((a, b) => b.density - a.density);
+
+      if (areaList.length) {
+        sectionHeader("AREA SAFETY RANKINGS");
+
+        // helper: draw a ranked list
+        function areaRankList(items, headerText, barColor) {
+          const maxDen = items[0]?.density || 1;
+          ensurePage(8 + items.length * 8);
+          // sub-label
+          doc.setFont("helvetica","bold"); doc.setFontSize(7.5); setTextC(C.textMuted);
+          doc.text(headerText, ML, y + 4); y += 6;
+          items.forEach((item, i) => {
+            const rowH = 7;
+            ensurePage(rowH + 1);
+            setFill(C.card); rect(ML, y, CW, rowH);
+            // rank badge
+            setFill(barColor); rect(ML, y, 6, rowH);
+            doc.setFont("helvetica","bold"); doc.setFontSize(7); setTextC(C.white);
+            doc.text(`${i + 1}`, ML + 3, y + 4.5, { align:"center" });
+            // name
+            doc.setFont("helvetica","normal"); doc.setFontSize(7.5); setTextC(C.textMain);
+            doc.text(item.name, ML + 9, y + 4.5);
+            // density value
+            doc.setFont("helvetica","bold"); doc.setFontSize(7); setTextC(C.textMuted);
+            doc.text(`${item.density.toFixed(2)} /km²`, ML + CW - 3, y + 4.5, { align:"right" });
+            // density bar
+            const barX = ML + 9, barY = y + 5.5, barH = 1.2, barMaxW = CW - 12 - 22;
+            setFill(C.border); rect(barX, barY, barMaxW, barH);
+            setFill(barColor); rect(barX, barY, (item.density / maxDen) * barMaxW, barH);
+            y += rowH + 1;
+          });
+          y += 3;
+        }
+
+        const top5Unsafe = areaList.slice(0, 5);
+        const top5Safe   = areaList.slice(-5).reverse();
+        areaRankList(top5Unsafe, "Most Unsafe Areas (highest crime density)", hexToRgb("#e74c3c"));
+        areaRankList(top5Safe,   "Safest Areas (lowest crime density)",        hexToRgb("#2ecc71"));
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SECTION 2 — Full Area Analysis
+  // ═══════════════════════════════════════════════════════
+  if (fullCards.length || fullInsights.length) {
+    sectionHeader("FULL AREA ANALYSIS");
+    cardGrid(fullCards);
+    // ── visuals ──
+    if (overallScore !== null) { y += 3; scoreGauge(overallScore); }
+    if (fullVisData)           { y += 2; barChart(fullVisData);    }
+    if (fullInsights.length)   { y += 2; fullInsights.forEach(t => insightBox(t)); }
+    y += 3;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SECTION 3 — Grid / Cell Analysis
+  // ═══════════════════════════════════════════════════════
+  sectionHeader("GRID / CELL ANALYSIS");
+  if (gridCards.length || gridVisData) {
+    cardGrid(gridCards);
+    if (gridVisData)         { y += 3; barChart(gridVisData);     }
+    if (gridLayer)           { y += 2; scoreHeatmapStrip();       }
+    if (gridInsights.length) { y += 2; gridInsights.forEach(t => insightBox(t)); }
+    y += 3;
+  } else {
+    ensurePage(16);
+    setFill(C.panel); rect(ML, y, CW, 13);
+    setTextC(C.textMuted); doc.setFont("helvetica","italic"); doc.setFontSize(8);
+    doc.text("Grid analysis not yet generated. Open the Grid / Cell tab to compute cell scores first.", ML + 4, y + 7);
+    y += 16;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Footer on every page
+  // ═══════════════════════════════════════════════════════
+  const pageCount = doc.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p);
+    setFill(C.panel); rect(0, PH - 10, PW, 10);
+    setFill(C.accentDim); rect(0, PH - 10, PW, 0.5);
+    setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+    doc.text("Malaz · Urban Quality of Life Platform", ML, PH - 4);
+    doc.text(`Page ${p} of ${pageCount}`, PW - MR, PH - 4, { align:"right" });
+  }
+
+  doc.save(`${service}_analysis_report.pdf`);
 }
