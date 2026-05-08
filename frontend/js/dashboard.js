@@ -69,10 +69,6 @@ const SERVICES = {
     desc: "Normalized Difference Vegetation Index from raster.",
     inputs: [
       { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
-      { type: "select", id: "satelliteType", label: "Satellite type", options: [
-        { value: "landsat", label: "Landsat 8/9 (Band 4 Red, Band 5 NIR)", selected: true },
-        { value: "sentinel2", label: "Sentinel-2 (Band 4 Red, Band 8 NIR)" },
-      ]},
     ],
   },
   "crime": {
@@ -332,19 +328,14 @@ function runAnalysis(key) {
 /* ---------- NDVI Analysis - calls backend API ---------- */
 async function runNDVIAnalysis() {
   const tiffInput = document.getElementById("tiffInput");
-  const satelliteSelect = document.getElementById("satelliteType");
-  
+
   if (!tiffInput || !tiffInput.files[0]) {
     alert("Please upload a GeoTIFF file first.");
     return;
   }
 
   const file = tiffInput.files[0];
-  const satelliteType = satelliteSelect ? satelliteSelect.value : "landsat";
-  const inputs = {
-    fileName: file.name,
-    satelliteLabel: satelliteSelect ? satelliteSelect.options[satelliteSelect.selectedIndex].text : satelliteType,
-  };
+  const inputs = { fileName: file.name };
 
   const formData = new FormData();
   formData.append("geotiff", file);
@@ -363,10 +354,7 @@ async function runNDVIAnalysis() {
   `;
 
   try {
-    // Build URL with query parameter
-    const url = `http://localhost:8000/calculate-ndvi?satellite_type=${satelliteType}`;
-    
-    const response = await fetch(url, {
+    const response = await fetch("http://localhost:8000/calculate-ndvi", {
       method: "POST",
       body: formData,
     });
@@ -381,6 +369,9 @@ async function runNDVIAnalysis() {
     const ndviMax = response.headers.get("X-NDVI-Max");
     const ndviMean = response.headers.get("X-NDVI-Mean");
     const validPixels = response.headers.get("X-Valid-Pixels");
+    const redBand  = response.headers.get("X-Red-Band");
+    const nirBand  = response.headers.get("X-NIR-Band");
+    const satellite = response.headers.get("X-Satellite");
 
     // Convert response to array buffer
     const arrayBuffer = await response.arrayBuffer();
@@ -389,10 +380,32 @@ async function runNDVIAnalysis() {
     lastResultService = "ndvi";
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
-    // Render the NDVI result on the map (without custom color function to avoid projection issues)
+    // Render the NDVI result: low NDVI → red, high NDVI → green
+    const ndviMinF = parseFloat(ndviMin);
+    const ndviMaxF = parseFloat(ndviMax);
+    const ndviRange = ndviMaxF - ndviMinF || 1;
     resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
       opacity: 0.9,
       resolution: 256,
+      colorFn: (values) => {
+        const v = values[0];
+        if (v === undefined || v === null || isNaN(v) || v < -1.5 || v > 1.5) return null;
+        const t = Math.max(0, Math.min(1, (v - ndviMinF) / ndviRange));
+        // red (200,20,0) → yellow (220,200,0) → green (0,150,0)
+        let r, g, b;
+        if (t < 0.5) {
+          const s = t / 0.5;
+          r = Math.round(200 - s * 20);   // 200 → 180 (stays reddish into yellow)
+          g = Math.round(20  + s * 180);  // 20  → 200
+          b = 0;
+        } else {
+          const s = (t - 0.5) / 0.5;
+          r = Math.round(180 - s * 180);  // 180 → 0
+          g = Math.round(200 - s * 50);   // 200 → 150
+          b = 0;
+        }
+        return `rgba(${r},${g},${b},0.9)`;
+      },
     });
 
 
@@ -402,6 +415,9 @@ async function runNDVIAnalysis() {
       max: ndviMax,
       mean: ndviMean,
       valid_pixels: validPixels,
+      red_band:  redBand,
+      nir_band:  nirBand,
+      satellite: satellite,
     }, inputs);
 
   } catch (error) {
@@ -2424,15 +2440,23 @@ function renderNDVIResults(stats, inputs) {
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
     </div>
     <div class="insight-card">
-      <div class="label">Satellite type</div>
-      <div class="value">${inputs.satelliteLabel}</div>
+      <div class="label">Satellite</div>
+      <div class="value">${stats.satellite || "Unknown"}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Red band</div>
+      <div class="value">${stats.red_band || "—"} → Red</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">NIR band</div>
+      <div class="value">${stats.nir_band || "—"} → NIR</div>
     </div>
   ` : `<p class="text-muted">No input info available.</p>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">NDVI — Results</h3>
-      <p class="panel-desc">NDVI ranges −1 to 1. Values &gt; 0.2 = healthy vegetation. Color: dark green = dense · red = bare.</p>
+      <p class="panel-desc">NDVI ranges −1 to 1. Values &gt; 0.2 = healthy vegetation. Map: green = high NDVI · red = low NDVI.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -2446,6 +2470,14 @@ function renderNDVIResults(stats, inputs) {
       </div>
 
       <div class="tab-content active" id="tab-full">
+        <div style="margin-bottom:12px;">
+          <div style="height:16px;width:100%;border-radius:4px;background:linear-gradient(to right,rgb(200,20,0),rgb(200,200,0),rgb(0,150,0));border:1px solid rgba(255,255,255,0.15);"></div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:3px;">
+            <span>−1</span>
+            <span>NDVI Scale</span>
+            <span>+1</span>
+          </div>
+        </div>
         <div class="insight-card">
           <div class="label">Overall Score</div>
           <div class="value" style="color:${scoreColor}">${ndviScore} / 100</div>

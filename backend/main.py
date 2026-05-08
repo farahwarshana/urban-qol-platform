@@ -58,6 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=[
         "X-NDVI-Min", "X-NDVI-Max", "X-NDVI-Mean", "X-Valid-Pixels",
+        "X-Red-Band", "X-NIR-Band", "X-Satellite",
         "X-Crime-Count", "X-Area-Count", "X-Avg-Density", "X-Max-Density",
         "X-Total-Population", "X-Total-Area",
         "X-HeatIndex-Min", "X-HeatIndex-Max", "X-HeatIndex-Mean",
@@ -99,31 +100,19 @@ def root():
 
 @app.post("/calculate-ndvi", tags=["NDVI"])
 def calculate_ndvi_endpoint(
-    geotiff: UploadFile = File(..., description="Multi-band GeoTIFF (Landsat or Sentinel-2)"),
-    satellite_type: str = Query("landsat", description="Satellite type: 'landsat' or 'sentinel2'"),
+    geotiff: UploadFile = File(..., description="Multi-band GeoTIFF (Landsat 8/9, Sentinel-2, or pre-extracted 2-band Red+NIR)"),
 ):
     """
     Upload a single multi-band GeoTIFF.
-    The API extracts Red and NIR bands, computes NDVI,
+    The API auto-detects the satellite type, extracts Red and NIR bands, computes NDVI,
     and returns the result GeoTIFF directly — no polling needed.
     """
-    # Map satellite types to band indices (0-based)
-    band_mapping = {
-        "landsat": (3, 4),      # Band 4 Red, Band 5 NIR
-        "sentinel2": (3, 7),     # Band 4 Red, Band 8 NIR
-    }
-    
-    if satellite_type not in band_mapping:
-        raise HTTPException(status_code=422, detail=f"Invalid satellite type: {satellite_type}. Use 'landsat' or 'sentinel2'.")
-    
-    red_band_index, nir_band_index = band_mapping[satellite_type]
-    
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
     ndvi_dir = get_output_subdir("ndvi")
 
-    input_path  = tmp_dir / "input.tif"    
+    input_path  = tmp_dir / "input.tif"
     output_path = ndvi_dir / f"ndvi_{job_id}.tif"
 
     try:
@@ -131,11 +120,9 @@ def calculate_ndvi_endpoint(
         with input_path.open("wb") as f:
             shutil.copyfileobj(geotiff.file, f)
 
-        # Run NDVI — blocks until complete, then responds
+        # Run NDVI — bands detected automatically, blocks until complete, then responds
         stats = calculate_ndvi_from_bands(
             geotiff_path     = str(input_path),
-            red_band_index   = red_band_index,
-            nir_band_index   = nir_band_index,
             output_ndvi_path = str(output_path),
         )
 
@@ -149,6 +136,9 @@ def calculate_ndvi_endpoint(
                 "X-NDVI-Max":     str(stats.get("max", "")),
                 "X-NDVI-Mean":    str(stats.get("mean", "")),
                 "X-Valid-Pixels": str(stats.get("valid_pixels", "")),
+                "X-Red-Band":     str(stats.get("red_band", "")),
+                "X-NIR-Band":     str(stats.get("nir_band", "")),
+                "X-Satellite":    str(stats.get("satellite", "")),
             },
         )
 
