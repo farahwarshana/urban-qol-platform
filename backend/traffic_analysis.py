@@ -254,53 +254,56 @@ def calculate_traffic_analysis(
         if not cell_geom.intersects(aoi_union_utm):
             continue
 
-        # Clip cell to AOI
+        # Clip cell strictly to AOI — this is the only geometry we output
         cell_in_aoi = cell_geom.intersection(aoi_union_utm)
         if cell_in_aoi.is_empty:
             continue
-        effective_area_m2 = cell_in_aoi.area
+        effective_area_m2  = cell_in_aoi.area
         effective_area_km2 = effective_area_m2 / 1_000_000.0
 
-        # Measure road length in this cell
+        # Measure road length only within the AOI-clipped cell shape
         if roads_union_utm is not None and not roads_union_utm.is_empty:
-            road_in_cell = roads_union_utm.intersection(cell_geom)
-            cell_road_len_m  = road_in_cell.length if not road_in_cell.is_empty else 0.0
+            road_in_cell    = roads_union_utm.intersection(cell_in_aoi)
+            cell_road_len_m = road_in_cell.length if not road_in_cell.is_empty else 0.0
         else:
             cell_road_len_m = 0.0
 
-        cell_road_len_km  = cell_road_len_m / 1_000.0
-        local_density     = (cell_road_len_km / effective_area_km2) if effective_area_km2 > 0 else 0.0
+        cell_road_len_km = cell_road_len_m / 1_000.0
+        local_density    = (cell_road_len_km / effective_area_km2) if effective_area_km2 > 0 else 0.0
 
         # Local traffic pressure
         local_pressure = None
         if population is not None and cell_road_len_km > 0 and aoi_area_km2 > 0:
-            # Distribute population proportionally by cell area fraction
             area_fraction  = effective_area_m2 / aoi_area_m2
             local_pop      = population * area_fraction
             local_pressure = local_pop / cell_road_len_km
 
         congestion = _classify_congestion(local_density, local_pressure)
 
-        # Convert cell back to WGS84 for output
-        cell_wgs = grid.loc[idx].geometry
+        # Reproject clipped cell shape (not the raw grid square) to WGS84 for output
+        cell_in_aoi_wgs = (
+            gpd.GeoDataFrame(geometry=[cell_in_aoi], crs=utm_crs)
+            .to_crs("EPSG:4326")
+            .geometry.iloc[0]
+        )
 
         props = {
-            "road_length_km":  round(cell_road_len_km, 4),
-            "local_density":   round(local_density, 4),
-            "congestion":      congestion,
-            "service":         "traffic",
+            "road_length_km": round(cell_road_len_km, 4),
+            "local_density":  round(local_density, 4),
+            "congestion":     congestion,
+            "service":        "traffic",
         }
         if local_pressure is not None:
             props["local_pressure"] = round(local_pressure, 2)
 
         grid_features.append({
             "type":       "Feature",
-            "geometry":   mapping(cell_wgs),
+            "geometry":   mapping(cell_in_aoi_wgs),
             "properties": props,
         })
 
         if congestion == "high":
-            hotspot_polys.append(cell_wgs)
+            hotspot_polys.append(cell_in_aoi_wgs)
 
     # ── Merge hotspot polygons ───────────────────────────────────────────────
     if hotspot_polys:
