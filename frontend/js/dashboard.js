@@ -1209,6 +1209,10 @@ function renderTransitResults(stats, inputs, geojsonData) {
         </div>` : ""}
         ${gapInsightHtml}
         ${popAdjustedHtml}
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download GeoJSON
+        </button>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -1461,6 +1465,10 @@ function renderVegetationResults(stats, inputs) {
           <div class="label">Vegetated Pixels</div>
           <div class="value" style="font-size:14px;">${vegPixels.toLocaleString()} <span style="font-size:11px;color:var(--text-muted);">of ${validPixels.toLocaleString()}</span></div>
         </div>
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download GeoJSON
+        </button>
       </div>
 
       <!-- GRID tab -->
@@ -1773,6 +1781,10 @@ function renderTrafficResults(stats, inputs) {
         <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download GeoJSON
+        </button>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -2035,6 +2047,10 @@ function renderInformalSettlementResults(stats, inputs) {
         <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download GeoJSON
+        </button>
       </div>
 
       <!-- GRID tab -->
@@ -2260,6 +2276,10 @@ function renderCrimeResults(stats, inputs) {
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download GeoJSON
+        </button>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -2408,6 +2428,10 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download GeoJSON
+        </button>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -2583,6 +2607,10 @@ function renderNDVIResults(stats, inputs) {
         <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/pulsar-line/48/FFFFFF/tif.png" alt="tif"/>
+          Download GeoTIFF
+        </button>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -2706,6 +2734,10 @@ function renderHeatIndexResults(stats, inputs) {
         <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/pulsar-line/48/tif.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download GeoTIFF
+        </button>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -2918,6 +2950,10 @@ function renderAirQualityResults(stats, inputs) {
         <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/pulsar-line/48/FFFFFF/tif.png" alt="tif"/>
+          Download GeoTIFF
+        </button>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -3054,6 +3090,10 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download GeoJSON
+        </button>
       </div>
 
       <div class="tab-content" id="tab-grid">
@@ -3151,6 +3191,7 @@ function wireTabSwitching() {
             if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
           } catch (e) { console.warn("Could not restore result layer:", e); }
         }
+        _wireFullDownloadBtn();
 
       } else if (target === "grid") {
         if (inputLayer  && map.hasLayer(inputLayer))  map.removeLayer(inputLayer);
@@ -3477,6 +3518,16 @@ function wireTabSwitching() {
       }
     });
   });
+
+  // Wire the download button for the initially-active full tab
+  _wireFullDownloadBtn();
+}
+
+function _wireFullDownloadBtn() {
+  const fullTab = analysisPanel.querySelector("#tab-full");
+  if (!fullTab) return;
+  const btn = fullTab.querySelector("[data-full-dl]");
+  if (btn) btn.onclick = downloadFullAnalysisResult;
 }
 
 
@@ -4304,6 +4355,94 @@ function downloadGeoJSON(geojson, filename) {
   const a    = document.createElement("a");
   a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function _fullAnalysisFillHex(feature, service) {
+  const p = feature.properties;
+  switch (service) {
+    case "crime": {
+      const d = p.crime_density || 0;
+      if (d > 20) return "#891508";
+      if (d > 15) return "#e74c3c";
+      if (d > 10) return "#e67e22";
+      if (d > 5)  return "#f1c40f";
+      return "#2ecc71";
+    }
+    case "urban-density": {
+      const d = p.urban_density || 0;
+      if (d > 2000) return "#000080";
+      if (d > 1000) return "#4169e1";
+      if (d > 500)  return "#4682b4";
+      if (d > 100)  return "#87ceeb";
+      return "#add8e6";
+    }
+    case "public-transport": {
+      const layer = p.layer;
+      if (layer === "boundary" || layer === "station") return null;
+      return p.type === "covered" ? "#4cc2ff" : "#e74c3c";
+    }
+    case "facility-accessibility": {
+      const t = p.time_min;
+      if (t === 5)  return "#198754";
+      if (t === 10) return "#ffc107";
+      return "#dc3545";
+    }
+    case "vegetation":
+      return cssColorToHex(vegPctColor(p.vegetation_pct ?? 0));
+    case "traffic":
+      return p.type === "hotspot" ? null : cssColorToHex(congestionColor(p.congestion || "low"));
+    case "informal-settlement":
+      return p.type === "high_irregularity_zone" ? null : cssColorToHex(irregularityColor(p.irregularity_score));
+    default:
+      return "#888888";
+  }
+}
+
+function _fullAnalysisFillOpacity(feature, service) {
+  const p = feature.properties;
+  if (service === "public-transport") {
+    if (p.layer === "boundary" || p.layer === "station") return 0;
+    return p.type === "covered" ? 0.45 : 0.25;
+  }
+  if (service === "facility-accessibility") {
+    const t = p.time_min;
+    if (t === 5) return 0.40; if (t === 10) return 0.32; return 0.24;
+  }
+  if (service === "traffic" && p.type === "hotspot") return 0;
+  if (service === "informal-settlement" && p.type === "high_irregularity_zone") return 0;
+  return 0.6;
+}
+
+function downloadFullAnalysisResult() {
+  if (!lastResultBlob || !lastResultService) {
+    alert("No analysis result available.");
+    return;
+  }
+  const rasterServices = ["ndvi", "heat-index", "air-quality"];
+  const isRaster = rasterServices.includes(lastResultService);
+  if (isRaster) {
+    const blob = new Blob([lastResultBlob], { type: "image/tiff" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url;
+    a.download = `${lastResultService}_result.tif`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } else {
+    // Deep-copy the GeoJSON and inject simplestyle fill properties
+    const geojson = JSON.parse(JSON.stringify(lastResultBlob));
+    geojson.features.forEach(f => {
+      const fill = _fullAnalysisFillHex(f, lastResultService);
+      const fillOpacity = _fullAnalysisFillOpacity(f, lastResultService);
+      const p = f.properties;
+      p["fill"]          = fill || "transparent";
+      p["fill-opacity"]  = fillOpacity;
+      p["stroke"]        = fill || "#333333";
+      p["stroke-width"]  = 1;
+      p["stroke-opacity"] = fill ? 0.6 : 0;
+    });
+    downloadGeoJSON(geojson, `${lastResultService}_result.geojson`);
+  }
 }
 
 /* ---------- Fetch grid from backend and render on map ---------- */
