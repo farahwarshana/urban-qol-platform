@@ -78,7 +78,8 @@ const SERVICES = {
       { type: "file", id: "csvInput", label: "Upload crime data (CSV)" },
       { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" },
       { type: "text", id: "latField", label: "Latitude column name", placeholder: "Auto-detected from CSV", autoDetect: true },
-      { type: "text", id: "lonField", label: "Longitude column name", placeholder: "Auto-detected from CSV", autoDetect: true }
+      { type: "text", id: "lonField", label: "Longitude column name", placeholder: "Auto-detected from CSV", autoDetect: true },
+      { type: "number", id: "crimePopInput", label: "Total population (optional — enables per-capita comparison)" },
     ],
   },
   "traffic": {
@@ -163,9 +164,12 @@ function renderServicePanel(key) {
         </div>`;
     }
     if (field.type === "number") {
+      const labelHtml = field.label.replace(/\(optional\b([^)]*)\)/i, (m, rest) =>
+        `(<em style="color:var(--accent);font-style:italic;font-weight:500;">optional</em>${rest})`
+      );
       return `
         <div class="form-group">
-          <label for="${field.id}">${field.label}</label>
+          <label for="${field.id}">${labelHtml}</label>
           <input type="number" id="${field.id}" value="${field.value ?? ""}" />
         </div>`;
     }
@@ -488,6 +492,8 @@ async function runCrimeAnalysis() {
 
   const latFieldValue = latField ? latField.value.trim() : "";
   const lonFieldValue = lonField ? lonField.value.trim() : "";
+  const popEl = document.getElementById("crimePopInput");
+  const totalPopulation = popEl && popEl.value ? parseInt(popEl.value) : null;
 
   const csvFile = csvInput.files[0];
   const geoJsonFile = geoJsonInput.files[0];
@@ -496,6 +502,7 @@ async function runCrimeAnalysis() {
     geoJsonFileName: geoJsonFile.name,
     latField: latFieldValue || "auto-detected",
     lonField: lonFieldValue || "auto-detected",
+    totalPopulation,
   };
 
   // Parse crime type counts directly from the CSV file
@@ -2234,6 +2241,38 @@ function renderCrimeResults(stats, inputs, geojsonData) {
       : `Crime incidents are spread more evenly across the area with no dominant single hotspot.`
     : "";
 
+  // ---- Per-capita comparison ----
+  const totalPop = inputs && inputs.totalPopulation ? parseInt(inputs.totalPopulation) : null;
+  let perCapitaHtml = "";
+  if (totalPop && totalPop > 0 && crimeCount > 0) {
+    const per1000 = (crimeCount / totalPop) * 1000;
+    const benchmark = 1; // incidents per 1,000 residents (WHO / urban safety standard)
+    const ratio = per1000 / benchmark;
+    let ratingLabel, ratingColor, ratingDesc;
+    if (per1000 <= 1)       { ratingLabel = "Safe";     ratingColor = "#2ecc71"; ratingDesc = "At or below the safe urban benchmark (< 1 / 1,000)."; }
+    else if (per1000 <= 3)  { ratingLabel = "Moderate"; ratingColor = "#f39c12"; ratingDesc = `${ratio.toFixed(1)}× above the safe benchmark.`; }
+    else if (per1000 <= 7)  { ratingLabel = "High";     ratingColor = "#e67e22"; ratingDesc = `${ratio.toFixed(1)}× above the safe benchmark.`; }
+    else                    { ratingLabel = "Critical";  ratingColor = "#e74c3c"; ratingDesc = `${ratio.toFixed(1)}× above the safe benchmark — urgent intervention needed.`; }
+
+    perCapitaHtml = `<div class="insight-card">
+      <div class="label">Per-Capita Crime Rate</div>
+      <div class="value" style="color:${ratingColor};">${per1000.toFixed(2)} per 1,000 residents</div>
+      <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">
+        Based on ${crimeCount.toLocaleString()} incidents · population ${totalPop.toLocaleString()}
+      </div>
+      <div style="margin-top:4px;display:flex;align-items:center;gap:6px;">
+        <span style="font-size:11px;font-weight:600;color:${ratingColor};">${ratingLabel}</span>
+        <span style="font-size:11px;color:var(--text-muted);">${ratingDesc}</span>
+      </div>
+      <div style="margin-top:6px;background:rgba(255,255,255,0.08);border-radius:3px;height:6px;overflow:hidden;">
+        <div style="width:${Math.min(100, (per1000 / 10) * 100).toFixed(1)}%;height:100%;background:${ratingColor};border-radius:3px;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-top:2px;">
+        <span>0</span><span>▲ benchmark (1)</span><span>10+ /1,000</span>
+      </div>
+    </div>`;
+  }
+
   // ---- Top safe / unsafe areas from geojson features ----
   let topUnsafeHtml = "", topSafeHtml = "";
   if (geojsonData && geojsonData.features && geojsonData.features.length) {
@@ -2325,6 +2364,7 @@ function renderCrimeResults(stats, inputs, geojsonData) {
       <div class="value">${inputs.lonField}</div>
     </div>
     ${crimeTypeHtml}
+    ${perCapitaHtml}
   ` : `<p class="text-muted">No input info available.</p>`;
 
   // ---- Color scale for full area tab ----
