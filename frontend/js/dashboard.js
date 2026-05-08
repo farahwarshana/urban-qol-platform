@@ -3418,9 +3418,63 @@ function initMap() {
   ).addTo(map);
 
   document.getElementById("mapPlaceholder").style.display = "none";
+
+  initMapHud();
 }
 
 window.addEventListener("load", initMap);
+
+/* ============================================================
+   MAP HUD — coordinates display + scale bar
+   ============================================================ */
+
+function initMapHud() {
+  // ── Coordinates ───────────────────────────────────────────
+  const coordsEl = document.getElementById('mapCoords');
+
+  map.on('mousemove', function(e) {
+    const lat = e.latlng.lat.toFixed(5);
+    const lng = e.latlng.lng.toFixed(5);
+    coordsEl.textContent = lat + ', ' + lng;
+  });
+
+  map.on('mouseout', function() {
+    coordsEl.textContent = '— , —';
+  });
+
+  // ── Scale bar ─────────────────────────────────────────────
+  // Target a bar ~80px wide; snap to a "nice" real-world distance.
+  const lineEl  = document.getElementById('mapScaleLine');
+  const labelEl = document.getElementById('mapScaleLabel');
+  const TARGET_PX = 80;
+
+  const NICE_DISTANCES = [
+    1, 2, 5, 10, 20, 50, 100, 200, 500,
+    1000, 2000, 5000, 10000, 20000, 50000,
+    100000, 200000, 500000, 1000000
+  ];
+
+  function updateScale() {
+    const center    = map.getCenter();
+    const zoom      = map.getZoom();
+    // metres per pixel at the current latitude and zoom level
+    const mPerPx    = (156543.03392 * Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, zoom);
+    const targetM   = mPerPx * TARGET_PX;
+
+    // pick the closest "nice" distance
+    let best = NICE_DISTANCES[0];
+    for (const d of NICE_DISTANCES) {
+      if (Math.abs(d - targetM) < Math.abs(best - targetM)) best = d;
+    }
+
+    const barPx = best / mPerPx;
+    lineEl.style.width  = barPx + 'px';
+    labelEl.textContent = best >= 1000 ? (best / 1000) + ' km' : best + ' m';
+  }
+
+  map.on('zoomend moveend', updateScale);
+  updateScale();
+}
 
 /* ============================================================
    MEASURE TOOL

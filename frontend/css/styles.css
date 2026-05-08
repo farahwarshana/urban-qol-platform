@@ -374,6 +374,60 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--accent) !important;
 }
 
+/* ---------- Map HUD (bottom bar: scale + coords) ---------- */
+.map-hud {
+  position: absolute;
+  bottom: 10px;
+  left: 50px;
+  right: 10px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 900;
+}
+
+.map-scale-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.map-scale-line {
+  height: 4px;
+  min-width: 40px;
+  background: var(--text-primary);
+  border: 1px solid var(--text-primary);
+  border-top: none;
+  box-sizing: border-box;
+  /* left + right border act as end ticks */
+  border-left: 2px solid var(--text-primary);
+  border-right: 2px solid var(--text-primary);
+}
+
+.map-scale-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(15, 20, 24, 0.72);
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.map-coords {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: rgba(15, 20, 24, 0.72);
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .measure-label {
   background: rgba(15, 20, 24, 0.82);
   color: #4cc2ff;
