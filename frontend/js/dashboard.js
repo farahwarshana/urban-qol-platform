@@ -498,6 +498,41 @@ async function runCrimeAnalysis() {
     lonField: lonFieldValue || "auto-detected",
   };
 
+  // Parse crime type counts directly from the CSV file
+  window._crimeTypeCounts = {};
+  await new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const lines = e.target.result.trim().split('\n');
+        if (lines.length < 2) { resolve(); return; }
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        const typeKeywords = [
+          "crime_type","crimetype","type","offense","offensetype","offense_type",
+          "offensedescription","offense_description","offensecode","offense_code",
+          "category","crime_category","crimecategory","incident_type","incidenttype",
+          "description","crime_description","crimedescription","charge","charges",
+          "classification","class","primary_type","primarytype","ucr_offense",
+          "ucr","nature","nature_of_crime","call_type","calltype","violation",
+          "crimeclass","crime_class","event_type","eventtype","report_type",
+        ];
+        const typeCol = headers.find(h => typeKeywords.includes(h.toLowerCase().replace(/\s+/g, "_")));
+        if (typeCol != null) {
+          const typeIndex = headers.indexOf(typeCol);
+          for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+            if (values[typeIndex]) {
+              const t = values[typeIndex];
+              window._crimeTypeCounts[t] = (window._crimeTypeCounts[t] || 0) + 1;
+            }
+          }
+        }
+      } catch(err) { console.warn("Crime type parsing failed:", err); }
+      resolve();
+    };
+    reader.readAsText(csvFile);
+  });
+
   const formData = new FormData();
   formData.append("csv", csvFile);
   formData.append("geojson", geoJsonFile);
@@ -593,7 +628,7 @@ async function runCrimeAnalysis() {
       area_count: areaCount,
       avg_density: avgDensity,
       max_density: maxDensity,
-    }, inputs);
+    }, inputs, geojsonData);
 
   } catch (error) {
     console.error("Crime density calculation error:", error);
@@ -2174,7 +2209,7 @@ function downloadGridCSV(geojson, service) {
 
 
 /* ---------- Render Crime Results with stats ---------- */
-function renderCrimeResults(stats, inputs) {
+function renderCrimeResults(stats, inputs, geojsonData) {
   const avgDen = parseFloat(stats.avg_density) || 0;
   const maxDen = parseFloat(stats.max_density) || 0;
   const crimeCount = parseInt(stats.crime_count) || 0;
@@ -2193,13 +2228,76 @@ function renderCrimeResults(stats, inputs) {
     ["Safe", "Hotspot"]
   );
 
-  const ineq = maxDen > 0 ? inequalityLabel(calcStdDev([avgDen, maxDen])) : null;
-
   const keyInsight = maxDen > 0
     ? maxDen / Math.max(avgDen, 0.01) > 5
       ? `Crime is heavily concentrated in a few hotspot zones — the rest of the area is relatively safe.`
       : `Crime incidents are spread more evenly across the area with no dominant single hotspot.`
     : "";
+
+  // ---- Top safe / unsafe areas from geojson features ----
+  let topUnsafeHtml = "", topSafeHtml = "";
+  if (geojsonData && geojsonData.features && geojsonData.features.length) {
+    const nameKey = ["NBHD_NAME","name","NAME","district","area_name","neighborhood"]
+      .find(k => geojsonData.features[0]?.properties?.[k] !== undefined);
+    const featuresWithName = geojsonData.features
+      .filter(f => f.properties && f.properties.crime_density !== undefined)
+      .map(f => ({
+        name: nameKey ? f.properties[nameKey] : null,
+        density: parseFloat(f.properties.crime_density) || 0,
+      }))
+      .filter(f => f.name);
+
+    if (featuresWithName.length) {
+      const sorted = [...featuresWithName].sort((a, b) => b.density - a.density);
+      const top3Unsafe = sorted.slice(0, 3);
+      const top3Safe   = sorted.slice(-3).reverse();
+      topUnsafeHtml = `<div class="insight-card">
+        <div class="label" style="color:var(--danger);">Top Unsafe Areas</div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">
+          ${top3Unsafe.map((f, i) => `
+            <div style="display:flex;justify-content:space-between;font-size:12px;">
+              <span>${i + 1}. ${f.name}</span>
+              <span style="color:var(--danger);font-weight:600;">${f.density.toFixed(2)}/km²</span>
+            </div>`).join("")}
+        </div>
+      </div>`;
+      topSafeHtml = `<div class="insight-card">
+        <div class="label" style="color:#2ecc71;">Top Safe Areas</div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">
+          ${top3Safe.map((f, i) => `
+            <div style="display:flex;justify-content:space-between;font-size:12px;">
+              <span>${i + 1}. ${f.name}</span>
+              <span style="color:#2ecc71;font-weight:600;">${f.density.toFixed(2)}/km²</span>
+            </div>`).join("")}
+        </div>
+      </div>`;
+    }
+  }
+
+  // ---- Crime type breakdown from the uploaded CSV (available via lastCrimeCSVHeaders) ----
+  let crimeTypeHtml = "";
+  if (window._crimeTypeCounts && Object.keys(window._crimeTypeCounts).length) {
+    const entries = Object.entries(window._crimeTypeCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const total = entries.reduce((s, [, v]) => s + v, 0);
+    crimeTypeHtml = `
+      <div class="insight-card">
+        <div class="label">Crime Type Breakdown</div>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">
+          ${entries.map(([type, count]) => {
+            const pct = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+            return `<div style="font-size:11px;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                <span style="color:var(--text-primary);">${type}</span>
+                <span style="color:var(--text-muted);">${count} (${pct}%)</span>
+              </div>
+              <div style="background:rgba(255,255,255,0.08);border-radius:3px;height:5px;overflow:hidden;">
+                <div style="width:${pct}%;height:100%;background:#e74c3c;border-radius:3px;"></div>
+              </div>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+  }
 
   const inputsHtml = inputs ? `
     <div class="insight-card">
@@ -2207,8 +2305,12 @@ function renderCrimeResults(stats, inputs) {
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.csvFileName}</div>
     </div>
     <div class="insight-card">
-      <div class="label">Total Records (Features)</div>
-      <div class="value">${crimeCount.toLocaleString()} incidents</div>
+      <div class="label">Total Incidents</div>
+      <div class="value">${crimeCount.toLocaleString()}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Areas Analyzed</div>
+      <div class="value">${stats.area_count || "N/A"}</div>
     </div>
     <div class="insight-card">
       <div class="label">Boundary data (GeoJSON)</div>
@@ -2222,12 +2324,30 @@ function renderCrimeResults(stats, inputs) {
       <div class="label">Longitude field</div>
       <div class="value">${inputs.lonField}</div>
     </div>
+    ${crimeTypeHtml}
   ` : `<p class="text-muted">No input info available.</p>`;
+
+  // ---- Color scale for full area tab ----
+  const colorScaleHtml = `
+    <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Crime density color scale</div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      ${[
+        ["#2ecc71", "0 – 5",   "Safe"],
+        ["#f1c40f", "5 – 10",  "Low risk"],
+        ["#e67e22", "10 – 15", "Moderate"],
+        ["#e74c3c", "15 – 20", "High risk"],
+        ["#891508", "20 +",    "Hotspot"],
+      ].map(([color, range, label]) => `
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+          <div style="width:12px;height:12px;background:${color};border-radius:2px;flex-shrink:0;"></div>
+          <span><strong>${label}</strong> — ${range} crimes/km²</span>
+        </div>`).join("")}
+    </div>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Crime Density — Results</h3>
-      <p class="panel-desc">Crime density = incidents per km². Higher values = more crime. Color gradient from safe (green) to hotspot (red).</p>
+      <p class="panel-desc">Crime density = incidents per km². Higher values = more crime.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -2241,14 +2361,8 @@ function renderCrimeResults(stats, inputs) {
       </div>
 
       <div class="tab-content active" id="tab-full">
-        <div class="insight-card">
-          <div class="label">Total Crimes</div>
-          <div class="value">${crimeCount.toLocaleString()}</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Areas Analyzed</div>
-          <div class="value">${stats.area_count || "N/A"}</div>
-        </div>
+        ${chartHtml}
+        ${colorScaleHtml}
         <div class="insight-card">
           <div class="label">Overall Safety Score</div>
           <div class="value" style="color:${scoreColor}">${safetyScore} / 100</div>
@@ -2265,11 +2379,8 @@ function renderCrimeResults(stats, inputs) {
           <div class="label">Peak Hotspot Density</div>
           <div class="value" style="color:var(--danger)">${stats.max_density || "N/A"} crimes/km²</div>
         </div>
-        ${ineq ? `<div class="insight-card">
-          <div class="label">Distribution Balance</div>
-          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
-        </div>` : ""}
-        ${chartHtml}
+        ${topUnsafeHtml}
+        ${topSafeHtml}
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
@@ -3168,14 +3279,30 @@ function wireTabSwitching() {
       analysisPanel.querySelector("#tab-" + target).classList.add("active");
 
       if (target === "raw") {
-        if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
-        if (gridLayer   && map.hasLayer(gridLayer))   map.removeLayer(gridLayer);
-        if (inputLayer && !map.hasLayer(inputLayer)) {
-          try {
-            inputLayer.addTo(map);
-            const b = inputLayer.getBounds ? inputLayer.getBounds() : null;
-            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
-          } catch (e) { console.warn("Could not restore input layer:", e); }
+        if (gridLayer && map.hasLayer(gridLayer)) map.removeLayer(gridLayer);
+        // For crime: show both the boundary result layer and the crime point input layer
+        if (lastResultService === "crime") {
+          if (resultLayer && !map.hasLayer(resultLayer)) {
+            try { resultLayer.addTo(map); } catch (e) {}
+          }
+          if (inputLayer && !map.hasLayer(inputLayer)) {
+            try { inputLayer.addTo(map); } catch (e) {}
+          }
+          if (resultLayer) {
+            try {
+              const b = resultLayer.getBounds ? resultLayer.getBounds() : null;
+              if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+            } catch (e) {}
+          }
+        } else {
+          if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+          if (inputLayer && !map.hasLayer(inputLayer)) {
+            try {
+              inputLayer.addTo(map);
+              const b = inputLayer.getBounds ? inputLayer.getBounds() : null;
+              if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+            } catch (e) { console.warn("Could not restore input layer:", e); }
+          }
         }
 
       } else if (target === "full") {
@@ -3478,10 +3605,26 @@ function wireTabSwitching() {
                 <div class="label">Worst Cell</div>
                 <div class="value" style="color:${qolScoreTextColor(worst)}">${worst}/100 <span style="font-size:11px;color:var(--text-muted);">(value: ${typeof worstVal === "number" ? worstVal.toFixed ? worstVal.toFixed(2) : worstVal : worstVal})</span></div>
               </div>` : ""}
-              ${clusterInfo && lastResultService !== "public-transport" ? `<div class="insight-card">
+              ${clusterInfo && lastResultService !== "public-transport" && lastResultService !== "crime" ? `<div class="insight-card">
                 <div class="label">Spatial Clustering</div>
                 <div class="value" style="color:${clusterInfo.color};font-size:13px;">${clusterInfo.text}</div>
               </div>` : ""}
+              ${lastResultService === "crime" && scores.length >= 2 ? (() => {
+                const scoreMin = Math.min(...scores);
+                const scoreMax = Math.max(...scores);
+                const scoreRange = scoreMax - scoreMin;
+                const scoreAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                const cv = scoreAvg > 0 ? (Math.sqrt(scores.reduce((s, v) => s + Math.pow(v - scoreAvg, 2), 0) / scores.length) / scoreAvg * 100) : 0;
+                let ineqLabel, ineqColor;
+                if (cv < 15)       { ineqLabel = "Low inequality — safety is fairly uniform"; ineqColor = "#2ecc71"; }
+                else if (cv < 35)  { ineqLabel = "Moderate inequality — some unsafe pockets"; ineqColor = "#f39c12"; }
+                else               { ineqLabel = "High inequality — large safety disparities"; ineqColor = "#e74c3c"; }
+                return `<div class="insight-card">
+                  <div class="label">Safety Inequality</div>
+                  <div class="value" style="color:${ineqColor};font-size:13px;">${ineqLabel}</div>
+                  <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Score range: ${scoreMin}–${scoreMax} · CV: ${cv.toFixed(1)}%</div>
+                </div>`;
+              })() : ""}
               ${densityHistogramHtml}
               ${gridChartHtml}
               ${tiersHtml}
@@ -4827,8 +4970,32 @@ function attachFileInputListeners() {
           });
         }
 
+        // Detect a crime type column for breakdown (runs regardless of coord detection)
+        const _typeKeywords = [
+          "crime_type","crimetype","type","offense","offensetype","offense_type",
+          "offensedescription","offense_description","offensecode","offense_code",
+          "category","crime_category","crimecategory","incident_type","incidenttype",
+          "description","crime_description","crimedescription","charge","charges",
+          "classification","class","primary_type","primarytype","ucr_offense",
+          "ucr","nature","nature_of_crime","call_type","calltype","violation",
+          "crimeclass","crime_class","event_type","eventtype","report_type",
+        ];
+        const typeCol = headers.find(h => _typeKeywords.includes(h.toLowerCase().replace(/\s+/g, "_")));
+        const typeIndex = typeCol != null ? headers.indexOf(typeCol) : -1;
+        window._crimeTypeCounts = {};
+
         if (!lonHeader || !latHeader) {
           console.warn("Could not detect lat/lon columns from CSV headers:", headers);
+          // Still count types from all rows even without coordinates
+          if (typeIndex >= 0) {
+            for (let i = 1; i < lines.length; i++) {
+              const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+              if (values[typeIndex]) {
+                const t = values[typeIndex];
+                window._crimeTypeCounts[t] = (window._crimeTypeCounts[t] || 0) + 1;
+              }
+            }
+          }
           return;
         }
 
@@ -4847,14 +5014,13 @@ function attachFileInputListeners() {
             if (!isNaN(lon) && !isNaN(lat)) {
               features.push({
                 type: "Feature",
-                geometry: {
-                  type: "Point",
-                  coordinates: [lon, lat]
-                },
-                properties: {
-                  row: i
-                }
+                geometry: { type: "Point", coordinates: [lon, lat] },
+                properties: { row: i }
               });
+              if (typeIndex >= 0 && values[typeIndex]) {
+                const t = values[typeIndex];
+                window._crimeTypeCounts[t] = (window._crimeTypeCounts[t] || 0) + 1;
+              }
             }
           }
         }
