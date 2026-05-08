@@ -15,6 +15,7 @@ Steps
 import numpy as np
 import geopandas as gpd
 from shapely.ops import unary_union
+from scipy.spatial.distance import cdist
 
 
 def _get_utm_epsg(lon, lat):
@@ -138,6 +139,49 @@ def calculate_transit_coverage(
     covered_geojson   = {"type": "FeatureCollection", "features": covered_features}
     uncovered_geojson = {"type": "FeatureCollection", "features": uncovered_features}
 
+    # ── Station distribution stats ───────────────────────────────────────────
+    station_distribution = "N/A"
+    avg_station_distance_m = None
+    gap_regions = []
+
+    if len(stations_utm) >= 2:
+        coords = np.array([(geom.x, geom.y) for geom in stations_utm.geometry])
+        dists = cdist(coords, coords)
+
+        # Avg distance between stations: mean of all unique pairwise distances
+        upper = dists[np.triu_indices(len(coords), k=1)]
+        avg_station_distance_m = round(float(upper.mean()), 1)
+
+        # Clark-Evans index: observed avg nearest-neighbour vs random expectation
+        # R < 1 → clustered, R >= 1 → spread/uniform
+        np.fill_diagonal(dists, np.inf)
+        nearest_dists = dists.min(axis=1)
+        avg_nearest_obs = float(nearest_dists.mean())
+        aoi_area_for_dist = aoi_union_utm.area
+        n = len(coords)
+        expected_nearest = 0.5 * np.sqrt(aoi_area_for_dist / n) if n > 0 else 1
+        clark_evans_r = avg_nearest_obs / expected_nearest if expected_nearest > 0 else 1
+        station_distribution = "Spread" if clark_evans_r >= 1.0 else "Clustered"
+
+    # ── Gap region detection ─────────────────────────────────────────────────
+    if uncovered_wgs is not None and not uncovered_wgs.is_empty:
+        from shapely.geometry import mapping
+        gdf_unc = gpd.GeoDataFrame(geometry=[uncovered_wgs], crs="EPSG:4326")
+        gdf_unc = gdf_unc.explode(index_parts=False).reset_index(drop=True)
+        aoi_total_area = aoi_union_utm.area
+        threshold_frac = 0.10  # flag zones covering >10% of AOI
+        for _, row in gdf_unc.iterrows():
+            geom_wgs = row.geometry
+            geom_utm = gpd.GeoDataFrame(geometry=[geom_wgs], crs="EPSG:4326").to_crs(utm_crs).geometry.iloc[0]
+            frac = geom_utm.area / aoi_total_area if aoi_total_area > 0 else 0
+            if frac >= threshold_frac:
+                centroid_wgs = geom_wgs.centroid
+                gap_regions.append({
+                    "lat": round(centroid_wgs.y, 4),
+                    "lon": round(centroid_wgs.x, 4),
+                    "area_pct": round(frac * 100, 1),
+                })
+
     # ── Optional population coverage ─────────────────────────────────────────
     population_pct = None
     if population_geojson_path and population_field:
@@ -193,11 +237,16 @@ def calculate_transit_coverage(
             json.dump(all_geojson, fh)
 
     return {
-        "coverage_pct":       round(coverage_pct, 2),
-        "uncovered_geojson":  uncovered_geojson,
-        "covered_geojson":    covered_geojson,
-        "population_pct":     round(population_pct, 2) if population_pct is not None else None,
-        "overall_score":      overall_score,
-        "station_count":      len(stations),
-        "walking_distance_m": walking_distance_m,
+        "coverage_pct":            round(coverage_pct, 2),
+        "uncovered_geojson":       uncovered_geojson,
+        "covered_geojson":         covered_geojson,
+        "population_pct":          round(population_pct, 2) if population_pct is not None else None,
+        "overall_score":           overall_score,
+        "station_count":           len(stations),
+        "walking_distance_m":      walking_distance_m,
+        "station_distribution":    station_distribution,
+        "avg_station_distance_m":  avg_station_distance_m,
+        "gap_regions":             gap_regions,
+        "stations_geojson":        stations.to_crs("EPSG:4326").__geo_interface__,
+        "aoi_geojson":             aoi.to_crs("EPSG:4326").__geo_interface__,
     }

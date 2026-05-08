@@ -30,11 +30,11 @@ const SERVICES = {
     title: "Public Transport Coverage",
     desc: "Analyze walking coverage of transit stations within an area of interest.",
     inputs: [
-      { type: "file", id: "stationsInput",    label: "Upload transit stations (GeoJSON points)" },
-      { type: "file", id: "aoiInput",         label: "Upload area of interest (GeoJSON polygon)" },
-      { type: "number", id: "walkingDistance", label: "Walking distance (metres)", value: 1000 },
-      { type: "file", id: "populationInput",  label: "Population layer (GeoJSON, optional)" },
-      { type: "text", id: "populationField",  label: "Population field name (optional)", placeholder: "e.g. population, pop" },
+      { type: "file",   id: "stationsInput",    label: "Upload transit stations (GeoJSON points)" },
+      { type: "file",   id: "aoiInput",          label: "Upload area of interest (GeoJSON polygon)" },
+      { type: "tip",    text: "Recommended urban public transport coverage is within 500–1000 walking metres." },
+      { type: "number", id: "walkingDistance",   label: "Walking distance (metres)", value: 1000 },
+      { type: "number", id: "populationCount",   label: "Total population in area (optional)", value: "" },
     ],
   },
   "facility_Accessibility_index": {
@@ -184,6 +184,9 @@ function renderServicePanel(key) {
             ${optionsHtml}
           </select>
         </div>`;
+    }
+    if (field.type === "tip") {
+      return `<div style="background:rgba(76,194,255,0.10);border-left:3px solid var(--accent);border-radius:4px;padding:7px 10px;margin-bottom:6px;font-size:11.5px;color:var(--text-primary);">💡 ${field.text}</div>`;
     }
     if (field.type === "custom") {
       return field.html;
@@ -839,11 +842,10 @@ formData.append("network_dist_m", networkDist);
 }
 /* ---------- Public Transport Analysis - calls backend API ---------- */
 async function runPublicTransportAnalysis() {
-  const stationsInput    = document.getElementById("stationsInput");
-  const aoiInput         = document.getElementById("aoiInput");
-  const walkingDistanceEl= document.getElementById("walkingDistance");
-  const populationInput  = document.getElementById("populationInput");
-  const populationFieldEl= document.getElementById("populationField");
+  const stationsInput     = document.getElementById("stationsInput");
+  const aoiInput          = document.getElementById("aoiInput");
+  const walkingDistanceEl = document.getElementById("walkingDistance");
+  const populationCountEl = document.getElementById("populationCount");
 
   if (!stationsInput || !stationsInput.files[0]) {
     alert("Please upload a GeoJSON file with transit stations.");
@@ -854,25 +856,21 @@ async function runPublicTransportAnalysis() {
     return;
   }
 
-  const stationsFile    = stationsInput.files[0];
-  const aoiFile         = aoiInput.files[0];
+  const stationsFile   = stationsInput.files[0];
+  const aoiFile        = aoiInput.files[0];
   const walkingDistance = walkingDistanceEl ? (parseFloat(walkingDistanceEl.value) || 1000) : 1000;
-  const popFile         = populationInput && populationInput.files[0] ? populationInput.files[0] : null;
-  const popField        = populationFieldEl ? populationFieldEl.value.trim() : "";
+  const populationCount = populationCountEl && populationCountEl.value ? parseInt(populationCountEl.value) : null;
 
   const inputs = {
     stationsFileName: stationsFile.name,
     aoiFileName:      aoiFile.name,
     walkingDistance:  walkingDistance,
-    populationField:  popField || null,
+    populationCount:  populationCount,
   };
 
   const formData = new FormData();
   formData.append("stations_geojson", stationsFile);
   formData.append("aoi_geojson",      aoiFile);
-  if (popFile && popField) {
-    formData.append("population_geojson", popFile);
-  }
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
@@ -887,8 +885,7 @@ async function runPublicTransportAnalysis() {
   `;
 
   try {
-    let url = `http://localhost:8000/calculate-transit-coverage?walking_distance_m=${walkingDistance}`;
-    if (popField) url += `&population_field=${encodeURIComponent(popField)}`;
+    const url = `http://localhost:8000/calculate-transit-coverage?walking_distance_m=${walkingDistance}`;
 
     const response = await fetch(url, { method: "POST", body: formData });
 
@@ -897,11 +894,14 @@ async function runPublicTransportAnalysis() {
       throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
     }
 
-    const coveragePct      = response.headers.get("X-Coverage-Pct");
-    const populationPct    = response.headers.get("X-Population-Pct");
-    const overallScore     = response.headers.get("X-Overall-Score");
-    const stationCount     = response.headers.get("X-Station-Count");
-    const walkingDistanceM = response.headers.get("X-Walking-Distance-M");
+    const coveragePct           = response.headers.get("X-Coverage-Pct");
+    const overallScore          = response.headers.get("X-Overall-Score");
+    const stationCount          = response.headers.get("X-Station-Count");
+    const walkingDistanceM      = response.headers.get("X-Walking-Distance-M");
+    const stationDistribution   = response.headers.get("X-Station-Distribution");
+    const avgStationDistanceM   = response.headers.get("X-Avg-Station-Distance-M");
+    const gapRegionsRaw         = response.headers.get("X-Gap-Regions");
+    const gapRegions            = gapRegionsRaw ? JSON.parse(decodeURIComponent(gapRegionsRaw)) : [];
 
     const geojsonData = await response.json();
 
@@ -912,8 +912,12 @@ async function runPublicTransportAnalysis() {
     if (inputLayer) map.removeLayer(inputLayer);
     clearMap();
 
-    // Render covered (blue) and uncovered (red-striped) polygons
+    // resultLayer: coverage polygons only (Full Area tab)
     resultLayer = L.geoJSON(geojsonData, {
+      filter: function(feature) {
+        const l = feature.properties.layer;
+        return l !== "boundary" && l !== "station";
+      },
       style: function(feature) {
         const isCovered = feature.properties.type === "covered";
         return {
@@ -932,18 +936,46 @@ async function runPublicTransportAnalysis() {
       }
     }).addTo(map);
 
+    // inputLayer: boundary outline + station dots (Raw Data tab)
+    inputLayer = L.geoJSON(geojsonData, {
+      filter: function(feature) {
+        const l = feature.properties.layer;
+        return l === "boundary" || l === "station";
+      },
+      style: function(feature) {
+        if (feature.properties.layer === "station") return {};
+        return { fillColor: "transparent", fillOpacity: 0, color: "#f0a500", weight: 2.5, dashArray: "6, 3" };
+      },
+      pointToLayer: function(feature, latlng) {
+        return L.circleMarker(latlng, { radius: 6, fillColor: "#1a8fc1", color: "#0d5f8a", weight: 1.5, fillOpacity: 1 });
+      },
+      onEachFeature: function(feature, layer) {
+        const l = feature.properties.layer;
+        if (l === "station") {
+          const p = feature.properties || {};
+          const nameKey = Object.keys(p).find(k => /^name$/i.test(k) || /^station_name$/i.test(k) || /^stop_name$/i.test(k) || /^title$/i.test(k));
+          const label = nameKey ? p[nameKey] : "Transit Station";
+          layer.bindPopup(`<strong>${label}</strong>`);
+          return;
+        }
+        if (l === "boundary") { layer.bindPopup("<strong>Area of Interest</strong>"); return; }
+      }
+    });
+
     try {
       const bounds = resultLayer.getBounds();
       if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
     } catch (e) { console.warn("Could not fit bounds:", e); }
 
     renderTransitResults({
-      coverage_pct:    coveragePct,
-      population_pct:  populationPct,
-      overall_score:   overallScore,
-      station_count:   stationCount,
-      walking_distance_m: walkingDistanceM,
-    }, inputs);
+      coverage_pct:           coveragePct,
+      overall_score:          overallScore,
+      station_count:          stationCount,
+      walking_distance_m:     walkingDistanceM,
+      station_distribution:   stationDistribution,
+      avg_station_distance_m: avgStationDistanceM,
+      gap_regions:            gapRegions,
+    }, inputs, geojsonData);
 
   } catch (error) {
     console.error("Transit coverage error:", error);
@@ -962,7 +994,30 @@ async function runPublicTransportAnalysis() {
 
 
 /* ---------- Render Public Transport Results ---------- */
-function renderTransitResults(stats, inputs) {
+function renderTransitResults(stats, inputs, geojsonData) {
+  const covPct   = stats.coverage_pct !== null ? parseFloat(stats.coverage_pct) : null;
+  const uncovPct = covPct !== null ? (100 - covPct).toFixed(1) : null;
+
+  const populationCount = inputs && inputs.populationCount;
+  const coveredPopHtml = (covPct !== null && populationCount)
+    ? `<div class="insight-card">
+        <div class="label">Est. Population Covered</div>
+        <div class="value">${Math.round(populationCount * covPct / 100).toLocaleString()} / ${parseInt(populationCount).toLocaleString()}</div>
+       </div>`
+    : "";
+
+  // Raw data tab: input summary + station distribution stats
+  const stationDistrib   = stats.station_distribution || "N/A";
+  const avgStDist        = stats.avg_station_distance_m && stats.avg_station_distance_m !== ""
+    ? parseFloat(stats.avg_station_distance_m).toFixed(0) + " m"
+    : "N/A";
+  const avgStDistNum     = stats.avg_station_distance_m && stats.avg_station_distance_m !== ""
+    ? parseFloat(stats.avg_station_distance_m)
+    : null;
+  const avgStDistColor   = avgStDistNum !== null
+    ? (avgStDistNum <= 1000 ? "#4cc2ff" : "#e74c3c")
+    : "#888";
+
   const inputsHtml = inputs ? `
     <div class="insight-card">
       <div class="label">Stations file</div>
@@ -976,23 +1031,27 @@ function renderTransitResults(stats, inputs) {
       <div class="label">Walking distance</div>
       <div class="value">${inputs.walkingDistance} m</div>
     </div>
-    ${inputs.populationField ? `
-    <div class="insight-card">
-      <div class="label">Population field</div>
-      <div class="value">${inputs.populationField}</div>
+    ${populationCount ? `<div class="insight-card">
+      <div class="label">Total Population</div>
+      <div class="value">${parseInt(populationCount).toLocaleString()}</div>
     </div>` : ""}
     <div class="insight-card">
-      <div class="label">Total Features</div>
-      <div class="value">${stats.station_count || "N/A"} stations</div>
+      <div class="label">Stations Analyzed</div>
+      <div class="value">${stats.station_count || "N/A"}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Station Distribution</div>
+      <div class="value">${stationDistrib}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Avg Distance Between Stations <span style="font-size:10px;color:var(--text-muted);">(rec. 500 m)</span></div>
+      <div class="value" style="color:${avgStDistColor}">${avgStDist}</div>
     </div>
   ` : `<p class="text-muted">No input info available.</p>`;
 
-  const score = parseFloat(stats.overall_score);
-  const scoreColor = !isNaN(score) ? qolScoreTextColor(score) : "#888";
-  const cat = !isNaN(score) ? perfCategory(score) : null;
-
-  const covPct  = stats.coverage_pct !== null ? parseFloat(stats.coverage_pct) : null;
-  const uncovPct = covPct !== null ? (100 - covPct).toFixed(1) : null;
+  // Full area tab
+  const score     = parseFloat(stats.overall_score);
+  const cat       = !isNaN(score) ? perfCategory(score) : null;
 
   const chartHtml = covPct !== null ? miniBarChart(
     [covPct.toFixed(1), uncovPct],
@@ -1004,7 +1063,7 @@ function renderTransitResults(stats, inputs) {
   const ineqStdDev = covPct !== null ? calcStdDev([covPct, 100 - covPct]) : 0;
   const ineq = inequalityLabel(ineqStdDev);
 
-  const keyInsight = covPct !== null
+  const coverageInsight = covPct !== null
     ? covPct >= 70
       ? `Good transit coverage — most of the area is within walking distance of a station.`
       : covPct >= 40
@@ -1012,16 +1071,17 @@ function renderTransitResults(stats, inputs) {
       : `Low coverage — ${uncovPct}% of the area is underserved by transit.`
     : "";
 
-  const popRow = stats.population_pct ? `
-    <div class="insight-card">
-      <div class="label">Population Coverage</div>
-      <div class="value">${parseFloat(stats.population_pct).toFixed(1)}%</div>
+  // Gap region insight
+  const gapRegions = stats.gap_regions || [];
+  const gapInsightHtml = gapRegions.length > 0 ? `
+    <div style="background:rgba(231,76,60,0.08);border-left:3px solid #e74c3c;border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+      ⚠️ <strong>Key gap insight:</strong> Large uncovered zone${gapRegions.length > 1 ? "s" : ""} detected — ${gapRegions.map(g => `${g.area_pct}% of area near (${g.lat}, ${g.lon})`).join("; ")}.
     </div>` : "";
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Public Transport — Results</h3>
-      <p class="panel-desc">Analysis complete. Blue = covered · Red dashed = uncovered.</p>
+      <p class="panel-desc">Analysis complete.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -1030,7 +1090,7 @@ function renderTransitResults(stats, inputs) {
       </div>
 
       <div class="tab-content" id="tab-raw">
-        <p class="text-muted">Uploaded input data.</p>
+        <p class="text-muted" style="font-size:11px;">Input data summary. Boundary and stations are shown on the map.</p>
         ${inputsHtml}
       </div>
 
@@ -1039,11 +1099,7 @@ function renderTransitResults(stats, inputs) {
           <div class="label">Area Coverage</div>
           <div class="value">${covPct !== null ? covPct.toFixed(1) + "%" : "N/A"}</div>
         </div>
-        ${popRow}
-        <div class="insight-card">
-          <div class="label">Overall Score</div>
-          <div class="value" style="color:${scoreColor}">${!isNaN(score) ? score.toFixed(1) + " / 100" : "N/A"}</div>
-        </div>
+        ${coveredPopHtml}
         ${cat ? `<div class="insight-card">
           <div class="label">Performance</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
@@ -1061,9 +1117,10 @@ function renderTransitResults(stats, inputs) {
           <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
         </div>` : ""}
         ${chartHtml}
-        ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
-          💡 ${keyInsight}
+        ${coverageInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${coverageInsight}
         </div>` : ""}
+        ${gapInsightHtml}
       </div>
 
       <div class="tab-content" id="tab-grid">

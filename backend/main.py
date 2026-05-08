@@ -56,6 +56,7 @@ app.add_middleware(
         "X-HeatIndex-Min", "X-HeatIndex-Max", "X-HeatIndex-Mean",
         "X-Coverage-Pct", "X-Population-Pct", "X-Overall-Score",
         "X-Station-Count", "X-Walking-Distance-M",
+        "X-Station-Distribution", "X-Avg-Station-Distance-M", "X-Gap-Regions",
         "X-Vegetation-Pct", "X-Benchmark-Gap", "X-Passes-Benchmark",
         "X-Valid-Pixels", "X-Vegetated-Pixels", "X-Cell-Size-M",
         "X-Road-Length-Km", "X-AOI-Area-Km2", "X-Road-Density",
@@ -499,15 +500,37 @@ def calculate_transit_coverage_endpoint(
             output_path=str(output_path),
         )
 
-        # Read the saved combined GeoJSON (covered + uncovered)
-        with open(str(output_path), "r", encoding="utf-8") as f:
-            geojson_data = json.load(f)
+        # Build combined GeoJSON (covered + uncovered + stations + aoi boundary)
+        import copy
+        combined_features = []
 
+        with open(str(output_path), "r", encoding="utf-8") as f:
+            coverage_geojson = json.load(f)
+        combined_features.extend(coverage_geojson.get("features", []))
+
+        # Add AOI boundary features
+        for feat in result["aoi_geojson"].get("features", []):
+            f2 = copy.deepcopy(feat)
+            f2.setdefault("properties", {})["layer"] = "boundary"
+            combined_features.append(f2)
+
+        # Add station point features
+        for feat in result["stations_geojson"].get("features", []):
+            f2 = copy.deepcopy(feat)
+            f2.setdefault("properties", {})["layer"] = "station"
+            combined_features.append(f2)
+
+        geojson_data = {"type": "FeatureCollection", "features": combined_features}
+
+        import urllib.parse
         headers = {
-            "X-Coverage-Pct":       str(result["coverage_pct"]),
-            "X-Overall-Score":      str(result["overall_score"]),
-            "X-Station-Count":      str(result["station_count"]),
-            "X-Walking-Distance-M": str(result["walking_distance_m"]),
+            "X-Coverage-Pct":              str(result["coverage_pct"]),
+            "X-Overall-Score":             str(result["overall_score"]),
+            "X-Station-Count":             str(result["station_count"]),
+            "X-Walking-Distance-M":        str(result["walking_distance_m"]),
+            "X-Station-Distribution":      str(result["station_distribution"]),
+            "X-Avg-Station-Distance-M":    str(result["avg_station_distance_m"] if result["avg_station_distance_m"] is not None else ""),
+            "X-Gap-Regions":               urllib.parse.quote(json.dumps(result["gap_regions"])),
         }
         if result["population_pct"] is not None:
             headers["X-Population-Pct"] = str(result["population_pct"])
