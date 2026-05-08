@@ -58,6 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=[
         "X-NDVI-Min", "X-NDVI-Max", "X-NDVI-Mean", "X-Valid-Pixels",
+        "X-Red-Band", "X-NIR-Band", "X-Satellite",
         "X-Crime-Count", "X-Area-Count", "X-Avg-Density", "X-Max-Density",
         "X-Total-Population", "X-Total-Area",
         "X-HeatIndex-Min", "X-HeatIndex-Max", "X-HeatIndex-Mean",
@@ -135,6 +136,9 @@ def calculate_ndvi_endpoint(
                 "X-NDVI-Max":     str(stats.get("max", "")),
                 "X-NDVI-Mean":    str(stats.get("mean", "")),
                 "X-Valid-Pixels": str(stats.get("valid_pixels", "")),
+                "X-Red-Band":     str(stats.get("red_band", "")),
+                "X-NIR-Band":     str(stats.get("nir_band", "")),
+                "X-Satellite":    str(stats.get("satellite", "")),
             },
         )
 

@@ -369,6 +369,9 @@ async function runNDVIAnalysis() {
     const ndviMax = response.headers.get("X-NDVI-Max");
     const ndviMean = response.headers.get("X-NDVI-Mean");
     const validPixels = response.headers.get("X-Valid-Pixels");
+    const redBand  = response.headers.get("X-Red-Band");
+    const nirBand  = response.headers.get("X-NIR-Band");
+    const satellite = response.headers.get("X-Satellite");
 
     // Convert response to array buffer
     const arrayBuffer = await response.arrayBuffer();
@@ -390,6 +393,9 @@ async function runNDVIAnalysis() {
       max: ndviMax,
       mean: ndviMean,
       valid_pixels: validPixels,
+      red_band:  redBand,
+      nir_band:  nirBand,
+      satellite: satellite,
     }, inputs);
 
   } catch (error) {
@@ -2412,8 +2418,16 @@ function renderNDVIResults(stats, inputs) {
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
     </div>
     <div class="insight-card">
-      <div class="label">Satellite type</div>
-      <div class="value">${inputs.satelliteLabel}</div>
+      <div class="label">Satellite</div>
+      <div class="value">${stats.satellite || "Unknown"}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Red band</div>
+      <div class="value">${stats.red_band || "—"} → Red</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">NIR band</div>
+      <div class="value">${stats.nir_band || "—"} → NIR</div>
     </div>
   ` : `<p class="text-muted">No input info available.</p>`;
 
