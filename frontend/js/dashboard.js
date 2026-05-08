@@ -380,10 +380,32 @@ async function runNDVIAnalysis() {
     lastResultService = "ndvi";
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
-    // Render the NDVI result on the map (without custom color function to avoid projection issues)
+    // Render the NDVI result: low NDVI → red, high NDVI → green
+    const ndviMinF = parseFloat(ndviMin);
+    const ndviMaxF = parseFloat(ndviMax);
+    const ndviRange = ndviMaxF - ndviMinF || 1;
     resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
       opacity: 0.9,
       resolution: 256,
+      colorFn: (values) => {
+        const v = values[0];
+        if (v === undefined || v === null || isNaN(v) || v < -1.5 || v > 1.5) return null;
+        const t = Math.max(0, Math.min(1, (v - ndviMinF) / ndviRange));
+        // red (200,20,0) → yellow (220,200,0) → green (0,150,0)
+        let r, g, b;
+        if (t < 0.5) {
+          const s = t / 0.5;
+          r = Math.round(200 - s * 20);   // 200 → 180 (stays reddish into yellow)
+          g = Math.round(20  + s * 180);  // 20  → 200
+          b = 0;
+        } else {
+          const s = (t - 0.5) / 0.5;
+          r = Math.round(180 - s * 180);  // 180 → 0
+          g = Math.round(200 - s * 50);   // 200 → 150
+          b = 0;
+        }
+        return `rgba(${r},${g},${b},0.9)`;
+      },
     });
 
 
@@ -2434,7 +2456,7 @@ function renderNDVIResults(stats, inputs) {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">NDVI — Results</h3>
-      <p class="panel-desc">NDVI ranges −1 to 1. Values &gt; 0.2 = healthy vegetation. Color: dark green = dense · red = bare.</p>
+      <p class="panel-desc">NDVI ranges −1 to 1. Values &gt; 0.2 = healthy vegetation. Map: green = high NDVI · red = low NDVI.</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -2448,6 +2470,14 @@ function renderNDVIResults(stats, inputs) {
       </div>
 
       <div class="tab-content active" id="tab-full">
+        <div style="margin-bottom:12px;">
+          <div style="height:16px;width:100%;border-radius:4px;background:linear-gradient(to right,rgb(200,20,0),rgb(200,200,0),rgb(0,150,0));border:1px solid rgba(255,255,255,0.15);"></div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:3px;">
+            <span>−1</span>
+            <span>NDVI Scale</span>
+            <span>+1</span>
+          </div>
+        </div>
         <div class="insight-card">
           <div class="label">Overall Score</div>
           <div class="value" style="color:${scoreColor}">${ndviScore} / 100</div>
