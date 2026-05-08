@@ -14,7 +14,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
-DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/urban_qol"
+DATABASE_URL = "postgresql://postgres:admin@127.0.0.1:5432/urban_qol"
 engine = create_engine(DATABASE_URL)
 
 
