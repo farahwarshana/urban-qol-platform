@@ -18,6 +18,13 @@ DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/urban_qol"
 engine = create_engine(DATABASE_URL)
 
 
+# __________________________auth import profile_1_______________
+
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+
+# ----------------------------------------------------
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form
 from fastapi.responses import FileResponse, JSONResponse
@@ -1000,3 +1007,81 @@ def save_profile(profile: UserProfile, username: str = "default"):
         })
     
     return {"message": "Profile saved successfully"}
+
+# ------------------------ Authentication  endpoints-----------------
+import bcrypt
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+
+SECRET_KEY = "urban_qol_secret_key_2026"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password[:72].encode(), bcrypt.gensalt()).decode()
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password[:72].encode(), hashed.encode())
+
+
+class UserRegister(BaseModel):
+    username: str
+    email: str
+    password: str
+    full_name: Optional[str] = ""
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+def create_token(data: dict):
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    data.update({"exp": expire})
+    return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+
+@app.post("/register", tags=["Auth"])
+def register(user: UserRegister):
+    with engine.connect() as conn:
+        existing = conn.execute(
+            text("SELECT id FROM users WHERE email = :email"),
+            {"email": user.email}
+        ).fetchone()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = hash_password(user.password)
+    names = user.full_name.strip().split() if user.full_name else [user.username]
+    initials = (names[0][0] + names[-1][0]).upper() if len(names) >= 2 else names[0][0].upper()
+    
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO users (username, email, full_name, initials, password)
+            VALUES (:username, :email, :full_name, :initials, :password)
+        """), {
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "initials": initials,
+            "password": hashed_password
+        })
+    
+    token = create_token({"sub": user.email})
+    return {"token": token, "username": user.username}
+
+@app.post("/login", tags=["Auth"])
+def login(user: UserLogin):
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT * FROM users WHERE email = :email"),
+            {"email": user.email}
+        ).fetchone()
+    
+    if not result:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    token = create_token({"sub": user.email})
+    return {"token": token, "username": result.username}
+
+@app.get("/analyses", tags=["User"])
+def get_analyses(username: str = "default"):
+    return []
