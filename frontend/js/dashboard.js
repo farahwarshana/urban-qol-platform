@@ -514,16 +514,8 @@ async function runCrimeAnalysis() {
         const lines = e.target.result.trim().split('\n');
         if (lines.length < 2) { resolve(); return; }
         const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        const typeKeywords = [
-          "crime_type","crimetype","type","offense","offensetype","offense_type",
-          "offensedescription","offense_description","offensecode","offense_code",
-          "category","crime_category","crimecategory","incident_type","incidenttype",
-          "description","crime_description","crimedescription","charge","charges",
-          "classification","class","primary_type","primarytype","ucr_offense",
-          "ucr","nature","nature_of_crime","call_type","calltype","violation",
-          "crimeclass","crime_class","event_type","eventtype","report_type",
-        ];
-        const typeCol = headers.find(h => typeKeywords.includes(h.toLowerCase().replace(/\s+/g, "_")));
+        const _typeRoots = ["offense","crime","incident","violation","charge","category","classification","nature","description","ucr","primary_type","event_type","call_type","report_type"];
+        const typeCol = headers.find(h => _typeRoots.some(root => h.toLowerCase().replace(/\s+/g, "_").includes(root)));
         if (typeCol != null) {
           const typeIndex = headers.indexOf(typeCol);
           for (let i = 1; i < lines.length; i++) {
@@ -5025,16 +5017,8 @@ function attachFileInputListeners() {
         }
 
         // Detect a crime type column for breakdown (runs regardless of coord detection)
-        const _typeKeywords = [
-          "crime_type","crimetype","type","offense","offensetype","offense_type",
-          "offensedescription","offense_description","offensecode","offense_code",
-          "category","crime_category","crimecategory","incident_type","incidenttype",
-          "description","crime_description","crimedescription","charge","charges",
-          "classification","class","primary_type","primarytype","ucr_offense",
-          "ucr","nature","nature_of_crime","call_type","calltype","violation",
-          "crimeclass","crime_class","event_type","eventtype","report_type",
-        ];
-        const typeCol = headers.find(h => _typeKeywords.includes(h.toLowerCase().replace(/\s+/g, "_")));
+        const _typeRoots = ["offense","crime","incident","violation","charge","category","classification","nature","description","ucr","primary_type","event_type","call_type","report_type"];
+        const typeCol = headers.find(h => _typeRoots.some(root => h.toLowerCase().replace(/\s+/g, "_").includes(root)));
         const typeIndex = typeCol != null ? headers.indexOf(typeCol) : -1;
         window._crimeTypeCounts = {};
 
@@ -5066,14 +5050,14 @@ function attachFileInputListeners() {
             const lon = parseFloat(values[lonIndex]);
             const lat = parseFloat(values[latIndex]);
             if (!isNaN(lon) && !isNaN(lat)) {
+              const crimeLabel = typeIndex >= 0 && values[typeIndex] ? values[typeIndex] : null;
               features.push({
                 type: "Feature",
                 geometry: { type: "Point", coordinates: [lon, lat] },
-                properties: { row: i }
+                properties: { row: i, crime: crimeLabel }
               });
-              if (typeIndex >= 0 && values[typeIndex]) {
-                const t = values[typeIndex];
-                window._crimeTypeCounts[t] = (window._crimeTypeCounts[t] || 0) + 1;
+              if (crimeLabel) {
+                window._crimeTypeCounts[crimeLabel] = (window._crimeTypeCounts[crimeLabel] || 0) + 1;
               }
             }
           }
@@ -5102,6 +5086,11 @@ function attachFileInputListeners() {
               opacity: 1,
               fillOpacity: 0.8
             });
+          },
+          onEachFeature: function (feature, layer) {
+            if (feature.properties.crime) {
+              layer.bindPopup(`<strong>${feature.properties.crime}</strong>`, { maxWidth: 200 });
+            }
           }
         }).addTo(map);
 
@@ -6337,6 +6326,89 @@ async function downloadAnalysisPDF() {
     sectionHeader("RAW DATA  /  INPUT SUMMARY");
     cardGrid(rawCards);
     y += 3;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SECTION 1b — Crime-specific: Type Breakdown + Area Rankings
+  // (data sourced directly from globals, not DOM scraping)
+  // ═══════════════════════════════════════════════════════
+  if (service === "crime") {
+    // ── Crime Type Breakdown ──────────────────────────────
+    const typeCounts = window._crimeTypeCounts || {};
+    const typeEntries = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    if (typeEntries.length) {
+      const typeTotal = typeEntries.reduce((s, [, v]) => s + v, 0);
+      sectionHeader("CRIME TYPE BREAKDOWN");
+      typeEntries.forEach(([type, count]) => {
+        const pct = typeTotal > 0 ? (count / typeTotal) * 100 : 0;
+        const rowH = 7;
+        ensurePage(rowH + 2);
+        // row bg
+        setFill(C.card); rect(ML, y, CW, rowH);
+        // label
+        doc.setFont("helvetica","normal"); doc.setFontSize(7.5); setTextC(C.textMain);
+        doc.text(type, ML + 3, y + 4.5);
+        // count + pct right-aligned
+        doc.setFont("helvetica","bold"); doc.setFontSize(7); setTextC(C.textMuted);
+        doc.text(`${count}  (${pct.toFixed(1)}%)`, ML + CW - 3, y + 4.5, { align:"right" });
+        // bar track
+        const barX = ML + 3, barY = y + 5.5, barH = 1.2;
+        const barMaxW = CW - 6;
+        setFill(C.border); rect(barX, barY, barMaxW, barH);
+        setFill(hexToRgb("#e74c3c")); rect(barX, barY, (pct / 100) * barMaxW, barH);
+        y += rowH + 1;
+      });
+      y += 4;
+    }
+
+    // ── Top Unsafe / Safe Areas ───────────────────────────
+    if (lastResultBlob && lastResultBlob.features && lastResultBlob.features.length) {
+      const nameKey = ["NBHD_NAME","name","NAME","district","area_name","neighborhood"]
+        .find(k => lastResultBlob.features[0]?.properties?.[k] !== undefined);
+      const areaList = lastResultBlob.features
+        .filter(f => f.properties && f.properties.crime_density !== undefined && nameKey && f.properties[nameKey])
+        .map(f => ({ name: f.properties[nameKey], density: parseFloat(f.properties.crime_density) || 0 }))
+        .sort((a, b) => b.density - a.density);
+
+      if (areaList.length) {
+        sectionHeader("AREA SAFETY RANKINGS");
+
+        // helper: draw a ranked list
+        function areaRankList(items, headerText, barColor) {
+          const maxDen = items[0]?.density || 1;
+          ensurePage(8 + items.length * 8);
+          // sub-label
+          doc.setFont("helvetica","bold"); doc.setFontSize(7.5); setTextC(C.textMuted);
+          doc.text(headerText, ML, y + 4); y += 6;
+          items.forEach((item, i) => {
+            const rowH = 7;
+            ensurePage(rowH + 1);
+            setFill(C.card); rect(ML, y, CW, rowH);
+            // rank badge
+            setFill(barColor); rect(ML, y, 6, rowH);
+            doc.setFont("helvetica","bold"); doc.setFontSize(7); setTextC(C.white);
+            doc.text(`${i + 1}`, ML + 3, y + 4.5, { align:"center" });
+            // name
+            doc.setFont("helvetica","normal"); doc.setFontSize(7.5); setTextC(C.textMain);
+            doc.text(item.name, ML + 9, y + 4.5);
+            // density value
+            doc.setFont("helvetica","bold"); doc.setFontSize(7); setTextC(C.textMuted);
+            doc.text(`${item.density.toFixed(2)} /km²`, ML + CW - 3, y + 4.5, { align:"right" });
+            // density bar
+            const barX = ML + 9, barY = y + 5.5, barH = 1.2, barMaxW = CW - 12 - 22;
+            setFill(C.border); rect(barX, barY, barMaxW, barH);
+            setFill(barColor); rect(barX, barY, (item.density / maxDen) * barMaxW, barH);
+            y += rowH + 1;
+          });
+          y += 3;
+        }
+
+        const top5Unsafe = areaList.slice(0, 5);
+        const top5Safe   = areaList.slice(-5).reverse();
+        areaRankList(top5Unsafe, "Most Unsafe Areas (highest crime density)", hexToRgb("#e74c3c"));
+        areaRankList(top5Safe,   "Safest Areas (lowest crime density)",        hexToRgb("#2ecc71"));
+      }
+    }
   }
 
   // ═══════════════════════════════════════════════════════
