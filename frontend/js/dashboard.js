@@ -3410,7 +3410,7 @@ let currentBasemap;
 
 function initMap() {
   console.log("Initializing map...");
-  map = L.map("map").setView([31.2136, 29.8753], 11); // no const/let — assigns to outer variable
+  map = L.map("map").setView([31.2136, 29.8753], 12);
 
   currentBasemap = L.tileLayer(
     "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
@@ -3420,6 +3420,15 @@ function initMap() {
   document.getElementById("mapPlaceholder").style.display = "none";
 
   initMapHud();
+
+  fetch("https://ipapi.co/json/")
+    .then((res) => res.json())
+    .then((data) => {
+      if (data.latitude && data.longitude) {
+        map.setView([data.latitude, data.longitude], 12);
+      }
+    })
+    .catch(() => {}); // silently keep the default view on failure
 }
 
 window.addEventListener("load", initMap);
