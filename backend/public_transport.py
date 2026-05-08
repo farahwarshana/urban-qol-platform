@@ -23,12 +23,89 @@ def _get_utm_epsg(lon, lat):
     return 32600 + zone if lat >= 0 else 32700 + zone
 
 
+def _population_adjusted_insight(coverage_pct: float, population: int, aoi_area_km2: float):
+    """
+    Derive demand-pressure indicator and planning insight from population density
+    relative to area coverage.
+
+    Density thresholds (people/km²):
+        low    < 1 000
+        medium  1 000 – 5 000
+        high   > 5 000
+
+    Returns dict: population_density, demand_pressure_indicator, population_adjusted_insight
+    """
+    density = population / aoi_area_km2 if aoi_area_km2 > 0 else 0.0
+
+    if density < 1_000:
+        density_tier = "low"
+    elif density < 5_000:
+        density_tier = "medium"
+    else:
+        density_tier = "high"
+
+    # Adequacy ratio: how much coverage relative to what the density demands.
+    # Required coverage thresholds rise with density:
+    #   low density    → 40 % is adequate
+    #   medium density → 65 % is adequate
+    #   high density   → 85 % is adequate
+    required = {"low": 40.0, "medium": 65.0, "high": 85.0}[density_tier]
+    ratio = coverage_pct / required  # > 1 → over-served, < 1 → under-served
+
+    if density_tier == "high" and ratio >= 1.0:
+        pressure = "high"
+        insight = (
+            f"Coverage ({coverage_pct:.1f}%) meets the minimum threshold for a high-density area "
+            f"({density:,.0f} p/km²), but demand pressure remains elevated — "
+            "consider increasing station frequency or expanding buffer zones."
+        )
+    elif density_tier == "high" and ratio < 1.0:
+        pressure = "high"
+        insight = (
+            f"Critical underservice: only {coverage_pct:.1f}% of this high-density area "
+            f"({density:,.0f} p/km²) is within walking distance of a station. "
+            "Significant transit investment is required to meet demand."
+        )
+    elif density_tier == "medium" and ratio >= 1.0:
+        pressure = "medium"
+        insight = (
+            f"Coverage ({coverage_pct:.1f}%) is adequate for the current population density "
+            f"({density:,.0f} p/km²). Monitor for growth — rising density will require proportionally higher coverage."
+        )
+    elif density_tier == "medium" and ratio < 1.0:
+        pressure = "medium"
+        insight = (
+            f"Moderate underservice: coverage of {coverage_pct:.1f}% falls below the recommended "
+            f"{required:.0f}% for a medium-density area ({density:,.0f} p/km²). "
+            "Targeted expansion of transit access is advisable."
+        )
+    elif density_tier == "low" and ratio >= 1.0:
+        pressure = "low"
+        insight = (
+            f"Acceptable coverage relative to demand: {coverage_pct:.1f}% coverage is sufficient "
+            f"for the low population density of {density:,.0f} p/km²."
+        )
+    else:  # low density, under-served
+        pressure = "low"
+        insight = (
+            f"Coverage ({coverage_pct:.1f}%) is below the {required:.0f}% guideline even for this "
+            f"low-density area ({density:,.0f} p/km²). Basic transit access gaps should still be addressed."
+        )
+
+    return {
+        "population_density":          round(density, 1),
+        "demand_pressure_indicator":   pressure,
+        "population_adjusted_insight": insight,
+    }
+
+
 def calculate_transit_coverage(
     stations_geojson_path: str,
     aoi_geojson_path: str,
     walking_distance_m: float = 1000.0,
     population_geojson_path: str = None,
     population_field: str = None,
+    population_count: int = None,
     output_path: str = None,
 ):
     """
@@ -49,16 +126,25 @@ def calculate_transit_coverage(
     output_path : str, optional
         Where to write the coverage GeoJSON (uncovered areas).
 
+    Parameters (additional)
+    -----------------------
+    population_count : int, optional
+        Total population within the AOI as a plain integer.  When provided,
+        population density and demand-adjusted insights are computed.
+
     Returns
     -------
     dict with keys:
-        coverage_pct        float  - % of AOI area covered
-        uncovered_geojson   dict   - GeoJSON FeatureCollection of uncovered polygons
-        covered_geojson     dict   - GeoJSON FeatureCollection of covered area
-        population_pct      float | None
-        overall_score       float  - 0-100
-        station_count       int
-        walking_distance_m  float
+        coverage_pct                 float
+        uncovered_geojson            dict
+        covered_geojson              dict
+        population_pct               float | None
+        overall_score                float  - 0-100
+        station_count                int
+        walking_distance_m           float
+        population_density           float | None  - people/km²
+        demand_pressure_indicator    str   | None  - low/medium/high
+        population_adjusted_insight  str   | None
     """
     # ── Load inputs ──────────────────────────────────────────────────────────
     stations = gpd.read_file(stations_geojson_path)
@@ -227,6 +313,12 @@ def calculate_transit_coverage(
 
     overall_score = round(min(max(overall_score, 0.0), 100.0), 2)
 
+    # ── Population-adjusted insight (optional integer population input) ──────
+    pop_insight = {}
+    if population_count is not None and population_count > 0:
+        aoi_area_km2 = aoi_area_m2 / 1_000_000.0
+        pop_insight = _population_adjusted_insight(coverage_pct, population_count, aoi_area_km2)
+
     # ── Save output if requested ─────────────────────────────────────────────
     if output_path:
         # Save full coverage result (covered + uncovered) with a type attribute
@@ -237,16 +329,19 @@ def calculate_transit_coverage(
             json.dump(all_geojson, fh)
 
     return {
-        "coverage_pct":            round(coverage_pct, 2),
-        "uncovered_geojson":       uncovered_geojson,
-        "covered_geojson":         covered_geojson,
-        "population_pct":          round(population_pct, 2) if population_pct is not None else None,
-        "overall_score":           overall_score,
-        "station_count":           len(stations),
-        "walking_distance_m":      walking_distance_m,
-        "station_distribution":    station_distribution,
-        "avg_station_distance_m":  avg_station_distance_m,
-        "gap_regions":             gap_regions,
-        "stations_geojson":        stations.to_crs("EPSG:4326").__geo_interface__,
-        "aoi_geojson":             aoi.to_crs("EPSG:4326").__geo_interface__,
+        "coverage_pct":                round(coverage_pct, 2),
+        "uncovered_geojson":           uncovered_geojson,
+        "covered_geojson":             covered_geojson,
+        "population_pct":              round(population_pct, 2) if population_pct is not None else None,
+        "overall_score":               overall_score,
+        "station_count":               len(stations),
+        "walking_distance_m":          walking_distance_m,
+        "station_distribution":        station_distribution,
+        "avg_station_distance_m":      avg_station_distance_m,
+        "gap_regions":                 gap_regions,
+        "stations_geojson":            stations.to_crs("EPSG:4326").__geo_interface__,
+        "aoi_geojson":                 aoi.to_crs("EPSG:4326").__geo_interface__,
+        "population_density":          pop_insight.get("population_density"),
+        "demand_pressure_indicator":   pop_insight.get("demand_pressure_indicator"),
+        "population_adjusted_insight": pop_insight.get("population_adjusted_insight"),
     }

@@ -64,6 +64,7 @@ app.add_middleware(
         "X-Coverage-Pct", "X-Population-Pct", "X-Overall-Score",
         "X-Station-Count", "X-Walking-Distance-M",
         "X-Station-Distribution", "X-Avg-Station-Distance-M", "X-Gap-Regions",
+        "X-Population-Density", "X-Demand-Pressure", "X-Pop-Adjusted-Insight",
         "X-Vegetation-Pct", "X-Benchmark-Gap", "X-Passes-Benchmark",
         "X-Valid-Pixels", "X-Vegetated-Pixels", "X-Cell-Size-M",
         "X-Road-Length-Km", "X-AOI-Area-Km2", "X-Road-Density",
@@ -470,6 +471,7 @@ def calculate_transit_coverage_endpoint(
     walking_distance_m: float = Query(1000.0, description="Walking buffer radius in metres (default 1000 m)"),
     population_geojson: UploadFile = File(None, description="Optional GeoJSON polygon layer with population data"),
     population_field: str = Query(None, description="Attribute name holding population counts (required if population_geojson provided)"),
+    population_count: int = Query(None, description="Total population within the AOI as a plain integer (optional)"),
 ):
     """
     Calculate public-transit walking coverage within an AOI using geometric buffers.
@@ -504,6 +506,7 @@ def calculate_transit_coverage_endpoint(
             walking_distance_m=walking_distance_m,
             population_geojson_path=str(pop_path) if pop_path else None,
             population_field=population_field,
+            population_count=population_count,
             output_path=str(output_path),
         )
 
@@ -541,6 +544,10 @@ def calculate_transit_coverage_endpoint(
         }
         if result["population_pct"] is not None:
             headers["X-Population-Pct"] = str(result["population_pct"])
+        if result.get("population_density") is not None:
+            headers["X-Population-Density"]          = str(result["population_density"])
+            headers["X-Demand-Pressure"]              = str(result["demand_pressure_indicator"])
+            headers["X-Pop-Adjusted-Insight"]         = urllib.parse.quote(result["population_adjusted_insight"])
 
         return JSONResponse(content=geojson_data, headers=headers)
 

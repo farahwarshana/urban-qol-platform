@@ -885,7 +885,8 @@ async function runPublicTransportAnalysis() {
   `;
 
   try {
-    const url = `http://localhost:8000/calculate-transit-coverage?walking_distance_m=${walkingDistance}`;
+    let url = `http://localhost:8000/calculate-transit-coverage?walking_distance_m=${walkingDistance}`;
+    if (populationCount) url += `&population_count=${populationCount}`;
 
     const response = await fetch(url, { method: "POST", body: formData });
 
@@ -894,14 +895,18 @@ async function runPublicTransportAnalysis() {
       throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
     }
 
-    const coveragePct           = response.headers.get("X-Coverage-Pct");
-    const overallScore          = response.headers.get("X-Overall-Score");
-    const stationCount          = response.headers.get("X-Station-Count");
-    const walkingDistanceM      = response.headers.get("X-Walking-Distance-M");
-    const stationDistribution   = response.headers.get("X-Station-Distribution");
-    const avgStationDistanceM   = response.headers.get("X-Avg-Station-Distance-M");
-    const gapRegionsRaw         = response.headers.get("X-Gap-Regions");
-    const gapRegions            = gapRegionsRaw ? JSON.parse(decodeURIComponent(gapRegionsRaw)) : [];
+    const coveragePct             = response.headers.get("X-Coverage-Pct");
+    const overallScore            = response.headers.get("X-Overall-Score");
+    const stationCount            = response.headers.get("X-Station-Count");
+    const walkingDistanceM        = response.headers.get("X-Walking-Distance-M");
+    const stationDistribution     = response.headers.get("X-Station-Distribution");
+    const avgStationDistanceM     = response.headers.get("X-Avg-Station-Distance-M");
+    const gapRegionsRaw           = response.headers.get("X-Gap-Regions");
+    const gapRegions              = gapRegionsRaw ? JSON.parse(decodeURIComponent(gapRegionsRaw)) : [];
+    const populationDensity       = response.headers.get("X-Population-Density");
+    const demandPressure          = response.headers.get("X-Demand-Pressure");
+    const popAdjustedInsightRaw   = response.headers.get("X-Pop-Adjusted-Insight");
+    const popAdjustedInsight      = popAdjustedInsightRaw ? decodeURIComponent(popAdjustedInsightRaw) : null;
 
     const geojsonData = await response.json();
 
@@ -968,13 +973,16 @@ async function runPublicTransportAnalysis() {
     } catch (e) { console.warn("Could not fit bounds:", e); }
 
     renderTransitResults({
-      coverage_pct:           coveragePct,
-      overall_score:          overallScore,
-      station_count:          stationCount,
-      walking_distance_m:     walkingDistanceM,
-      station_distribution:   stationDistribution,
-      avg_station_distance_m: avgStationDistanceM,
-      gap_regions:            gapRegions,
+      coverage_pct:              coveragePct,
+      overall_score:             overallScore,
+      station_count:             stationCount,
+      walking_distance_m:        walkingDistanceM,
+      station_distribution:      stationDistribution,
+      avg_station_distance_m:    avgStationDistanceM,
+      gap_regions:               gapRegions,
+      population_density:        populationDensity,
+      demand_pressure:           demandPressure,
+      pop_adjusted_insight:      popAdjustedInsight,
     }, inputs, geojsonData);
 
   } catch (error) {
@@ -1071,6 +1079,28 @@ function renderTransitResults(stats, inputs, geojsonData) {
       : `Low coverage — ${uncovPct}% of the area is underserved by transit.`
     : "";
 
+  // Population-adjusted insight block
+  const popDensity   = stats.population_density  ? parseFloat(stats.population_density)  : null;
+  const demandPressure = stats.demand_pressure || null;
+  const pressureColor = { low: "#4cc2ff", medium: "#f0a500", high: "#e74c3c" }[demandPressure] || "#888";
+  const popInsightText = stats.pop_adjusted_insight || null;
+
+  const popAdjustedHtml = popDensity !== null ? `
+    <div style="border:1px solid var(--border-color);border-radius:6px;padding:10px 12px;margin-top:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Population-Adjusted Coverage</div>
+      <div class="insight-card" style="margin-bottom:4px;">
+        <div class="label">Population Density</div>
+        <div class="value">${popDensity.toLocaleString(undefined, {maximumFractionDigits:0})} p/km²</div>
+      </div>
+      <div class="insight-card" style="margin-bottom:4px;">
+        <div class="label">Demand Pressure</div>
+        <div class="value" style="color:${pressureColor};text-transform:capitalize;">${demandPressure}</div>
+      </div>
+      ${popInsightText ? `<div style="background:rgba(240,165,0,0.07);border-left:3px solid ${pressureColor};border-radius:4px;padding:8px 10px;margin-top:6px;font-size:12px;color:var(--text-primary);line-height:1.5;">
+        📊 ${popInsightText}
+      </div>` : ""}
+    </div>` : "";
+
   // Gap region insight
   const gapRegions = stats.gap_regions || [];
   const gapInsightHtml = gapRegions.length > 0 ? `
@@ -1121,6 +1151,7 @@ function renderTransitResults(stats, inputs, geojsonData) {
           💡 ${coverageInsight}
         </div>` : ""}
         ${gapInsightHtml}
+        ${popAdjustedHtml}
       </div>
 
       <div class="tab-content" id="tab-grid">
