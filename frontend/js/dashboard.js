@@ -3701,6 +3701,8 @@ function wireTabSwitching() {
 
   // Wire the download button for the initially-active full tab
   _wireFullDownloadBtn();
+  // Inject the PDF export button into the raw data tab
+  _injectPdfBtn();
 }
 
 function _wireFullDownloadBtn() {
@@ -3708,6 +3710,18 @@ function _wireFullDownloadBtn() {
   if (!fullTab) return;
   const btn = fullTab.querySelector("[data-full-dl]");
   if (btn) btn.onclick = downloadFullAnalysisResult;
+}
+
+function _injectPdfBtn() {
+  const rawTab = analysisPanel.querySelector("#tab-raw");
+  if (!rawTab || rawTab.querySelector("[data-pdf-dl]")) return;
+  const btn = document.createElement("button");
+  btn.className = "btn btn-ghost btn-block";
+  btn.setAttribute("data-pdf-dl", "true");
+  btn.style.cssText = "margin-top:14px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;";
+  btn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/pulsar-line/48/FFFFFF/export-pdf.png" alt="export-pdf" style="flex-shrink:0;"/> Download PDF Report`;
+  btn.onclick = downloadAnalysisPDF;
+  rawTab.appendChild(btn);
 }
 
 
@@ -5826,4 +5840,548 @@ function showToast(message, type = 'info') {
     toast.style.transform = 'translateY(8px)';
     setTimeout(() => toast.remove(), 300);
   }, 3500);
+}
+
+
+/* ============================================================
+   PDF REPORT EXPORT
+   ============================================================ */
+async function downloadAnalysisPDF() {
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { alert("PDF library not loaded. Try refreshing the page."); return; }
+
+  const panel = document.getElementById("analysisPanel");
+  if (!panel) return;
+
+  const titleEl = panel.querySelector(".panel-title");
+  const title   = titleEl ? titleEl.textContent.trim() : "Urban QoL Analysis";
+  const service = lastResultService || "analysis";
+
+  // ── Extract insight-cards from a tab element ──────────────
+  function extractCards(tabEl) {
+    if (!tabEl) return [];
+    const cards = [];
+    tabEl.querySelectorAll(".insight-card").forEach(card => {
+      const label = card.querySelector(".label")?.textContent.trim() || "";
+      const value = card.querySelector(".value")?.textContent.trim().replace(/\s+/g, " ") || "";
+      if (label) cards.push({ label, value });
+    });
+    return cards;
+  }
+
+  // ── Extract insight paragraphs (💡 boxes) ────────────────
+  function extractInsights(tabEl) {
+    if (!tabEl) return [];
+    const texts = [];
+    tabEl.querySelectorAll("div[style*='border-left']").forEach(el => {
+      const t = el.textContent.trim().replace(/\s+/g, " ");
+      if (t.length > 4) texts.push(t.replace(/^💡\s*/, ""));
+    });
+    return texts;
+  }
+
+  // ── Compute visual data from live GeoJSON ─────────────────
+  function computeFullVisuals() {
+    if (!lastResultBlob || !lastResultBlob.features) return null;
+    const feats = lastResultBlob.features;
+    switch (service) {
+      case "crime": {
+        const bins  = [0,0,0,0,0];
+        feats.forEach(f => {
+          const d = f.properties.crime_density || 0;
+          if (d <= 5)  bins[0]++;
+          else if (d <= 10) bins[1]++;
+          else if (d <= 15) bins[2]++;
+          else if (d <= 20) bins[3]++;
+          else bins[4]++;
+        });
+        return { type:"bar", title:"Crime Density Distribution",
+          labels:["0–5","5–10","10–15","15–20",">20"], values:bins,
+          colors:["#2ecc71","#f1c40f","#e67e22","#e74c3c","#891508"], unit:"/km²" };
+      }
+      case "urban-density": {
+        const bins  = [0,0,0,0,0];
+        feats.forEach(f => {
+          const d = f.properties.urban_density || 0;
+          if (d < 500)        bins[0]++;
+          else if (d < 2000)  bins[1]++;
+          else if (d < 5000)  bins[2]++;
+          else if (d < 10000) bins[3]++;
+          else bins[4]++;
+        });
+        return { type:"bar", title:"Population Density Distribution",
+          labels:["<500","500–2k","2k–5k","5k–10k",">10k"], values:bins,
+          colors:["#add8e6","#87ceeb","#4682b4","#4169e1","#000080"], unit:"pop/km²" };
+      }
+      case "public-transport": {
+        const covered   = feats.filter(f => f.properties.type === "covered").length;
+        const uncovered = feats.filter(f => f.properties.type === "uncovered").length;
+        if (!covered && !uncovered) return null;
+        return { type:"bar", title:"Coverage Breakdown",
+          labels:["Covered","Uncovered"], values:[covered, uncovered],
+          colors:["#4cc2ff","#e74c3c"], unit:"zones" };
+      }
+      case "facility-accessibility": {
+        const t5 = feats.filter(f => f.properties.time_min === 5).length;
+        const t10= feats.filter(f => f.properties.time_min === 10).length;
+        const t15= feats.filter(f => f.properties.time_min === 15).length;
+        if (!t5 && !t10 && !t15) return null;
+        return { type:"bar", title:"Accessibility Walk-Time Zones",
+          labels:["≤5 min","≤10 min","≤15 min"], values:[t5,t10,t15],
+          colors:["#198754","#ffc107","#dc3545"], unit:"zones" };
+      }
+      case "vegetation": {
+        const bins = [0,0,0,0];
+        feats.forEach(f => {
+          const p = f.properties.vegetation_pct ?? 0;
+          if (p >= 50)      bins[0]++;
+          else if (p >= 30) bins[1]++;
+          else if (p >= 15) bins[2]++;
+          else              bins[3]++;
+        });
+        return { type:"bar", title:"Vegetation Coverage Distribution",
+          labels:["≥50%","30–50%","15–30%","<15%"], values:bins,
+          colors:["#27ae60","#8bc34a","#f39c12","#c0392b"], unit:"cells" };
+      }
+      case "traffic": {
+        const gridFeats = feats.filter(f => f.properties.type !== "hotspot");
+        const bins = [0,0,0];
+        gridFeats.forEach(f => {
+          const c = f.properties.congestion;
+          if (c === "high")   bins[2]++;
+          else if (c==="medium") bins[1]++;
+          else bins[0]++;
+        });
+        return { type:"bar", title:"Congestion Level Distribution",
+          labels:["Low","Medium","High"], values:bins,
+          colors:["#2ecc71","#f39c12","#e74c3c"], unit:"cells" };
+      }
+      case "informal-settlement": {
+        const gridFeats = feats.filter(f => f.properties.type !== "high_irregularity_zone");
+        const bins = [0,0,0];
+        gridFeats.forEach(f => {
+          const s = f.properties.irregularity_score ?? 0;
+          if (s <= 33)      bins[0]++;
+          else if (s <= 66) bins[1]++;
+          else              bins[2]++;
+        });
+        return { type:"bar", title:"Irregularity Classification",
+          labels:["Planned (0–33)","Mixed (34–66)","Informal (67–100)"], values:bins,
+          colors:["#2ecc71","#f39c12","#e74c3c"], unit:"cells" };
+      }
+      default:
+        return null;
+    }
+  }
+
+  // ── Compute QoL score gauge value from full cards ─────────
+  function extractOverallScore(cards) {
+    for (const c of cards) {
+      const m = c.value.match(/^(\d+(?:\.\d+)?)\s*\/\s*100/);
+      if (m && (c.label.toLowerCase().includes("score") || c.label.toLowerCase().includes("overall")))
+        return parseFloat(m[1]);
+    }
+    return null;
+  }
+
+  // ── Compute grid cell tier distribution ───────────────────
+  function computeGridVisuals() {
+    if (!gridLayer) return null;
+    const feats = [];
+    gridLayer.eachLayer(l => { if (l.feature) feats.push(l.feature); });
+    if (!feats.length) return null;
+
+    const isVeg     = service === "vegetation";
+    const isTraffic = service === "traffic";
+    const isISPA    = service === "informal-settlement";
+    const isNDVI    = service === "ndvi";
+
+    if (isVeg) {
+      const pass = feats.filter(f => f.properties.passes_30pct).length;
+      const fail = feats.length - pass;
+      return { type:"bar", title:"Grid: Greenery Standard",
+        labels:["≥30% (Pass)","<30% (Fail)"], values:[pass,fail],
+        colors:["#27ae60","#c0392b"], unit:"cells" };
+    }
+    if (isTraffic) {
+      const lo = feats.filter(f=>f.properties.congestion==="low").length;
+      const me = feats.filter(f=>f.properties.congestion==="medium").length;
+      const hi = feats.filter(f=>f.properties.congestion==="high").length;
+      return { type:"bar", title:"Grid: Congestion Levels",
+        labels:["Low","Medium","High"], values:[lo,me,hi],
+        colors:["#2ecc71","#f39c12","#e74c3c"], unit:"cells" };
+    }
+    if (isISPA) {
+      const lo = feats.filter(f=>(f.properties.value??0)<=33).length;
+      const me = feats.filter(f=>{const v=f.properties.value??0;return v>33&&v<=66;}).length;
+      const hi = feats.filter(f=>(f.properties.value??0)>66).length;
+      return { type:"bar", title:"Grid: Irregularity Tiers",
+        labels:["Planned","Mixed","Informal"], values:[lo,me,hi],
+        colors:["#2ecc71","#f39c12","#e74c3c"], unit:"cells" };
+    }
+    if (isNDVI) {
+      const healthy   = feats.filter(f=>(f.properties.value??-1)>=0.2).length;
+      const unhealthy = feats.length - healthy;
+      return { type:"bar", title:"Grid: Vegetation Health",
+        labels:["Healthy (≥0.2)","Unhealthy (<0.2)"], values:[healthy,unhealthy],
+        colors:["#27ae60","#e74c3c"], unit:"cells" };
+    }
+    // Generic QoL tiers
+    const exc = feats.filter(f=>(f.properties.qol_score??0)>=75).length;
+    const goo = feats.filter(f=>{const s=f.properties.qol_score??0;return s>=50&&s<75;}).length;
+    const fai = feats.filter(f=>{const s=f.properties.qol_score??0;return s>=25&&s<50;}).length;
+    const poo = feats.filter(f=>(f.properties.qol_score??0)<25).length;
+    return { type:"bar", title:"Grid: QoL Score Tiers",
+      labels:["Excellent (75–100)","Good (50–74)","Fair (25–49)","Poor (0–24)"],
+      values:[exc,goo,fai,poo],
+      colors:["#2ecc71","#8bc34a","#f39c12","#e74c3c"], unit:"cells" };
+  }
+
+  // ── Capture map ───────────────────────────────────────────
+  let mapDataUrl = null;
+  try {
+    const mapCanvas = document.querySelector("#map canvas");
+    if (mapCanvas) mapDataUrl = mapCanvas.toDataURL("image/jpeg", 0.85);
+  } catch(e) {}
+
+  // ── PDF setup ─────────────────────────────────────────────
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const PW  = 210, PH = 297, ML = 14, MR = 14;
+  const CW  = PW - ML - MR;
+  let   y   = 0;
+
+  const C = {
+    bg:        [15,  17,  26],
+    panel:     [22,  26,  40],
+    card:      [28,  33,  50],
+    accent:    [76, 194, 255],
+    accentDim: [40, 100, 140],
+    textMain:  [220, 225, 240],
+    textMuted: [130, 140, 165],
+    border:    [45,  52,  75],
+    white:     [255, 255, 255],
+  };
+
+  function setFill(rgb)  { doc.setFillColor(rgb[0], rgb[1], rgb[2]); }
+  function setDraw(rgb)  { doc.setDrawColor(rgb[0], rgb[1], rgb[2]); }
+  function setTextC(rgb) { doc.setTextColor(rgb[0], rgb[1], rgb[2]); }
+  function rect(x, yw, w, h, style="F") { doc.rect(x, yw, w, h, style); }
+
+  function hexToRgb(hex) {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    return [r,g,b];
+  }
+
+  function ensurePage(needed) {
+    if (y + needed > PH - 12) {
+      doc.addPage();
+      setFill(C.bg); rect(0, 0, PW, PH);
+      y = 14;
+    }
+  }
+
+  function wrapText(text, maxWidth, fontSize) {
+    doc.setFontSize(fontSize);
+    return doc.splitTextToSize(text, maxWidth);
+  }
+
+  // ── Section header ────────────────────────────────────────
+  function sectionHeader(text) {
+    ensurePage(12);
+    setFill(C.panel); rect(ML, y, CW, 9);
+    setFill(C.accent); rect(ML, y, 3, 9);
+    setTextC(C.white); doc.setFontSize(9); doc.setFont("helvetica", "bold");
+    doc.text(text, ML + 5, y + 6);
+    y += 12;
+  }
+
+  // ── Insight callout box ───────────────────────────────────
+  function insightBox(text) {
+    if (!text) return;
+    const lines = wrapText(text, CW - 10, 8);
+    const bh = lines.length * 4.5 + 5;
+    ensurePage(bh + 3);
+    setFill(C.panel); rect(ML, y, CW, bh);
+    setFill(C.accentDim); rect(ML, y, 2.5, bh);
+    setTextC(C.textMain); doc.setFont("helvetica", "italic"); doc.setFontSize(8);
+    lines.forEach((line, i) => doc.text(line, ML + 5, y + 4.5 + i * 4.5));
+    y += bh + 3;
+  }
+
+  // ── Two-column card grid ──────────────────────────────────
+  function cardGrid(cards) {
+    if (!cards.length) return;
+    const colW = (CW - 2) / 2, cardH = 10, gap = 1.5;
+    let rowY = y;
+    cards.forEach((card, i) => {
+      if (i % 2 === 0) { ensurePage(cardH + gap); rowY = y; }
+      const col = i % 2;
+      const cx  = ML + col * (colW + 2);
+      setFill(C.card); rect(cx, rowY, colW, cardH);
+      setDraw(C.border); doc.setLineWidth(0.15); rect(cx, rowY, colW, cardH, "S");
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); setTextC(C.textMuted);
+      doc.text(card.label, cx + 3, rowY + 3.5);
+      doc.setFont("helvetica","bold"); doc.setFontSize(8); setTextC(C.textMain);
+      const vl = doc.splitTextToSize(card.value, colW - 6);
+      doc.text(vl[0] || card.value, cx + 3, rowY + 7.5);
+      if (col === 1 || i === cards.length - 1) y = rowY + cardH + gap;
+    });
+  }
+
+  // ── Score gauge bar ───────────────────────────────────────
+  // Draws a full-width horizontal bar: track + filled portion + score label
+  function scoreGauge(score) {
+    if (score === null || score === undefined) return;
+    ensurePage(22);
+    const bx = ML, bw = CW, bh = 12, by = y + 4;
+    // background panel
+    setFill(C.panel); rect(ML, y, CW, 20);
+    // label
+    setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+    doc.text("Overall QoL Score", ML + 2, y + 3.5);
+    // track
+    setFill(C.card); rect(bx, by, bw, bh);
+    setDraw(C.border); doc.setLineWidth(0.2); rect(bx, by, bw, bh, "S");
+    // filled portion — colour based on score
+    const fillW = Math.max(2, (score / 100) * bw);
+    let fillColor;
+    if      (score >= 75) fillColor = [46, 204, 113];
+    else if (score >= 50) fillColor = [139, 195,  74];
+    else if (score >= 25) fillColor = [243, 156,  18];
+    else                  fillColor = [231,  76,  60];
+    setFill(fillColor); rect(bx, by, fillW, bh);
+    // tick marks every 25
+    setDraw(C.border); doc.setLineWidth(0.3);
+    [25,50,75].forEach(v => {
+      const tx = bx + (v / 100) * bw;
+      doc.line(tx, by, tx, by + bh);
+    });
+    // score text centred on fill
+    setTextC(C.white); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+    doc.text(`${Math.round(score)} / 100`, bx + fillW / 2, by + bh / 2 + 2.5, { align:"center" });
+    // tier labels below track
+    setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
+    ["Poor","Fair","Good","Excellent"].forEach((lbl, i) => {
+      doc.text(lbl, bx + (i * 25 + 12.5) / 100 * bw, by + bh + 3.5, { align:"center" });
+    });
+    y += 24;
+  }
+
+  // ── Vertical bar chart ────────────────────────────────────
+  // data = { title, labels[], values[], colors[], unit }
+  function barChart(data) {
+    if (!data) return;
+    const { title: chartTitle, labels, values, colors, unit } = data;
+    const n      = labels.length;
+    const maxVal = Math.max(...values, 1);
+    const chartH = 38;   // height of bar area
+    const totalH = chartH + 22;  // + title + labels
+    ensurePage(totalH + 4);
+
+    // panel bg
+    setFill(C.panel); rect(ML, y, CW, totalH + 2);
+
+    // chart title
+    setTextC(C.textMuted); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
+    doc.text(chartTitle, ML + CW / 2, y + 5, { align:"center" });
+
+    const chartTop = y + 8;
+    const barAreaW = CW - 16;
+    const barAreaX = ML + 8;
+
+    // horizontal gridlines at 0%, 50%, 100%
+    setDraw(C.border); doc.setLineWidth(0.15);
+    [0, 0.5, 1].forEach(frac => {
+      const lineY = chartTop + chartH * (1 - frac);
+      doc.line(barAreaX, lineY, barAreaX + barAreaW, lineY);
+      if (frac > 0) {
+        setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+        doc.text(`${Math.round(maxVal * frac)}`, barAreaX - 1, lineY + 1, { align:"right" });
+      }
+    });
+
+    // bars
+    const slotW = barAreaW / n;
+    const barW  = Math.min(slotW * 0.62, 18);
+    values.forEach((val, i) => {
+      const barH   = Math.max(1, (val / maxVal) * chartH);
+      const bx     = barAreaX + i * slotW + (slotW - barW) / 2;
+      const by     = chartTop + chartH - barH;
+      const rgb    = hexToRgb(colors[i] || "#4cc2ff");
+      // bar shadow / glow
+      setFill([rgb[0]*0.4, rgb[1]*0.4, rgb[2]*0.4]);
+      rect(bx + 0.5, by + 0.5, barW, barH);
+      // bar
+      setFill(rgb); rect(bx, by, barW, barH);
+      // value label above bar
+      setTextC(C.textMain); doc.setFont("helvetica","bold"); doc.setFontSize(6.5);
+      doc.text(`${val}`, bx + barW / 2, by - 1.2, { align:"center" });
+      // axis label below
+      setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+      const lbl = doc.splitTextToSize(labels[i], slotW - 1);
+      lbl.forEach((ln, li) => doc.text(ln, bx + barW / 2, chartTop + chartH + 4 + li * 3.5, { align:"center" }));
+    });
+
+    // unit label bottom-right
+    setTextC(C.textMuted); doc.setFont("helvetica","italic"); doc.setFontSize(6);
+    doc.text(`(${unit})`, barAreaX + barAreaW, chartTop + chartH + 4, { align:"right" });
+
+    y += totalH + 5;
+  }
+
+  // ── Score heatmap strip ───────────────────────────────────
+  // Renders a row of small coloured squares — one per grid cell, sorted by score
+  function scoreHeatmapStrip() {
+    if (!gridLayer) return;
+    const scores = [];
+    gridLayer.eachLayer(l => {
+      const s = l.feature?.properties?.qol_score;
+      if (s !== null && s !== undefined) scores.push(s);
+    });
+    if (!scores.length) return;
+    scores.sort((a,b) => a - b);
+
+    ensurePage(28);
+    setFill(C.panel); rect(ML, y, CW, 26);
+    setTextC(C.textMuted); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
+    doc.text("Grid Cell Score Distribution (sorted low → high)", ML + CW/2, y + 5, { align:"center" });
+
+    const stripY = y + 8;
+    const stripH = 10;
+    const n      = scores.length;
+    const cellW  = Math.max(0.3, CW / n);
+    scores.forEach((s, i) => {
+      let r, g, b;
+      if (s >= 75)      { r=46;  g=204; b=113; }
+      else if (s >= 50) { r=139; g=195; b=74;  }
+      else if (s >= 25) { r=243; g=156; b=18;  }
+      else              { r=231; g=76;  b=60;  }
+      doc.setFillColor(r, g, b);
+      doc.rect(ML + i * cellW, stripY, cellW + 0.1, stripH, "F");
+    });
+
+    // legend under strip
+    const legItems = [
+      { label:"Excellent (75–100)", r:46,  g:204, b:113 },
+      { label:"Good (50–74)",       r:139, g:195, b:74  },
+      { label:"Fair (25–49)",       r:243, g:156, b:18  },
+      { label:"Poor (0–24)",        r:231, g:76,  b:60  },
+    ];
+    const legW = CW / legItems.length;
+    legItems.forEach((item, i) => {
+      const lx = ML + i * legW;
+      doc.setFillColor(item.r, item.g, item.b);
+      doc.rect(lx, stripY + stripH + 2, 4, 3, "F");
+      setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+      doc.text(item.label, lx + 5.5, stripY + stripH + 4.5);
+    });
+
+    y += 30;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Gather all data before drawing
+  // ═══════════════════════════════════════════════════════
+  const tabRaw  = panel.querySelector("#tab-raw");
+  const tabFull = panel.querySelector("#tab-full");
+  const tabGrid = panel.querySelector("#tab-grid");
+
+  const rawCards     = extractCards(tabRaw);
+  const fullCards    = extractCards(tabFull);
+  const gridCards    = extractCards(tabGrid);
+  const fullInsights = extractInsights(tabFull);
+  const gridInsights = extractInsights(tabGrid);
+  const overallScore = extractOverallScore(fullCards);
+  const fullVisData  = computeFullVisuals();
+  const gridVisData  = computeGridVisuals();
+
+  // ═══════════════════════════════════════════════════════
+  // PAGE 1 — Cover
+  // ═══════════════════════════════════════════════════════
+  setFill(C.bg); rect(0, 0, PW, PH);
+  setFill(C.panel); rect(0, 0, PW, 38);
+  setFill(C.accent); rect(0, 35.5, PW, 2.5);
+
+  setTextC(C.accent); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+  doc.text("MALAZ", ML, 12);
+  setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+  doc.text("Urban Quality of Life Platform", ML, 17);
+
+  setTextC(C.white); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.splitTextToSize(title, CW - 20).forEach((line, i) => doc.text(line, ML, 27 + i * 7));
+
+  setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+  const dateStr = new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" });
+  doc.text(`Generated: ${dateStr}`, PW - MR, 12, { align:"right" });
+  doc.text(`Service: ${service}`,   PW - MR, 17, { align:"right" });
+
+  y = 44;
+
+  // Map image
+  if (mapDataUrl) {
+    const mapH = 68;
+    ensurePage(mapH + 8);
+    setFill(C.panel); rect(ML, y, CW, mapH + 4);
+    try { doc.addImage(mapDataUrl, "JPEG", ML + 1, y + 1, CW - 2, mapH + 2); } catch(e) {}
+    setTextC(C.textMuted); doc.setFont("helvetica","italic"); doc.setFontSize(7);
+    doc.text("Map — Full Area view at time of export", ML + 2, y + mapH + 5);
+    y += mapH + 9;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SECTION 1 — Raw Data
+  // ═══════════════════════════════════════════════════════
+  if (rawCards.length) {
+    sectionHeader("RAW DATA  /  INPUT SUMMARY");
+    cardGrid(rawCards);
+    y += 3;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SECTION 2 — Full Area Analysis
+  // ═══════════════════════════════════════════════════════
+  if (fullCards.length || fullInsights.length) {
+    sectionHeader("FULL AREA ANALYSIS");
+    cardGrid(fullCards);
+    // ── visuals ──
+    if (overallScore !== null) { y += 3; scoreGauge(overallScore); }
+    if (fullVisData)           { y += 2; barChart(fullVisData);    }
+    if (fullInsights.length)   { y += 2; fullInsights.forEach(t => insightBox(t)); }
+    y += 3;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SECTION 3 — Grid / Cell Analysis
+  // ═══════════════════════════════════════════════════════
+  sectionHeader("GRID / CELL ANALYSIS");
+  if (gridCards.length || gridVisData) {
+    cardGrid(gridCards);
+    if (gridVisData)         { y += 3; barChart(gridVisData);     }
+    if (gridLayer)           { y += 2; scoreHeatmapStrip();       }
+    if (gridInsights.length) { y += 2; gridInsights.forEach(t => insightBox(t)); }
+    y += 3;
+  } else {
+    ensurePage(16);
+    setFill(C.panel); rect(ML, y, CW, 13);
+    setTextC(C.textMuted); doc.setFont("helvetica","italic"); doc.setFontSize(8);
+    doc.text("Grid analysis not yet generated. Open the Grid / Cell tab to compute cell scores first.", ML + 4, y + 7);
+    y += 16;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Footer on every page
+  // ═══════════════════════════════════════════════════════
+  const pageCount = doc.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p);
+    setFill(C.panel); rect(0, PH - 10, PW, 10);
+    setFill(C.accentDim); rect(0, PH - 10, PW, 0.5);
+    setTextC(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+    doc.text("Malaz · Urban Quality of Life Platform", ML, PH - 4);
+    doc.text(`Page ${p} of ${pageCount}`, PW - MR, PH - 4, { align:"right" });
+  }
+
+  doc.save(`${service}_analysis_report.pdf`);
 }
