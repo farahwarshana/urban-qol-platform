@@ -726,12 +726,16 @@
 //     { id:12,type:'air',     icon:'💨', title:'Air Quality — Helwan',              area:'Helwan Industrial Zone',   date:'Apr 27, 2026', time:'04:45 PM', score:22,  status:'low'   },
 //   ];
 
-const analyses = [];
+
+
+let analyses = [];
 
 async function loadAnalyses() {
   const res = await fetch('http://localhost:8000/analyses');
   const data = await res.json();
-  analyses.push(...data);
+
+  analyses = Array.isArray(data) ? data : [];
+
   renderList('all');
 }
 
@@ -790,6 +794,8 @@ async function loadAnalyses() {
   }
 
 async function saveProfile() {
+  console.log("SAVE BUTTON CLICKED");
+
   const first = document.getElementById('firstName').value.trim();
   const last  = document.getElementById('lastName').value.trim();
   const email = document.getElementById('emailInput').value.trim();
@@ -803,7 +809,8 @@ async function saveProfile() {
       full_name: first + ' ' + last,
       email: email,
       city: city,
-      organization: org
+      organization: org,
+      phone: document.getElementById('phoneInput').value.trim()
     })
   });
 
@@ -850,7 +857,16 @@ async function loadProfile() {
   document.getElementById('displayCity').textContent = data.city;
   document.getElementById('displayOrg').textContent = data.organization;
   document.getElementById('avatarInitials').textContent = data.initials;
+  
+
+  document.getElementById('firstName').value = data.full_name.split(' ')[0] || '';
+  document.getElementById('lastName').value = data.full_name.split(' ')[1] || '';
+  document.getElementById('emailInput').value = data.email || '';
+  document.getElementById('cityInput').value = data.city || '';
+  document.getElementById('orgInput').value = data.organization || '';
+  document.getElementById('phoneInput').value = data.phone || '';
 }
+
 
 loadProfile();
 loadAnalyses();

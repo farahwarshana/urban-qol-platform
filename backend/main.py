@@ -12,6 +12,13 @@ import geopandas as gpd
 import json
 from pathlib import Path
 
+from sqlalchemy import create_engine, text
+
+DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/urban_qol"
+engine = create_engine(DATABASE_URL)
+
+
+
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -881,37 +888,77 @@ class UserProfile(BaseModel):
     email: str
     city: Optional[str] = ""
     organization: Optional[str] = ""
+    phone: Optional[str] = ""
+    
+def init_db():
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(100) UNIQUE NOT NULL,
+                full_name VARCHAR(200),
+                email VARCHAR(200),
+                city VARCHAR(100),
+                organization VARCHAR(200),
+                initials VARCHAR(5),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        conn.commit()
 
-profiles_db = {}
+init_db()
 
 @app.get("/profile", tags=["User"])
 def get_profile(username: str = "default"):
-    if username not in profiles_db:
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT * FROM users WHERE username = :username"),
+            {"username": username}
+        ).fetchone()
+        
+        if not result:
+            return {
+                "full_name": "",
+                "email": "",
+                "city": "",
+                "organization": "",
+                "initials": ""
+            }
+        
         return {
-            "full_name": "",
-            "email": "",
-            "city": "",
-            "organization": "",
-            "initials": ""
+            "full_name": result.full_name,
+            "email": result.email,
+            "city": result.city,
+            "organization": result.organization,
+            "initials": result.initials,
+            "phone": result.phone
+            
         }
-    return profiles_db[username]
 
 @app.post("/profile", tags=["User"])
 def save_profile(profile: UserProfile, username: str = "default"):
     names = profile.full_name.strip().split()
     initials = (names[0][0] + names[-1][0]).upper() if len(names) >= 2 else names[0][0].upper()
     
-    profiles_db[username] = {
-        "full_name": profile.full_name,
-        "email": profile.email,
-        "city": profile.city,
-        "organization": profile.organization,
-        "initials": initials
-    }
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO users (username, full_name, email, city, organization, initials, phone)
+            VALUES (:username, :full_name, :email, :city, :organization, :initials, :phone)
+            ON CONFLICT (username) DO UPDATE SET
+                full_name = :full_name,
+                email = :email,
+                city = :city,
+                organization = :organization,
+                initials = :initials,
+                phone = :phone
+        """), {
+            "username": username,
+            "full_name": profile.full_name,
+            "email": profile.email,
+            "city": profile.city,
+            "organization": profile.organization,
+            "initials": initials,
+            "phone": profile.phone
+        })
+    
     return {"message": "Profile saved successfully"}
-
-analyses_db = {}
-
-@app.get("/analyses", tags=["User"])
-def get_analyses(username: str = "default"):
-    return analyses_db.get(username, [])
