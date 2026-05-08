@@ -164,8 +164,8 @@ def calculate_ndvi_endpoint(
 def calculate_crime_density_endpoint(
     csv: UploadFile = File(..., description="CSV file with crime incident locations"),
     geojson: UploadFile = File(..., description="GeoJSON file with boundary polygons"),
-    lat_field: str = Query(..., description="Name of latitude field in CSV"),
-    lon_field: str = Query(..., description="Name of longitude field in CSV"),
+    lat_field: str = Query(None, description="Name of latitude field in CSV (auto-detected if omitted)"),
+    lon_field: str = Query(None, description="Name of longitude field in CSV (auto-detected if omitted)"),
 ):
     """
     Upload CSV crime data and GeoJSON boundary polygons.

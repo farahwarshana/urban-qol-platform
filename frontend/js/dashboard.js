@@ -77,8 +77,8 @@ const SERVICES = {
     inputs: [
       { type: "file", id: "csvInput", label: "Upload crime data (CSV)" },
       { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" },
-      { type: "text", id: "latField", label: "Latitude column name", placeholder: "e.g. latitude, lat" },
-      { type: "text", id: "lonField", label: "Longitude column name", placeholder: "e.g. longitude, lon" }
+      { type: "text", id: "latField", label: "Latitude column name", placeholder: "Auto-detected from CSV", autoDetect: true },
+      { type: "text", id: "lonField", label: "Longitude column name", placeholder: "Auto-detected from CSV", autoDetect: true }
     ],
   },
   "traffic": {
@@ -193,6 +193,7 @@ function renderServicePanel(key) {
         <label for="${field.id}">${field.label}</label>
         <input type="text" id="${field.id}" placeholder="${field.placeholder || ""}" />
         ${field.id === "populationField" ? `<small id="populationFieldHint" class="text-muted" style="display:none;">Auto-detected — you can edit this.</small>` : ""}
+        ${field.autoDetect ? `<small id="${field.id}Hint" class="text-muted" style="display:none;">Auto-detected — you can edit this.</small>` : ""}
       </div>`;
   }).join("");
 
@@ -488,25 +489,18 @@ async function runCrimeAnalysis() {
   const latFieldValue = latField ? latField.value.trim() : "";
   const lonFieldValue = lonField ? lonField.value.trim() : "";
 
-  if (!latFieldValue || !lonFieldValue) {
-    alert("Please enter the latitude and longitude column names.");
-    return;
-  }
-
   const csvFile = csvInput.files[0];
   const geoJsonFile = geoJsonInput.files[0];
   const inputs = {
     csvFileName: csvFile.name,
     geoJsonFileName: geoJsonFile.name,
-    latField: latFieldValue,
-    lonField: lonFieldValue,
+    latField: latFieldValue || "auto-detected",
+    lonField: lonFieldValue || "auto-detected",
   };
 
   const formData = new FormData();
   formData.append("csv", csvFile);
   formData.append("geojson", geoJsonFile);
-  formData.append("lat_field", latFieldValue);
-  formData.append("lon_field", lonFieldValue);
 
   // Show loading state
   analysisPanel.innerHTML = `
@@ -522,7 +516,10 @@ async function runCrimeAnalysis() {
   `;
 
   try {
-    const url = `http://localhost:8000/calculate-crime-density?lat_field=${encodeURIComponent(latFieldValue)}&lon_field=${encodeURIComponent(lonFieldValue)}`;
+    const params = new URLSearchParams();
+    if (latFieldValue) params.set("lat_field", latFieldValue);
+    if (lonFieldValue) params.set("lon_field", lonFieldValue);
+    const url = `http://localhost:8000/calculate-crime-density${params.toString() ? "?" + params.toString() : ""}`;
     
     const response = await fetch(url, {
       method: "POST",
@@ -609,9 +606,9 @@ async function runCrimeAnalysis() {
         <h3 class="panel-title">Error</h3>
         <p class="text-danger">Failed to calculate crime density: ${errorMessage}</p>
         <div class="alert alert-warning mt-2">
-          <strong>Note:</strong> Make sure your CSV has columns for latitude and longitude.
-          <br>• Latitude column: ${latFieldValue}
-          <br>• Longitude column: ${lonFieldValue}
+          <strong>Note:</strong> Make sure your CSV has columns for latitude and longitude, or that they can be auto-detected (e.g. <code>lat</code>, <code>lon</code>, <code>x</code>, <code>y</code>).
+          ${latFieldValue ? `<br>• Latitude column used: ${latFieldValue}` : "<br>• Latitude column: auto-detection failed"}
+          ${lonFieldValue ? `<br>• Longitude column used: ${lonFieldValue}` : "<br>• Longitude column: auto-detection failed"}
         </div>
         <button class="btn btn-ghost btn-block mt-3"
                 onclick="renderServicePanel('crime')">
@@ -4781,24 +4778,57 @@ function attachFileInputListeners() {
         const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
         console.log("CSV Headers:", headers);
 
-         // Find matching column names (case-insensitive)
-        let lonHeader = headers.find(h => h.toLowerCase() === "lon");
-        let latHeader = headers.find(h => h.toLowerCase() === "lat");
+        const colsLower = {};
+        headers.forEach(h => { colsLower[h.toLowerCase()] = h; });
 
-        if(!lonHeader) {
-          let lonCol = prompt(`Enter the longitude column name from: ${headers.join(', ')}`);
-          if (!lonCol) return;
-          lonHeader = headers.find(h => h.toLowerCase() === lonCol.toLowerCase());
+        function detectCoordField(candidates, prefixes) {
+          for (const name of candidates) {
+            if (colsLower[name]) return colsLower[name];
+          }
+          for (const [lower, orig] of Object.entries(colsLower)) {
+            for (const prefix of prefixes) {
+              if (lower.startsWith(prefix)) return orig;
+            }
+          }
+          return null;
         }
 
-        if(!latHeader) {
-          let latCol = prompt(`Enter the latitude column name from: ${headers.join(', ')}`);
-          if (!latCol) return;
-          latHeader = headers.find(h => h.toLowerCase() === latCol.toLowerCase());
+        // Check if the user already typed values in the input fields
+        const latInputEl = document.getElementById("latField");
+        const lonInputEl = document.getElementById("lonField");
+        const userLat = latInputEl ? latInputEl.value.trim() : "";
+        const userLon = lonInputEl ? lonInputEl.value.trim() : "";
+
+        let latHeader = userLat
+          ? headers.find(h => h.toLowerCase() === userLat.toLowerCase())
+          : detectCoordField(["latitude", "lat", "y"], ["lat"]);
+
+        let lonHeader = userLon
+          ? headers.find(h => h.toLowerCase() === userLon.toLowerCase())
+          : detectCoordField(["longitude", "lon", "long", "x"], ["lon", "long"]);
+
+        // Auto-populate the text fields and show hints
+        if (latInputEl && latHeader && !userLat) {
+          latInputEl.value = latHeader;
+          const hint = document.getElementById("latFieldHint");
+          if (hint) hint.style.display = "inline";
+          latInputEl.addEventListener("input", function onEdit() {
+            if (hint) hint.style.display = "none";
+            latInputEl.removeEventListener("input", onEdit);
+          });
+        }
+        if (lonInputEl && lonHeader && !userLon) {
+          lonInputEl.value = lonHeader;
+          const hint = document.getElementById("lonFieldHint");
+          if (hint) hint.style.display = "inline";
+          lonInputEl.addEventListener("input", function onEdit() {
+            if (hint) hint.style.display = "none";
+            lonInputEl.removeEventListener("input", onEdit);
+          });
         }
 
         if (!lonHeader || !latHeader) {
-          alert("Could not find the specified column names. Please check and try again.");
+          console.warn("Could not detect lat/lon columns from CSV headers:", headers);
           return;
         }
 
@@ -4868,7 +4898,7 @@ function attachFileInputListeners() {
           console.warn("Could not fit bounds:", boundsError);
         }
 
-        alert(`Successfully added ${features.length} points from CSV to the map.`);
+        console.log(`Added ${features.length} crime points from CSV to the map.`);
       };
 
       reader.readAsText(file);
