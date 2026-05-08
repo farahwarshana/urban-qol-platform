@@ -467,46 +467,45 @@ def grid_from_vector(geojson_path, service_type, value_field):
     }
 
 
-def _score_transit_coverage(coverage_fraction):
+def _score_transit_distance(dist_m):
     """
-    Fraction of cell area covered by transit buffers (0.0–1.0) → QoL score.
+    Distance from cell centroid to nearest station (metres) → QoL score 0–100.
 
-    Tier 4 Excellent : 0.75 – 1.00 → 75–100  (well-served)
-    Tier 3 Good      : 0.50 – 0.75 → 50– 74  (partially served)
-    Tier 2 Poor      : 0.25 – 0.50 → 25– 49  (low coverage)
-    Tier 1 Bad       : 0.00 – 0.25 →  0– 24  (effectively uncovered)
+    Excellent : 0 – 300 m   → 100 – 75   (direct / very close access)
+    Good      : 300 – 600 m → 74  – 50   (comfortable walk)
+    Fair      : 600 – 1000 m→ 49  – 25   (acceptable but long)
+    Poor      : > 1000 m    → 24  –  0   (underserved; score floors at 0 at 2000 m+)
     """
-    if coverage_fraction is None or np.isnan(coverage_fraction):
-        return None
-    f = float(np.clip(coverage_fraction, 0.0, 1.0))
-    if f >= 0.75:
-        return int(np.interp(f, [0.75, 1.00], [75, 100]))
-    if f >= 0.50:
-        return int(np.interp(f, [0.50, 0.75], [50, 74]))
-    if f >= 0.25:
-        return int(np.interp(f, [0.25, 0.50], [25, 49]))
-    return int(np.interp(f, [0.00, 0.25], [0, 24]))
+    if dist_m is None or np.isnan(dist_m):
+        return 0
+    d = float(dist_m)
+    if d <= 300:
+        return int(np.interp(d, [0, 300],   [100, 75]))
+    if d <= 600:
+        return int(np.interp(d, [300, 600], [74, 50]))
+    if d <= 1000:
+        return int(np.interp(d, [600, 1000],[49, 25]))
+    return int(max(0, np.interp(d, [1000, 2000], [24, 0])))
 
 
 def grid_from_transit_coverage(geojson_path):
     """
-    Score cells for public-transport QoL.
+    Score cells for public-transport QoL based on distance to nearest station.
 
-    The input GeoJSON (from calculate_transit_coverage) contains two kinds of
-    features, distinguished by their "type" property:
-        "covered"   — area within walking distance of a station
-        "uncovered" — rest of the AOI (no station nearby)
+    The input GeoJSON contains features tagged by their 'layer' property:
+        layer == "station"   — transit station points
+        layer == "boundary"  — AOI outline polygon(s)
+        (no layer / type)    — covered / uncovered area polygons
 
-    The union of both types defines the AOI boundary.  The grid is built over
-    that bounding box, then each cell is classified as:
-        • outside AOI  → dropped (centroid outside bbox of all features)
-        • inside covered area  → score 75–100
-        • inside uncovered area → score 0  (bad — no nearby transit)
-
-    Scoring uses a simple point-in-polygon check (sjoin "within") on the cell
-    centroid against the covered polygons only.  No union/intersection calls,
-    so topology errors from complex OSM buffers cannot occur.
+    Each cell centroid's distance to the nearest station is computed in UTM
+    (metres) and mapped to a 0–100 score:
+        0–300 m   → 100–75  (Excellent)
+        300–600 m → 74–50   (Good)
+        600–1000 m→ 49–25   (Fair)
+        >1000 m   → 24–0    (Poor, floors at 0 beyond 2000 m)
     """
+    from scipy.spatial import cKDTree
+
     gdf = gpd.read_file(geojson_path)
     if gdf.crs is None:
         gdf = gdf.set_crs("EPSG:4326")
@@ -515,94 +514,91 @@ def grid_from_transit_coverage(geojson_path):
     if gdf.empty:
         return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
 
-    bounds       = gdf.total_bounds          # minx, miny, maxx, maxy
+    # Split by layer tag
+    layer_col = "layer" if "layer" in gdf.columns else None
+    if layer_col:
+        stations_gdf  = gdf[gdf[layer_col] == "station"].copy()
+        boundary_gdf  = gdf[gdf[layer_col] == "boundary"].copy()
+        coverage_gdf  = gdf[~gdf[layer_col].isin(["station", "boundary"])].copy()
+    else:
+        stations_gdf  = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+        boundary_gdf  = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+        coverage_gdf  = gdf.copy()
+
+    # AOI comes from boundary layer; fall back to coverage polygons if absent
+    if not boundary_gdf.empty:
+        aoi_gdf = boundary_gdf
+    elif not coverage_gdf.empty:
+        aoi_gdf = coverage_gdf
+    else:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
+
+    bounds       = aoi_gdf.total_bounds
     grid, cell_m = _build_grid_cells(tuple(bounds))
 
-    # Separate covered vs uncovered features
-    if "type" in gdf.columns:
-        covered_gdf   = gdf[gdf["type"] == "covered"].copy()
-        uncovered_gdf = gdf[gdf["type"] == "uncovered"].copy()
-    else:
-        # No type column — treat everything as covered
-        covered_gdf   = gdf.copy()
-        uncovered_gdf = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
-
-    if covered_gdf.empty and uncovered_gdf.empty:
-        return {"type": "FeatureCollection", "features": [], "cell_size_m": cell_m}
-
-    # --- Boundary filter: centroid must be inside the full data bbox ----------
-    minx, miny, maxx, maxy = bounds
-    centroids = grid.geometry.centroid
-    in_bounds = (
-        (centroids.x >= minx) & (centroids.x <= maxx) &
-        (centroids.y >= miny) & (centroids.y <= maxy)
-    )
-    grid = grid[in_bounds].copy()
     if grid.empty:
         return {"type": "FeatureCollection", "features": [], "cell_size_m": cell_m}
 
-    # --- Point-in-polygon: which cell centroids fall inside covered area ------
-    # buffer(0) fixes any self-intersection issues without geometry union
-    covered_clean = covered_gdf.copy()
-    covered_clean["geometry"] = covered_clean.geometry.buffer(0)
-    covered_clean = covered_clean[covered_clean.geometry.is_valid]
+    # Project to UTM for metric distances
+    centroid_wgs = aoi_gdf.geometry.union_all().centroid
+    lon, lat = centroid_wgs.x, centroid_wgs.y
+    utm_zone  = int((lon + 180) / 6) + 1
+    utm_epsg  = (32600 if lat >= 0 else 32700) + utm_zone
+    utm_crs   = f"EPSG:{utm_epsg}"
 
-    centroids_gdf = gpd.GeoDataFrame(
-        {"cell_idx": grid.index},
-        geometry=grid.geometry.centroid.values,
-        crs="EPSG:4326",
-    ).set_index("cell_idx")
+    aoi_utm  = aoi_gdf.to_crs(utm_crs)
+    grid_utm = grid.to_crs(utm_crs)
 
-    if not covered_clean.empty:
-        in_covered = gpd.sjoin(
-            centroids_gdf, covered_clean[["geometry"]],
-            how="left", predicate="within",
-        )
-        # A centroid is covered if it matched at least one covered polygon
-        covered_set = set(in_covered[in_covered["index_right"].notna()].index)
+    # AOI boundary filter: keep only cells whose centroid is inside the AOI
+    aoi_union = aoi_utm.geometry.union_all().buffer(0)
+    centroids_utm = grid_utm.geometry.centroid
+    in_aoi = centroids_utm.apply(lambda pt: aoi_union.contains(pt))
+    grid_utm = grid_utm[in_aoi].copy()
+    centroids_utm = grid_utm.geometry.centroid
+
+    if grid_utm.empty:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": cell_m}
+
+    # Build distance lookup using station points
+    if not stations_gdf.empty:
+        stations_utm = stations_gdf.to_crs(utm_crs)
+        station_coords = np.array([(g.x, g.y) for g in stations_utm.geometry])
+        tree = cKDTree(station_coords)
+        centroid_coords = np.array([(pt.x, pt.y) for pt in centroids_utm])
+        dists_m, _ = tree.query(centroid_coords)
     else:
-        covered_set = set()
+        # No stations embedded — fall back to covered/uncovered binary
+        coverage_gdf_clean = coverage_gdf.copy()
+        coverage_gdf_clean["geometry"] = coverage_gdf_clean.geometry.buffer(0)
+        coverage_gdf_clean = coverage_gdf_clean[coverage_gdf_clean.geometry.is_valid]
+        covered_gdf = coverage_gdf_clean[coverage_gdf_clean.get("type") == "covered"] if "type" in coverage_gdf_clean.columns else coverage_gdf_clean
+        centroids_gdf = gpd.GeoDataFrame(
+            {"cell_idx": grid_utm.index},
+            geometry=centroids_utm.values,
+            crs=utm_crs,
+        ).set_index("cell_idx")
+        if not covered_gdf.empty:
+            joined = gpd.sjoin(centroids_gdf, covered_gdf[["geometry"]].to_crs(utm_crs), how="left", predicate="within")
+            covered_set = set(joined[joined["index_right"].notna()].index)
+        else:
+            covered_set = set()
+        dists_m = np.array([0.0 if idx in covered_set else 1500.0 for idx in grid_utm.index])
 
-    # --- Also find which cells are inside the AOI at all (covered OR uncovered)
-    # Use uncovered polygons for the AOI-boundary check only if they exist
-    if not uncovered_gdf.empty:
-        uncovered_clean = uncovered_gdf.copy()
-        uncovered_clean["geometry"] = uncovered_clean.geometry.buffer(0)
-        uncovered_clean = uncovered_clean[uncovered_clean.geometry.is_valid]
-        in_uncovered = gpd.sjoin(
-            centroids_gdf, uncovered_clean[["geometry"]],
-            how="left", predicate="within",
-        )
-        uncovered_set = set(in_uncovered[in_uncovered["index_right"].notna()].index)
-    else:
-        uncovered_set = set()
-
-    # A cell is inside the AOI if its centroid is in either covered or uncovered
-    aoi_set = covered_set | uncovered_set
-    # If we have no uncovered data, fall back to all bbox-filtered cells
-    if uncovered_gdf.empty:
-        aoi_set = set(grid.index)
+    # Reproject grid cells back to WGS84 for GeoJSON output
+    grid_wgs = grid_utm.to_crs("EPSG:4326")
 
     features = []
-    for idx, row in grid.iterrows():
-        if idx not in aoi_set:
-            continue   # outside AOI — drop
-
-        if idx in covered_set:
-            # Covered: excellent transit access
-            score = 90
-            value = 1.0
-        else:
-            # Inside AOI but not covered: poor transit access
-            score = 10
-            value = 0.0
+    for i, (idx, row) in enumerate(grid_wgs.iterrows()):
+        dist = float(dists_m[i])
+        score = _score_transit_distance(dist)
 
         features.append({
             "type": "Feature",
             "geometry": mapping(row.geometry),
             "properties": {
-                "value":     value,
+                "value":     round(dist / 1000.0, 3),
                 "qol_score": score,
+                "dist_m":    round(dist, 1),
                 "service":   "public-transport",
             },
         })

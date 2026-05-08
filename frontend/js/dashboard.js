@@ -3228,7 +3228,7 @@ function wireTabSwitching() {
                 <div class="label">Worst Cell</div>
                 <div class="value" style="color:${qolScoreTextColor(worst)}">${worst}/100 <span style="font-size:11px;color:var(--text-muted);">(value: ${typeof worstVal === "number" ? worstVal.toFixed ? worstVal.toFixed(2) : worstVal : worstVal})</span></div>
               </div>` : ""}
-              ${clusterInfo ? `<div class="insight-card">
+              ${clusterInfo && lastResultService !== "public-transport" ? `<div class="insight-card">
                 <div class="label">Spatial Clustering</div>
                 <div class="value" style="color:${clusterInfo.color};font-size:13px;">${clusterInfo.text}</div>
               </div>` : ""}
