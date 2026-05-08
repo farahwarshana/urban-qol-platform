@@ -335,47 +335,53 @@ def calculate_heat_index_endpoint(
     
     
 # Facility Accessibility Index endpoint
-    
-@app.post("/calculate-facility-accessibility")
-def facility_accessibility_endpoint(
-    facilities_geojson: UploadFile = File(...),
-    facility_id: int = Form(0),
-    walking_speed_kmh: float = Form(4.5),
-    network_dist_m: int = Form(2000),
-):
-    import uuid
-    import shutil
 
+@app.post("/calculate-facility-accessibility", tags=["Facility Accessibility"])
+def facility_accessibility_endpoint(
+    facilities_geojson: UploadFile = File(..., description="GeoJSON point layer of facilities"),
+    walking_speed_kmh: float = Query(4.5, description="Walking speed in km/h (default 4.5)"),
+    network_dist_m: int = Query(2000, description="OSM network download radius in metres (default 2000)"),
+):
+    """
+    Compute 5, 10, and 15-minute walking isochrones for every point in the
+    uploaded facilities GeoJSON.  Isochrones for each time band are unioned
+    across all facilities and returned as a single FeatureCollection.
+    """
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
+    output_path = tmp_dir / "facility_accessibility_zones.geojson"
 
-    facility_dir = get_output_subdir("facility")
+    try:
+        with (tmp_dir / "input.geojson").open("wb") as f:
+            shutil.copyfileobj(facilities_geojson.file, f)
 
-    input_path = tmp_dir / "input.geojson"
+        result = calculate_facility_accessibility(
+            facilities_geojson_path=str(tmp_dir / "input.geojson"),
+            output_path=str(output_path),
+            walking_speed_kmh=walking_speed_kmh,
+            network_dist_m=network_dist_m,
+        )
 
-    # حفظ الملف
-    with input_path.open("wb") as f:
-        shutil.copyfileobj(facilities_geojson.file, f)
+        with open(str(output_path), "r", encoding="utf-8") as f:
+            geojson_data = json.load(f)
 
-    # تشغيل التحليل
-    result = calculate_facility_accessibility(
-        facilities_geojson_path=str(input_path),
-        output_dir=str(facility_dir),
-        facility_id=facility_id,
-        walking_speed_kmh=walking_speed_kmh,
-        network_dist_m=network_dist_m,
-    )
+        headers = {
+            "X-Total-Facilities":     str(result["total_facilities"]),
+            "X-Facilities-Processed": str(result["facilities_processed"]),
+            "X-Walking-Speed-Kmh":    str(result["walking_speed_kmh"]),
+            "X-Network-Dist-M":       str(result["network_dist_m"]),
+        }
+        if result["pct_5min"]  is not None: headers["X-Pct-5min"]  = str(result["pct_5min"])
+        if result["pct_10min"] is not None: headers["X-Pct-10min"] = str(result["pct_10min"])
+        if result["pct_15min"] is not None: headers["X-Pct-15min"] = str(result["pct_15min"])
 
-    # قراءة الناتج النهائي
-    import json
-    with open(result["combined_output"], "r") as f:
-        geojson_data = json.load(f)
+        return JSONResponse(content=geojson_data, headers=headers)
 
-    return {
-        "geojson": geojson_data,
-        "stats": result
-    }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Facility accessibility calculation failed: {e}")
 
 
 # ── Grid / Cell Analysis endpoints ───────────────────────────────────────────

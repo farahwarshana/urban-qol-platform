@@ -38,16 +38,16 @@ const SERVICES = {
     ],
   },
   "facility_Accessibility_index": {
-  title: "Facility Accessibility Index",
-  desc: "Compute walkable service areas around facilities in 5, 10, and 15 minute intervals.",
-  inputs: [
-    { type: "file", id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
-    { type: "number", id: "facilityIdInput", label: "Facility ID", value: 0 },
-    { type: "number", id: "walkingSpeedInput", label: "Walking speed (km/h)", value: 4.5 },
-    { type: "number", id: "networkDistInput", label: "Network distance (meters)", value: 2000 },
-  ],
-  action: runFacilityAccessibilityAnalysis
-},
+    title: "Facility Accessibility Index",
+    desc: "Compute 5, 10, and 15-minute walking service areas for every facility point in your dataset.",
+    inputs: [
+      { type: "file",   id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
+      { type: "number", id: "walkingSpeedInput",       label: "Walking speed (km/h)",            value: 4.5  },
+      { type: "number", id: "networkDistInput",        label: "Network download radius (meters)", value: 2000 },
+      { type: "tip",    text: "All points in the uploaded file will be analysed. Larger datasets and wider radii take longer." },
+    ],
+    action: runFacilityAccessibilityAnalysis
+  },
 
   "heat-index": {
     title: "Heat Index",
@@ -735,106 +735,124 @@ async function runUrbanDensityAnalysis() {
 
 /*---------------------facility accessibility-------------------------*/
 async function runFacilityAccessibilityAnalysis() {
-  const input = document.getElementById("facilitiesGeojsonInput");
+  const facilitiesInput = document.getElementById("facilitiesGeojsonInput");
 
-  if (!input || !input.files[0]) {
-    alert("Please upload facilities GeoJSON first.");
+  if (!facilitiesInput || !facilitiesInput.files[0]) {
+    alert("Please upload a GeoJSON file with facility points.");
     return;
   }
 
-  const formData = new FormData();
-  formData.append("facilities_geojson", input.files[0]);
+  const facilitiesFile = facilitiesInput.files[0];
+  const walkingSpeed   = parseFloat(document.getElementById("walkingSpeedInput")?.value) || 4.5;
+  const networkDist    = parseInt(document.getElementById("networkDistInput")?.value)    || 2000;
 
-  const facilityId = document.getElementById("facilityIdInput")?.value || 0;
-const walkingSpeed = document.getElementById("walkingSpeedInput")?.value || 4.5;
-const networkDist = document.getElementById("networkDistInput")?.value || 2000;
-
-formData.append("facility_id", facilityId);
-formData.append("walking_speed_kmh", walkingSpeed);
-formData.append("network_dist_m", networkDist);
+  const inputs = {
+    facilitiesFileName: facilitiesFile.name,
+    walkingSpeed,
+    networkDist,
+  };
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Facility Accessibility — Processing</h3>
-      <p class="panel-desc">Calculating 5, 10, and 15 minute walking service areas...</p>
+      <p class="panel-desc">Downloading walking networks and computing isochrones for every facility point…</p>
       <div class="text-center my-4">
-        <div class="spinner-border text-primary"></div>
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading…</span>
+        </div>
       </div>
     </div>
   `;
 
   try {
-    const response = await fetch("http://localhost:8000/calculate-facility-accessibility", {
-      method: "POST",
-      body: formData,
-    });
+    const formData = new FormData();
+    formData.append("facilities_geojson", facilitiesFile);
+
+    const url = `http://localhost:8000/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&network_dist_m=${networkDist}`;
+    const response = await fetch(url, { method: "POST", body: formData });
 
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.detail || "Facility Accessibility failed");
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP error ${response.status}`);
     }
 
-    const data = await response.json();
-    const geojson = data.geojson;
-    const stats = data.stats;
+    const totalFacilities     = response.headers.get("X-Total-Facilities");
+    const facilitiesProcessed = response.headers.get("X-Facilities-Processed");
+    const walkingSpeedHdr     = response.headers.get("X-Walking-Speed-Kmh");
+    const networkDistHdr      = response.headers.get("X-Network-Dist-M");
+    const pct5min             = response.headers.get("X-Pct-5min");
+    const pct10min            = response.headers.get("X-Pct-10min");
+    const pct15min            = response.headers.get("X-Pct-15min");
 
-    lastResultBlob = geojson;
+    const geojsonData = await response.json();
+
+    lastResultBlob    = geojsonData;
     lastResultService = "facility-accessibility";
 
-    if (gridLayer) {
-      map.removeLayer(gridLayer);
-      gridLayer = null;
-    }
+    if (gridLayer)  { map.removeLayer(gridLayer);  gridLayer  = null; }
+    if (inputLayer)   map.removeLayer(inputLayer);
+    clearMap();
 
-    if (resultLayer) {
-      map.removeLayer(resultLayer);
-    }
+    // Result layer: isochrone zones coloured by walk-time band
+    resultLayer = L.geoJSON(geojsonData, {
+      style: function(feature) {
+        const t = feature.properties.time_min;
+        if (t === 5)  return { color: "#198754", fillColor: "#198754", fillOpacity: 0.40, weight: 1.5 };
+        if (t === 10) return { color: "#ffc107", fillColor: "#ffc107", fillOpacity: 0.32, weight: 1.5 };
+        return              { color: "#dc3545", fillColor: "#dc3545", fillOpacity: 0.24, weight: 1.5 };
+      },
+      onEachFeature: function(feature, layer) {
+        const p = feature.properties;
+        layer.bindPopup(
+          `<strong>${p.category || ("Within " + p.time_min + " min")}</strong><br>` +
+          `Walk time: ${p.time_min} min<br>` +
+          `Facilities: ${p.facility_count}`
+        );
+      }
+    }).addTo(map);
 
-    resultLayer = L.geoJSON(geojson, {
-  style: function (feature) {
-    const time = feature.properties.time_min;
+    // Input layer: facility point markers (shown in Raw Data tab)
+    try {
+      const gj = JSON.parse(await facilitiesFile.text());
+      inputLayer = L.geoJSON(gj, {
+        pointToLayer: function(feature, latlng) {
+          return L.circleMarker(latlng, {
+            radius: 5, fillColor: "#4cc2ff", color: "#1a8fc1",
+            weight: 1.5, opacity: 1, fillOpacity: 0.9,
+          });
+        },
+        onEachFeature: function(feature, layer) {
+          const p = feature.properties || {};
+          const nameKey = Object.keys(p).find(k => /^name$/i.test(k) || /^title$/i.test(k));
+          layer.bindPopup(`<strong>${nameKey ? p[nameKey] : "Facility"}</strong>`);
+        }
+      });
+    } catch(err) { console.warn("Could not build input layer from facilities file:", err); }
 
-    if (time === 5) {
-      return {
-        color: "#198754",
-        fillColor: "#198754",
-        fillOpacity: 0.35
-      };
-    }
+    try {
+      const bounds = resultLayer.getBounds();
+      if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
+    } catch(e) { console.warn("Could not fit bounds:", e); }
 
-    if (time === 10) {
-      return {
-        color: "#ffc107",
-        fillColor: "#ffc107",
-        fillOpacity: 0.28
-      };
-    }
-
-    return {
-      color: "#dc3545",
-      fillColor: "#dc3545",
-      fillOpacity: 0.22
-    };
-  }
-}).addTo(map);
-    
-
-    if (resultLayer.getBounds && resultLayer.getBounds().isValid()) {
-      map.fitBounds(resultLayer.getBounds());
-    }
-
-    renderFacilityAccessibilityResults(stats || {}, input.files[0].name, { facilityId, walkingSpeed, networkDist });
+    renderFacilityAccessibilityResults({
+      total_facilities:     totalFacilities,
+      facilities_processed: facilitiesProcessed,
+      walking_speed_kmh:    walkingSpeedHdr,
+      network_dist_m:       networkDistHdr,
+      pct_5min:             pct5min,
+      pct_10min:            pct10min,
+      pct_15min:            pct15min,
+    }, inputs, geojsonData);
 
   } catch (error) {
     console.error("Facility Accessibility error:", error);
-
     analysisPanel.innerHTML = `
       <div class="fade-in">
         <h3 class="panel-title">Error</h3>
-        <p class="text-danger">${error.message}</p>
-        <button class="btn btn-ghost"
+        <p class="text-danger">Failed to calculate facility accessibility: ${error.message}</p>
+        <button class="btn btn-ghost btn-block mt-3"
                 onclick="renderServicePanel('facility_Accessibility_index')">
-          ← Back
+          ← Back to inputs
         </button>
       </div>
     `;
@@ -2813,56 +2831,76 @@ function renderAirQualityResults(stats, inputs) {
 
 
 /* ---------- Render Facility Accessibility Results ---------- */
-function renderFacilityAccessibilityResults(stats, fileName, inputs) {
-  const score5  = parseFloat(stats.pct_5min)  || 0;
-  const score10 = parseFloat(stats.pct_10min) || 0;
-  const score15 = parseFloat(stats.pct_15min) || 0;
-  const totalFacilities = parseInt(stats.facility_count) || parseInt(stats.total_facilities) || "N/A";
+function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
+  const pct5  = stats.pct_5min  !== null ? parseFloat(stats.pct_5min)  : null;
+  const pct10 = stats.pct_10min !== null ? parseFloat(stats.pct_10min) : null;
+  const pct15 = stats.pct_15min !== null ? parseFloat(stats.pct_15min) : null;
 
-  // Overall score: weight 5min access most
-  const overallScore = score5 > 0 || score10 > 0 || score15 > 0
-    ? Math.round(score5 * 1.0 + Math.min(score10 - score5, 0) * 0.5 + Math.min(score15 - score10, 0) * 0.3)
+  const totalFacilities     = parseInt(stats.total_facilities)     || "N/A";
+  const facilitiesProcessed = parseInt(stats.facilities_processed) || "N/A";
+
+  // Weighted overall score (5-min access weighted highest)
+  const overallScore = (pct5 !== null || pct10 !== null || pct15 !== null)
+    ? Math.round(
+        (pct5  ?? 0) * 0.5 +
+        (pct10 ?? 0) * 0.3 +
+        (pct15 ?? 0) * 0.2
+      )
     : null;
-  const cat = overallScore !== null ? perfCategory(overallScore) : null;
+  const cat        = overallScore !== null ? perfCategory(overallScore) : null;
   const scoreColor = overallScore !== null ? qolScoreTextColor(overallScore) : "#888";
 
-  const chartHtml = (score5 + score10 + score15) > 0 ? miniBarChart(
-    [score5.toFixed(1), (score10 - score5).toFixed(1), (score15 - score10).toFixed(1)],
+  const chartHtml = (pct5 !== null || pct15 !== null) ? miniBarChart(
+    [
+      (pct5  ?? 0).toFixed(1),
+      ((pct10 ?? 0) - (pct5 ?? 0)).toFixed(1),
+      ((pct15 ?? 0) - (pct10 ?? 0)).toFixed(1),
+    ],
     3,
     ["#198754", "#ffc107", "#dc3545"],
-    ["5 min", "10 min", "15 min"]
+    ["≤ 5 min", "5–10 min", "10–15 min"]
   ) : "";
 
-  const ineq = (score5 + score15) > 0 ? inequalityLabel(calcStdDev([score5, score10, score15])) : null;
+  const ineq = pct5 !== null && pct15 !== null
+    ? inequalityLabel(calcStdDev([pct5, pct10 ?? 0, pct15]))
+    : null;
 
-  const keyInsight = score5 > 50
-    ? `More than half the area is within a 5-minute walk of a facility — excellent accessibility.`
-    : score15 > 70
-    ? `${score15.toFixed(1)}% of the area is reachable within 15 minutes, but 5-minute access is limited to ${score5.toFixed(1)}%.`
-    : `Facility coverage is limited — only ${score15.toFixed(1)}% of the area is within a 15-minute walk.`;
+  const keyInsight = pct5 !== null
+    ? pct5 > 50
+      ? `More than half the service area is within a 5-minute walk — excellent accessibility.`
+      : pct15 > 70
+      ? `${pct15.toFixed(1)}% of the service area is reachable within 15 minutes, but 5-minute access is limited to ${pct5.toFixed(1)}%.`
+      : `Facility coverage is limited — only ${(pct15 ?? 0).toFixed(1)}% of the service area is within a 15-minute walk.`
+    : null;
 
+  // Raw Data tab: input summary
   const inputsHtml = `
+    <p class="text-muted" style="font-size:11px;">Input data summary. Facility points are shown on the map.</p>
     <div class="insight-card">
       <div class="label">Facilities file</div>
-      <div class="value" style="font-size:11px;word-break:break-all;">${fileName}</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.facilitiesFileName}</div>
     </div>
-    ${totalFacilities !== "N/A" ? `<div class="insight-card">
-      <div class="label">Total Facilities (Features)</div>
+    <div class="insight-card">
+      <div class="label">Total features</div>
       <div class="value">${totalFacilities}</div>
-    </div>` : ""}
+    </div>
+    <div class="insight-card">
+      <div class="label">Facilities processed</div>
+      <div class="value">${facilitiesProcessed}</div>
+    </div>
     <div class="insight-card">
       <div class="label">Walking speed</div>
       <div class="value">${inputs.walkingSpeed} km/h</div>
     </div>
     <div class="insight-card">
-      <div class="label">Max network distance</div>
+      <div class="label">Network download radius</div>
       <div class="value">${parseInt(inputs.networkDist).toLocaleString()} m</div>
     </div>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Facility Accessibility — Results</h3>
-      <p class="panel-desc">Walkable service areas: Green = 5 min · Yellow = 10 min · Red = 15 min walk from the facility.</p>
+      <p class="panel-desc">Walkable service areas: Green = 5 min · Yellow = 10 min · Red = 15 min</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -2871,7 +2909,6 @@ function renderFacilityAccessibilityResults(stats, fileName, inputs) {
       </div>
 
       <div class="tab-content" id="tab-raw">
-        <p class="text-muted">Uploaded input data.</p>
         ${inputsHtml}
       </div>
 
@@ -2884,17 +2921,25 @@ function renderFacilityAccessibilityResults(stats, fileName, inputs) {
           <div class="label">Performance</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>` : ""}
-        ${score5 > 0 ? `<div class="insight-card">
+        <div class="insight-card">
+          <div class="label">Facilities analyzed</div>
+          <div class="value">${facilitiesProcessed}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Walking speed</div>
+          <div class="value">${inputs.walkingSpeed} km/h</div>
+        </div>
+        ${pct5  !== null ? `<div class="insight-card">
           <div class="label">Within 5-min walk</div>
-          <div class="value" style="color:var(--success)">${score5.toFixed(1)}%</div>
+          <div class="value" style="color:#198754">${pct5.toFixed(1)}%</div>
         </div>` : ""}
-        ${score10 > 0 ? `<div class="insight-card">
+        ${pct10 !== null ? `<div class="insight-card">
           <div class="label">Within 10-min walk</div>
-          <div class="value" style="color:#ffc107">${score10.toFixed(1)}%</div>
+          <div class="value" style="color:#ffc107">${pct10.toFixed(1)}%</div>
         </div>` : ""}
-        ${score15 > 0 ? `<div class="insight-card">
+        ${pct15 !== null ? `<div class="insight-card">
           <div class="label">Within 15-min walk</div>
-          <div class="value" style="color:#dc3545">${score15.toFixed(1)}%</div>
+          <div class="value" style="color:#dc3545">${pct15.toFixed(1)}%</div>
         </div>` : ""}
         ${ineq ? `<div class="insight-card">
           <div class="label">Coverage Balance</div>
@@ -4269,6 +4314,40 @@ function attachFileInputListeners() {
             if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
           } catch(e) {}
         } catch(err) { console.warn("Could not parse AOI GeoJSON:", err); }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // Facilities file input — previews facility points on map
+  const facilitiesGeojsonInput = document.getElementById("facilitiesGeojsonInput");
+  if (facilitiesGeojsonInput) {
+    facilitiesGeojsonInput.addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          const geojsonData = JSON.parse(event.target.result);
+          if (inputLayer) map.removeLayer(inputLayer);
+          inputLayer = L.geoJSON(geojsonData, {
+            pointToLayer: function(feature, latlng) {
+              return L.circleMarker(latlng, {
+                radius: 6, fillColor: "#198754", color: "#145a32",
+                weight: 1.5, opacity: 1, fillOpacity: 0.9,
+              });
+            },
+            onEachFeature: function(feature, layer) {
+              const p = feature.properties || {};
+              const nameKey = Object.keys(p).find(k => /^name$/i.test(k) || /^title$/i.test(k));
+              layer.bindPopup(`<strong>${nameKey ? p[nameKey] : "Facility"}</strong>`);
+            }
+          }).addTo(map);
+          try {
+            const b = inputLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch(e) {}
+        } catch(err) { console.warn("Could not parse facilities GeoJSON:", err); }
       };
       reader.readAsText(file);
     });
