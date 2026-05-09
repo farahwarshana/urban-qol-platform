@@ -753,31 +753,38 @@ async function loadAnalyses() {
       return;
     }
 
-    list.innerHTML = filtered.map(a => `
-      <div class="analysis-item">
-        <div class="analysis-icon ${a.type}">${a.icon}</div>
-        <div class="analysis-meta">
-          <h4>${a.title}</h4>
-          <p>
-            <span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              ${a.area}
-            </span>
-            <span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              ${a.date} · ${a.time}
-            </span>
-          </p>
-        </div>
-        <div class="analysis-right">
-          <span class="score-badge score-${a.status}">${a.score}/100</span>
-          <button class="dl-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export
-          </button>
-        </div>
+    const icons = { ndvi: '🌿', heat: '🌡️', transit: '🚌', urban: '🏙️', crime: '🔴', air: '💨' };
+
+list.innerHTML = filtered.map(a => {
+  const icon = icons[a.type] || '📊';
+  const date = a.created_at ? new Date(a.created_at).toLocaleDateString() : '';
+  const time = a.created_at ? new Date(a.created_at).toLocaleTimeString() : '';
+  return `
+    <div class="analysis-item">
+      <div class="analysis-icon ${a.type}">${icon}</div>
+      <div class="analysis-meta">
+        <h4>${a.title}</h4>
+        <p>
+          <span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            ${a.area}
+          </span>
+          <span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            ${date} · ${time}
+          </span>
+        </p>
       </div>
-    `).join('');
+      <div class="analysis-right">
+        <span class="score-badge score-${a.status}">${a.score}/100</span>
+        <button class="dl-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+    </div>
+  `;
+}).join('');
   }
 
   function filterHistory(type, btn) {

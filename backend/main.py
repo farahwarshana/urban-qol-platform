@@ -1111,3 +1111,26 @@ def save_analysis(analysis: AnalysisRecord, username: str = "default"):
             "status": analysis.status
         })
     return {"message": "Analysis saved successfully"}
+
+
+
+@app.get("/analyses", tags=["User"])
+def get_analyses(username: str = "default"):
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT * FROM analyses WHERE username = :username ORDER BY created_at DESC"),
+            {"username": username}
+        ).fetchall()
+        
+        return [
+            {
+                "id": row.id,
+                "type": row.type,
+                "title": row.title,
+                "area": row.area,
+                "score": row.score,
+                "status": row.status,
+                "created_at": str(row.created_at)
+            }
+            for row in result
+        ]
