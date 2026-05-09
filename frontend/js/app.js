@@ -8,7 +8,9 @@
 /* ---------- LOGIN FORM ---------- */
 const loginForm = document.getElementById("loginForm");
 if (loginForm) {
-  loginForm.addEventListener("submit", function (e) {
+  loginForm.addEventListener("submit", async function (e) {        
+                                                                  //  # change fuction to async function
+    
     e.preventDefault();
 
     const email    = document.getElementById("email").value.trim();
@@ -31,9 +33,26 @@ if (loginForm) {
     //     .then(data => { localStorage.setItem("token", data.token); ... })
 
     // For now, just go to the dashboard.
-    window.location.href = "dashboard.html";
+
+
+    
+    // window.location.href = "dashboard.html";  استبدلت السطر ده  بالاسطر الجاية 
+
+    try {
+  const res = await fetch("http://localhost:8000/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.detail || "Login failed."); return; }
+  localStorage.setItem("token", data.token);
+  localStorage.setItem("username", data.username);
+  window.location.href = "dashboard.html";
+} catch { alert("Connection error."); }
   });
 }
+
 
 /* ---------- "Continue as guest" button ---------- */
 const guestBtn = document.getElementById("guestBtn");
@@ -47,7 +66,8 @@ if (guestBtn) {
 /* ---------- REGISTER FORM ---------- */
 const registerForm = document.getElementById("registerForm");
 if (registerForm) {
-  registerForm.addEventListener("submit", function (e) {
+  registerForm.addEventListener("submit", async function (e) {      
+                                                                      // change function to async function
     e.preventDefault();
 
     const name            = document.getElementById("name").value.trim();
@@ -64,11 +84,31 @@ if (registerForm) {
       return;
     }
 
-    // TODO: connect to backend authentication API (register endpoint)
-    alert("Account created! (UI only — wire backend in app.js)");
-    window.location.href = "login.html";
+  //   // TODO: connect to backend authentication API (register endpoint)
+  //   alert("Account created! (UI only — wire backend in app.js)");
+  //   window.location.href = "login.html";
+  // });          هستبدل دول بالاسطر الجاية 
+try {
+  const res = await fetch("http://localhost:8000/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: name.split(" ")[0].toLowerCase(),
+      email, password,
+      full_name: name
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.detail || "Registration failed."); return; }
+  localStorage.setItem("token", data.token);
+  localStorage.setItem("username", data.username);
+  window.location.href = "dashboard.html";
+} catch { alert("Connection error."); }
   });
 }
+
+
+
 
 /* ---------- USER DROPDOWN (navbar) ---------- */
 // Used on dashboard.html and profile.html
@@ -84,12 +124,21 @@ document.addEventListener("click", function (e) {
 });
 
 /* ---------- LOGOUT ---------- */
+// function logout() {
+//   // TODO: connect to backend (invalidate token, clear session)
+//   window.location.href = "login.html";
+// }      غيرتها للاسطر الجاية
+
 function logout() {
-  // TODO: connect to backend (invalidate token, clear session)
+  localStorage.removeItem("token");
+  localStorage.removeItem("username");
   window.location.href = "login.html";
 }
 
+// _____________________________________________
+
 // Share
-function sharePortal() {
-    window.location.href = "mailto:?subject=Urban Quality of Life Platform&body=Check out this platform!";
+function sharePortal() 
+{
+window.location.href = "mailto:?subject=Urban Quality of Life Platform&body=Check out this platform!";
 }

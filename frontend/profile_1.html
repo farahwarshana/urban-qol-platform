@@ -553,7 +553,7 @@
     Urban Quality of Life Analysis Platform
   </a>
   <div class="nav-right">
-    <button class="nav-btn">← Back to Map</button>
+    <button class="nav-btn" onclick="window.location.href='dashboard.html'">← Back to Map</button>
   </div>
 </nav>
 
@@ -794,15 +794,14 @@ async function loadAnalyses() {
   }
 
 async function saveProfile() {
-  console.log("SAVE BUTTON CLICKED");
-
+  const username = localStorage.getItem('username') || 'default';
   const first = document.getElementById('firstName').value.trim();
   const last  = document.getElementById('lastName').value.trim();
   const email = document.getElementById('emailInput').value.trim();
   const city  = document.getElementById('cityInput').value.trim();
   const org   = document.getElementById('orgInput').value.trim();
 
-  const res = await fetch('http://localhost:8000/profile', {
+  const res = await fetch(`http://localhost:8000/profile?username=${username}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -827,6 +826,7 @@ async function saveProfile() {
   toggleEdit();
   showToast('Profile updated successfully');
 }
+
   function handleAvatar(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -849,7 +849,8 @@ async function saveProfile() {
   }
 
 async function loadProfile() {
-  const res = await fetch('http://localhost:8000/profile');
+  const username = localStorage.getItem('username') || 'default';
+  const res = await fetch(`http://localhost:8000/profile?username=${username}`);
   const data = await res.json();
   
   document.getElementById('displayName').textContent = data.full_name;
@@ -857,7 +858,6 @@ async function loadProfile() {
   document.getElementById('displayCity').textContent = data.city;
   document.getElementById('displayOrg').textContent = data.organization;
   document.getElementById('avatarInitials').textContent = data.initials;
-  
 
   document.getElementById('firstName').value = data.full_name.split(' ')[0] || '';
   document.getElementById('lastName').value = data.full_name.split(' ')[1] || '';
