@@ -17,6 +17,48 @@
    form is generated from this object — so adding a new service
    only requires editing this map.
    ============================================================ */
+
+
+// ------------------saveAnalysisToProfile--------------------
+
+function autoSaveCurrentAnalysis() {
+  const username = localStorage.getItem('username') || 'default';
+  if (!lastResultService) return;
+
+  const serviceNames = {
+    'ndvi': 'NDVI Analysis',
+    'heat-index': 'Heat Index',
+    'crime': 'Crime Density',
+    'urban-density': 'Urban Density',
+    'public-transport': 'Public Transport Coverage',
+    'vegetation': 'Vegetation Density',
+    'traffic': 'Traffic Analysis',
+    'informal-settlement': 'Informal Settlement',
+    'air-quality': 'Air Quality Index',
+    'facility-accessibility': 'Facility Accessibility'
+  };
+
+  const title = serviceNames[lastResultService] || lastResultService;
+  
+  const panel = document.getElementById('analysisPanel');
+  const scoreEl = panel ? panel.querySelector('.insight-card .value') : null;
+  const scoreMatch = scoreEl ? scoreEl.textContent.match(/(\d+)\s*\/\s*100/) : null;
+  const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
+  const status = score >= 75 ? 'high' : score >= 40 ? 'mid' : 'low';
+
+  fetch(`http://localhost:8000/analyses?username=${username}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: lastResultService,
+      title: title,
+      area: '',
+      score: score,
+      status: status
+    })
+  }).catch(e => console.warn('Could not save analysis:', e));
+}
+// ---------------------------------------------------------------
 const SERVICES = {
   "urban-density": {
     title: "Urban Density",
@@ -273,9 +315,11 @@ function renderExpansionPanel(service) {
 /* ============================================================
    3. RUN ANALYSIS — switches the panel to the Results view
    ============================================================ */
-function runAnalysis(key) {
-  const service = SERVICES[key];
+// function runAnalysis(key) {
+//   const service = SERVICES[key];  ضيفت بدالها السطر الجاي
 
+function runAnalysis(key) {
+  document.getElementById('analysisPanel').dataset.saved = '';
 
   if (key === "facility_Accessibility_index") {
   runFacilityAccessibilityAnalysis();
