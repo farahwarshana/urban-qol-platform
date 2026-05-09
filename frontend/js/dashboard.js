@@ -4635,50 +4635,58 @@ function downloadFullAnalysisResult() {
 async function fetchAndRenderGrid(service, blob) {
   if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
-  // Build a FormData with the result file
-  const formData = new FormData();
-  let endpoint;
+  let geojson;
 
-  if (service === "ndvi" || service === "heat-index" || service === "air-quality") {
-    // blob is an ArrayBuffer — wrap in a File
-    const ext  = "tif";
-    const file = new File([blob], `result.${ext}`, { type: "image/tiff" });
-    formData.append("geotiff", file);
-    endpoint = service === "ndvi"
-      ? "http://localhost:8000/calculate-grid/ndvi"
-      : service === "heat-index"
-        ? "http://localhost:8000/calculate-grid/heat-index"
-        : "http://localhost:8000/calculate-grid/air-quality";
+  if (service === "traffic") {
+    // Traffic: the full analysis response already contains the correctly clipped,
+    // correctly scored grid cells. Re-sending to the backend would re-score from
+    // scratch and can produce different results. Filter out hotspot features and
+    // use the blob directly so the grid tab is identical to the full area tab.
+    geojson = {
+      type:        "FeatureCollection",
+      features:    blob.features.filter(f => f.properties.service === "traffic"),
+      cell_size_m: blob.cell_size_m,
+    };
   } else {
-    // blob is a plain JS object (GeoJSON) — serialise it
-    const file = new File(
-      [JSON.stringify(blob)],
-      "result.geojson",
-      { type: "application/json" }
-    );
-    formData.append("geojson", file);
-    endpoint = service === "crime"
-      ? "http://localhost:8000/calculate-grid/crime"
-      : service === "urban-density"
-        ? "http://localhost:8000/calculate-grid/urban-density"
-        : service === "public-transport"
-          ? "http://localhost:8000/calculate-grid/public-transport"
-          : service === "vegetation"
-            ? "http://localhost:8000/calculate-grid/vegetation"
-            : service === "traffic"
-              ? "http://localhost:8000/calculate-grid/traffic"
+    // All other services: send to the appropriate grid endpoint
+    const formData = new FormData();
+    let endpoint;
+
+    if (service === "ndvi" || service === "heat-index" || service === "air-quality") {
+      const file = new File([blob], "result.tif", { type: "image/tiff" });
+      formData.append("geotiff", file);
+      endpoint = service === "ndvi"
+        ? "http://localhost:8000/calculate-grid/ndvi"
+        : service === "heat-index"
+          ? "http://localhost:8000/calculate-grid/heat-index"
+          : "http://localhost:8000/calculate-grid/air-quality";
+    } else {
+      const file = new File(
+        [JSON.stringify(blob)],
+        "result.geojson",
+        { type: "application/json" }
+      );
+      formData.append("geojson", file);
+      endpoint = service === "crime"
+        ? "http://localhost:8000/calculate-grid/crime"
+        : service === "urban-density"
+          ? "http://localhost:8000/calculate-grid/urban-density"
+          : service === "public-transport"
+            ? "http://localhost:8000/calculate-grid/public-transport"
+            : service === "vegetation"
+              ? "http://localhost:8000/calculate-grid/vegetation"
               : service === "informal-settlement"
                 ? "http://localhost:8000/calculate-grid/informal-settlement"
                 : "http://localhost:8000/calculate-grid/facility-accessibility";
-  }
+    }
 
-  const response = await fetch(endpoint, { method: "POST", body: formData });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Grid request failed: ${response.status}`);
+    const response = await fetch(endpoint, { method: "POST", body: formData });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `Grid request failed: ${response.status}`);
+    }
+    geojson = await response.json();
   }
-
-  const geojson = await response.json();
 
   const isVeg   = service === "vegetation";
   const isTraffic = service === "traffic";
