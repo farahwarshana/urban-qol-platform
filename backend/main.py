@@ -14,10 +14,10 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
-DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/urban_qol"
-engine = create_engine(DATABASE_URL)
+# DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/urban_qol"
+# engine = create_engine(DATABASE_URL)
 
-
+from database import engine
 # __________________________auth import profile_1_______________
 
 from passlib.context import CryptContext

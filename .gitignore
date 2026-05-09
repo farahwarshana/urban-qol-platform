@@ -233,3 +233,9 @@ __pycache__/
 # Outputs (optional)
 ai_agent/outputs/
 outputs/
+
+
+backend/.env
+__pycache__/
+*.pyc
+backend/cache/
