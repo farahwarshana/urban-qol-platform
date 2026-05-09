@@ -946,6 +946,8 @@ def init_db():
                 city VARCHAR(100),
                 organization VARCHAR(200),
                 initials VARCHAR(5),
+                password VARCHAR(255),
+                phone VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
@@ -1078,10 +1080,9 @@ def login(user: UserLogin):
     
     if not result:
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not verify_password(user.password, result.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
     
     token = create_token({"sub": user.email})
     return {"token": token, "username": result.username}
-
-@app.get("/analyses", tags=["User"])
-def get_analyses(username: str = "default"):
-    return []
