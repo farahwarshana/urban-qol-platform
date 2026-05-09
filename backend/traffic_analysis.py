@@ -1,25 +1,32 @@
 """
 traffic_analysis.py
-Road network analysis and congestion detection using geometric operations only.
+Road network structural analysis and congestion detection using geometric operations only.
 
-Steps
------
-1. Clip road network to AOI and calculate total road length (km).
-2. Compute road density (km of road per km² of AOI).
-3. Classify density: Low / Optimal / High.
-4. If population provided, estimate traffic pressure (pop / road_km).
-5. Build a uniform grid over the AOI.
-6. Per cell: local road density + optional local traffic pressure.
-7. Classify each cell as low / medium / high congestion.
-8. Identify high-congestion hotspots and dissolve into polygons.
+Full-area analysis
+------------------
+1. Classify each road segment by hierarchy using length + connectivity:
+   - Primary   : long segments (top 20%) OR high intersection degree (≥ 4 connections)
+   - Secondary : medium segments OR moderate connectivity (3 connections)
+   - Local     : short / fragmented segments
+2. Compute structural network metrics:
+   - Total road length, intersection density, connectivity index, avg segment length
+3. Identify main corridors (primary roads), dense intersections, fragmented zones.
+
+Grid / congestion analysis
+--------------------------
+4. Build a uniform grid over the AOI (clipped to boundary).
+5. Per cell: local road density + optional local traffic pressure.
+6. Classify each cell: low / medium / high congestion.
+7. Merge high-congestion cells into hotspot polygons.
 """
 
 import json
 import math
 import numpy as np
 import geopandas as gpd
-from shapely.geometry import box, mapping
-from shapely.ops import unary_union
+from collections import defaultdict
+from shapely.geometry import box, mapping, Point
+from shapely.ops import unary_union, split
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -146,6 +153,195 @@ def _classify_congestion(local_density, local_pressure=None):
     return "medium"      # overbuilt can still have flow issues
 
 
+# ── Road hierarchy thresholds (percentile-based, computed per dataset) ────────
+# Primary   : length ≥ P80  OR  node degree ≥ 4
+# Secondary : length ≥ P40  OR  node degree == 3
+# Local     : everything else
+
+
+def _snap_coord(x, y, precision=5):
+    """Round coordinate to snap nearby endpoints into the same node."""
+    return (round(x, precision), round(y, precision))
+
+
+def _build_node_degree(segments_utm):
+    """
+    Count how many segments touch each endpoint node.
+    Returns dict: snapped_coord → degree (int).
+    """
+    degree = defaultdict(int)
+    for geom in segments_utm:
+        coords = list(geom.coords) if geom.geom_type == "LineString" else []
+        if geom.geom_type == "MultiLineString":
+            for part in geom.geoms:
+                coords = list(part.coords)
+                if len(coords) >= 2:
+                    degree[_snap_coord(*coords[0])]  += 1
+                    degree[_snap_coord(*coords[-1])] += 1
+            continue
+        if len(coords) >= 2:
+            degree[_snap_coord(*coords[0])]  += 1
+            degree[_snap_coord(*coords[-1])] += 1
+    return degree
+
+
+def _segment_max_degree(geom, degree_map):
+    """Return the maximum node degree at either endpoint of a segment."""
+    if geom.geom_type == "LineString":
+        coords = list(geom.coords)
+    elif geom.geom_type == "MultiLineString":
+        coords = list(geom.geoms[0].coords)
+    else:
+        return 1
+    if len(coords) < 2:
+        return 1
+    d0 = degree_map.get(_snap_coord(*coords[0]),  1)
+    d1 = degree_map.get(_snap_coord(*coords[-1]), 1)
+    return max(d0, d1)
+
+
+def analyse_road_network(roads_clipped_utm, aoi_union_utm, utm_crs):
+    """
+    Classify roads by hierarchy and compute structural network metrics.
+
+    Parameters
+    ----------
+    roads_clipped_utm : GeoDataFrame  — road segments clipped to AOI, in UTM CRS
+    aoi_union_utm     : shapely geom  — AOI polygon in UTM CRS
+    utm_crs           : str           — e.g. "EPSG:32636"
+
+    Returns
+    -------
+    dict with keys:
+        network_geojson     dict   — GeoJSON FeatureCollection with hierarchy property
+        total_length_km     float
+        segment_count       int
+        avg_segment_len_m   float
+        intersection_density float  — intersections per km²
+        connectivity_index  float   — avg node degree (higher = better connected)
+        primary_pct         float
+        secondary_pct       float
+        local_pct           float
+        primary_length_km   float
+        secondary_length_km float
+        local_length_km     float
+        fragmented_zone_pct float   — % of AOI where only local roads exist
+    """
+    if roads_clipped_utm.empty:
+        empty = {"type": "FeatureCollection", "features": []}
+        return {
+            "network_geojson": empty,
+            "total_length_km": 0, "segment_count": 0,
+            "avg_segment_len_m": 0, "intersection_density": 0,
+            "connectivity_index": 0,
+            "primary_pct": 0, "secondary_pct": 0, "local_pct": 100,
+            "primary_length_km": 0, "secondary_length_km": 0, "local_length_km": 0,
+            "fragmented_zone_pct": 0,
+        }
+
+    lengths_m  = roads_clipped_utm.geometry.length.values
+    total_len_m = lengths_m.sum()
+    total_len_km = total_len_m / 1_000.0
+    avg_len_m    = float(np.mean(lengths_m)) if len(lengths_m) else 0.0
+
+    # ── Length percentile thresholds ─────────────────────────────────────────
+    p80 = float(np.percentile(lengths_m, 80))
+    p40 = float(np.percentile(lengths_m, 40))
+
+    # ── Node degree map ───────────────────────────────────────────────────────
+    degree_map = _build_node_degree(roads_clipped_utm.geometry)
+
+    # Count true intersections (nodes with degree ≥ 3)
+    intersections = [c for c, d in degree_map.items() if d >= 3]
+    aoi_area_km2  = aoi_union_utm.area / 1_000_000.0
+    int_density   = len(intersections) / aoi_area_km2 if aoi_area_km2 > 0 else 0.0
+
+    all_degrees   = list(degree_map.values())
+    conn_index    = float(np.mean(all_degrees)) if all_degrees else 0.0
+
+    # ── Classify each segment ─────────────────────────────────────────────────
+    hierarchies  = []
+    for i, (_, row) in enumerate(roads_clipped_utm.iterrows()):
+        geom   = row.geometry
+        length = lengths_m[i]
+        deg    = _segment_max_degree(geom, degree_map)
+
+        if length >= p80 or deg >= 4:
+            h = "primary"
+        elif length >= p40 or deg == 3:
+            h = "secondary"
+        else:
+            h = "local"
+        hierarchies.append(h)
+
+    roads_clipped_utm = roads_clipped_utm.copy()
+    roads_clipped_utm["hierarchy"] = hierarchies
+    roads_clipped_utm["length_m"]  = lengths_m
+    roads_clipped_utm["max_degree"] = [
+        _segment_max_degree(g, degree_map) for g in roads_clipped_utm.geometry
+    ]
+
+    # ── Length by hierarchy ───────────────────────────────────────────────────
+    primary_len_km   = roads_clipped_utm.loc[roads_clipped_utm["hierarchy"] == "primary",   "length_m"].sum() / 1000
+    secondary_len_km = roads_clipped_utm.loc[roads_clipped_utm["hierarchy"] == "secondary", "length_m"].sum() / 1000
+    local_len_km     = roads_clipped_utm.loc[roads_clipped_utm["hierarchy"] == "local",     "length_m"].sum() / 1000
+
+    n = len(hierarchies)
+    primary_pct   = hierarchies.count("primary")   / n * 100 if n else 0
+    secondary_pct = hierarchies.count("secondary") / n * 100 if n else 0
+    local_pct     = hierarchies.count("local")     / n * 100 if n else 0
+
+    # ── Convert back to WGS84 for GeoJSON output ──────────────────────────────
+    roads_wgs = roads_clipped_utm.to_crs("EPSG:4326")
+
+    features = []
+    for _, row in roads_wgs.iterrows():
+        geom = row.geometry
+        features.append({
+            "type": "Feature",
+            "geometry": geom.__geo_interface__,
+            "properties": {
+                "hierarchy":  row["hierarchy"],
+                "length_m":   round(float(row["length_m"]), 1),
+                "max_degree": int(row["max_degree"]),
+                "service":    "traffic-network",
+            },
+        })
+
+    network_geojson = {"type": "FeatureCollection", "features": features}
+
+    # ── Fragmented zone estimate ──────────────────────────────────────────────
+    # Approximate: buffer local-only roads, measure non-primary/secondary coverage
+    if not roads_clipped_utm.empty:
+        local_only = roads_clipped_utm[roads_clipped_utm["hierarchy"] == "local"]
+        higher     = roads_clipped_utm[roads_clipped_utm["hierarchy"].isin(["primary", "secondary"])]
+        if not higher.empty and not local_only.empty:
+            higher_buf = unary_union(higher.geometry.buffer(200))  # 200 m influence radius
+            local_geoms = unary_union(local_only.geometry.buffer(100))
+            frag_zone   = local_geoms.difference(higher_buf).intersection(aoi_union_utm)
+            frag_pct    = frag_zone.area / aoi_union_utm.area * 100 if aoi_union_utm.area > 0 else 0.0
+        else:
+            frag_pct = local_pct  # all local → fully fragmented
+    else:
+        frag_pct = 0.0
+
+    return {
+        "network_geojson":      network_geojson,
+        "total_length_km":      round(total_len_km, 3),
+        "segment_count":        n,
+        "avg_segment_len_m":    round(avg_len_m, 1),
+        "intersection_density": round(int_density, 2),
+        "connectivity_index":   round(conn_index, 2),
+        "primary_pct":          round(primary_pct, 1),
+        "secondary_pct":        round(secondary_pct, 1),
+        "local_pct":            round(local_pct, 1),
+        "primary_length_km":    round(primary_len_km, 3),
+        "secondary_length_km":  round(secondary_len_km, 3),
+        "local_length_km":      round(local_len_km, 3),
+        "fragmented_zone_pct":  round(frag_pct, 1),
+    }
+
+
 # ── Main Analysis ─────────────────────────────────────────────────────────────
 
 def calculate_traffic_analysis(
@@ -176,6 +372,7 @@ def calculate_traffic_analysis(
         road_density         float  - km of road per km²
         density_class        str    - "low" / "optimal" / "high"
         traffic_pressure     float | None  - people per road-km
+        network              dict   - structural analysis results (hierarchy, metrics)
         grid_geojson         dict   - FeatureCollection (cells with congestion)
         hotspots_geojson     dict   - FeatureCollection (merged high-congestion polygons)
         high_congestion_pct  float  - % of AOI area classified as high congestion
@@ -234,6 +431,9 @@ def calculate_traffic_analysis(
     traffic_pressure = None
     if population is not None and total_length_km > 0:
         traffic_pressure = population / total_length_km
+
+    # ── Road network structural analysis ────────────────────────────────────
+    network = analyse_road_network(roads_clipped_utm, aoi_union_utm, utm_crs)
 
     # ── Build grid ───────────────────────────────────────────────────────────
     bounds     = aoi_union_4326.bounds  # (minx, miny, maxx, maxy)
@@ -348,6 +548,7 @@ def calculate_traffic_analysis(
         "road_density":       round(road_density, 4),
         "density_class":      density_class,
         "traffic_pressure":   round(traffic_pressure, 2) if traffic_pressure is not None else None,
+        "network":            network,
         "grid_geojson":       grid_geojson,
         "hotspots_geojson":   hotspots_geojson,
         "high_congestion_pct": round(high_congestion_pct, 2),

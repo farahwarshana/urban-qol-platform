@@ -80,6 +80,10 @@ app.add_middleware(
         "X-Road-Length-Km", "X-AOI-Area-Km2", "X-Road-Density",
         "X-Density-Class", "X-Traffic-Pressure", "X-High-Congestion-Pct",
         "X-Cell-Size-M",
+        "X-Segment-Count", "X-Avg-Segment-Len-M", "X-Intersection-Density",
+        "X-Connectivity-Index", "X-Primary-Pct", "X-Secondary-Pct", "X-Local-Pct",
+        "X-Primary-Length-Km", "X-Secondary-Length-Km", "X-Local-Length-Km",
+        "X-Fragmented-Zone-Pct",
         "X-Avg-Irregularity", "X-High-Pct", "X-Medium-Pct", "X-Low-Pct",
         "X-Overall-QoL-Score", "X-High-Zone-Count",
         "X-Pollutant", "X-Good-Pct", "X-Moderate-Pct", "X-Sensitive-Pct",
@@ -725,28 +729,47 @@ def calculate_traffic_endpoint(
             output_path=str(output_path),
         )
 
-        # Combined response: grid cells + hotspot polygons
+        net = result["network"]
+
+        # Combined response: network lines + grid cells + hotspot polygons
+        # Each feature carries a "service" tag so the frontend can split them:
+        #   "traffic-network" → full area tab (road hierarchy lines)
+        #   "traffic"         → grid tab (congestion cells)
+        #   type="hotspot"    → grid tab overlay
         combined = {
-            "type":     "FeatureCollection",
+            "type": "FeatureCollection",
             "features": (
+                net["network_geojson"]["features"] +
                 result["grid_geojson"]["features"] +
                 result["hotspots_geojson"]["features"]
             ),
-            "cell_size_m":        result["cell_size_m"],
-            "road_length_km":     result["road_length_km"],
-            "aoi_area_km2":       result["aoi_area_km2"],
-            "road_density":       result["road_density"],
-            "density_class":      result["density_class"],
-            "high_congestion_pct": result["high_congestion_pct"],
+            "cell_size_m":          result["cell_size_m"],
+            "road_length_km":       result["road_length_km"],
+            "aoi_area_km2":         result["aoi_area_km2"],
+            "road_density":         result["road_density"],
+            "density_class":        result["density_class"],
+            "high_congestion_pct":  result["high_congestion_pct"],
         }
 
         headers = {
-            "X-Road-Length-Km":     str(result["road_length_km"]),
-            "X-AOI-Area-Km2":       str(result["aoi_area_km2"]),
-            "X-Road-Density":       str(result["road_density"]),
-            "X-Density-Class":      result["density_class"],
-            "X-High-Congestion-Pct": str(result["high_congestion_pct"]),
-            "X-Cell-Size-M":        str(result["cell_size_m"]),
+            "X-Road-Length-Km":        str(result["road_length_km"]),
+            "X-AOI-Area-Km2":          str(result["aoi_area_km2"]),
+            "X-Road-Density":          str(result["road_density"]),
+            "X-Density-Class":         result["density_class"],
+            "X-High-Congestion-Pct":   str(result["high_congestion_pct"]),
+            "X-Cell-Size-M":           str(result["cell_size_m"]),
+            # Network structural metrics
+            "X-Segment-Count":         str(net["segment_count"]),
+            "X-Avg-Segment-Len-M":     str(net["avg_segment_len_m"]),
+            "X-Intersection-Density":  str(net["intersection_density"]),
+            "X-Connectivity-Index":    str(net["connectivity_index"]),
+            "X-Primary-Pct":           str(net["primary_pct"]),
+            "X-Secondary-Pct":         str(net["secondary_pct"]),
+            "X-Local-Pct":             str(net["local_pct"]),
+            "X-Primary-Length-Km":     str(net["primary_length_km"]),
+            "X-Secondary-Length-Km":   str(net["secondary_length_km"]),
+            "X-Local-Length-Km":       str(net["local_length_km"]),
+            "X-Fragmented-Zone-Pct":   str(net["fragmented_zone_pct"]),
         }
         if result["traffic_pressure"] is not None:
             headers["X-Traffic-Pressure"] = str(result["traffic_pressure"])

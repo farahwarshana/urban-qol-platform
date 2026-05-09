@@ -1555,6 +1555,13 @@ function downloadVegCSV() {
    TRAFFIC ANALYSIS — analysis and results
    ============================================================ */
 
+/* ---------- Road hierarchy → line colour ---------- */
+function hierarchyColor(h) {
+  if (h === "primary")   return "#e74c3c";   // red   — main corridors
+  if (h === "secondary") return "#f39c12";   // amber — connectors
+  return "#3498db";                           // blue  — local roads
+}
+
 /* ---------- Congestion level → fill colour ---------- */
 function congestionColor(level) {
   if (level === "high")   return "#e74c3c";
@@ -1564,9 +1571,9 @@ function congestionColor(level) {
 
 /* ---------- Traffic Analysis — calls backend API ---------- */
 async function runTrafficAnalysis() {
-  const roadsInput     = document.getElementById("roadsInput");
-  const aoiInput       = document.getElementById("aoiInput");
-  const populationEl   = document.getElementById("populationInput");
+  const roadsInput   = document.getElementById("roadsInput");
+  const aoiInput     = document.getElementById("aoiInput");
+  const populationEl = document.getElementById("populationInput");
 
   if (!roadsInput || !roadsInput.files[0]) {
     alert("Please upload a GeoJSON file with road network data.");
@@ -1596,7 +1603,7 @@ async function runTrafficAnalysis() {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Traffic Analysis — Processing</h3>
-      <p class="panel-desc">Calculating road density and congestion…</p>
+      <p class="panel-desc">Classifying road hierarchy and computing connectivity…</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading…</span>
@@ -1616,75 +1623,85 @@ async function runTrafficAnalysis() {
       throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
     }
 
-    const roadLengthKm      = response.headers.get("X-Road-Length-Km");
-    const aoiAreaKm2        = response.headers.get("X-AOI-Area-Km2");
-    const roadDensity       = response.headers.get("X-Road-Density");
-    const densityClass      = response.headers.get("X-Density-Class");
-    const trafficPressure   = response.headers.get("X-Traffic-Pressure");
-    const highCongestionPct = response.headers.get("X-High-Congestion-Pct");
-    const cellSizeM         = response.headers.get("X-Cell-Size-M");
+    // ── Summary headers ──────────────────────────────────────────────────────
+    const roadLengthKm       = response.headers.get("X-Road-Length-Km");
+    const aoiAreaKm2         = response.headers.get("X-AOI-Area-Km2");
+    const roadDensity        = response.headers.get("X-Road-Density");
+    const densityClass       = response.headers.get("X-Density-Class");
+    const trafficPressure    = response.headers.get("X-Traffic-Pressure");
+    const highCongestionPct  = response.headers.get("X-High-Congestion-Pct");
+    const cellSizeM          = response.headers.get("X-Cell-Size-M");
+    // Network structural headers
+    const segmentCount       = response.headers.get("X-Segment-Count");
+    const avgSegmentLenM     = response.headers.get("X-Avg-Segment-Len-M");
+    const intersectionDensity= response.headers.get("X-Intersection-Density");
+    const connectivityIndex  = response.headers.get("X-Connectivity-Index");
+    const primaryPct         = response.headers.get("X-Primary-Pct");
+    const secondaryPct       = response.headers.get("X-Secondary-Pct");
+    const localPct           = response.headers.get("X-Local-Pct");
+    const primaryLenKm       = response.headers.get("X-Primary-Length-Km");
+    const secondaryLenKm     = response.headers.get("X-Secondary-Length-Km");
+    const localLenKm         = response.headers.get("X-Local-Length-Km");
+    const fragmentedZonePct  = response.headers.get("X-Fragmented-Zone-Pct");
 
     const geojsonData = await response.json();
 
     lastResultBlob    = geojsonData;
     lastResultService = "traffic";
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
-
     if (inputLayer) map.removeLayer(inputLayer);
     clearMap();
 
-    // Render grid cells (filter out hotspot features for result layer)
-    const gridFeatures = {
+    // ── Full-area tab: render road hierarchy lines ───────────────────────────
+    const networkFeatures = {
       type: "FeatureCollection",
-      features: geojsonData.features.filter(f => f.properties.service === "traffic"),
+      features: geojsonData.features.filter(f => f.properties.service === "traffic-network"),
     };
 
-    resultLayer = L.geoJSON(gridFeatures, {
+    resultLayer = L.geoJSON(networkFeatures, {
       style: function(feature) {
-        const level = feature.properties.congestion || "low";
+        const h = feature.properties.hierarchy || "local";
         return {
-          fillColor:   congestionColor(level),
-          fillOpacity: 0.55,
-          color:       "rgba(0,0,0,0.2)",
-          weight:      0.8,
+          color:   hierarchyColor(h),
+          weight:  h === "primary" ? 3.5 : h === "secondary" ? 2 : 1,
+          opacity: h === "primary" ? 0.95 : h === "secondary" ? 0.80 : 0.55,
         };
       },
       onEachFeature: function(feature, layer) {
         const p = feature.properties;
-        const pressure = p.local_pressure != null
-          ? `<br><strong>Traffic Pressure:</strong> ${p.local_pressure.toFixed(0)} pop/km`
-          : "";
+        const deg = p.max_degree || "—";
         layer.bindPopup(
-          `<strong>Congestion:</strong> ${p.congestion}<br>` +
-          `<strong>Road Density:</strong> ${p.local_density?.toFixed(2)} km/km²${pressure}`
+          `<strong>${(p.hierarchy || "local").charAt(0).toUpperCase() + (p.hierarchy||"local").slice(1)} road</strong><br>` +
+          `Length: ${p.length_m != null ? (p.length_m / 1000).toFixed(2) + " km" : "—"}<br>` +
+          `Intersections: ${deg} connections`
         );
       },
     }).addTo(map);
 
-    // Render hotspot outlines on top
-    const hotspotFeatures = {
-      type: "FeatureCollection",
-      features: geojsonData.features.filter(f => f.properties.type === "hotspot"),
-    };
-    if (hotspotFeatures.features.length > 0) {
-      L.geoJSON(hotspotFeatures, {
-        style: { color: "#c0392b", weight: 2.5, fill: false, dashArray: "6,3" },
-      }).addTo(map);
-    }
-
     try {
-      const bounds = resultLayer.getBounds();
-      if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
+      const b = resultLayer.getBounds();
+      if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
     } catch(e) {}
 
     renderTrafficResults({
-      road_length_km:      roadLengthKm,
-      aoi_area_km2:        aoiAreaKm2,
-      road_density:        roadDensity,
-      density_class:       densityClass,
-      traffic_pressure:    trafficPressure,
-      high_congestion_pct: highCongestionPct,
-      cell_size_m:         cellSizeM,
+      road_length_km:       roadLengthKm,
+      aoi_area_km2:         aoiAreaKm2,
+      road_density:         roadDensity,
+      density_class:        densityClass,
+      traffic_pressure:     trafficPressure,
+      high_congestion_pct:  highCongestionPct,
+      cell_size_m:          cellSizeM,
+      segment_count:        segmentCount,
+      avg_segment_len_m:    avgSegmentLenM,
+      intersection_density: intersectionDensity,
+      connectivity_index:   connectivityIndex,
+      primary_pct:          primaryPct,
+      secondary_pct:        secondaryPct,
+      local_pct:            localPct,
+      primary_len_km:       primaryLenKm,
+      secondary_len_km:     secondaryLenKm,
+      local_len_km:         localLenKm,
+      fragmented_zone_pct:  fragmentedZonePct,
     }, inputs);
 
   } catch (error) {
@@ -1705,42 +1722,65 @@ async function runTrafficAnalysis() {
 
 /* ---------- Render Traffic Results ---------- */
 function renderTrafficResults(stats, inputs) {
-  const densityClass  = stats.density_class || "—";
-  const densityBadge  = densityClass === "optimal"
-    ? `<span style="color:var(--success)">Optimal</span>`
+  const aoiKm2       = parseFloat(stats.aoi_area_km2) || 0;
+  const roadLenKm    = parseFloat(stats.road_length_km) || 0;
+  const roadDensity  = parseFloat(stats.road_density) || 0;
+  const densityClass = stats.density_class || "—";
+  const highCongPct  = parseFloat(stats.high_congestion_pct) || 0;
+
+  // Network metrics
+  const segCount     = parseInt(stats.segment_count)        || 0;
+  const avgSegM      = parseFloat(stats.avg_segment_len_m)  || 0;
+  const intDensity   = parseFloat(stats.intersection_density)|| 0;
+  const connIdx      = parseFloat(stats.connectivity_index)  || 0;
+  const primPct      = parseFloat(stats.primary_pct)         || 0;
+  const secPct       = parseFloat(stats.secondary_pct)       || 0;
+  const locPct       = parseFloat(stats.local_pct)           || 0;
+  const primKm       = parseFloat(stats.primary_len_km)      || 0;
+  const secKm        = parseFloat(stats.secondary_len_km)    || 0;
+  const locKm        = parseFloat(stats.local_len_km)        || 0;
+  const fragPct      = parseFloat(stats.fragmented_zone_pct) || 0;
+
+  // Connectivity quality label
+  const connLabel = connIdx >= 3.5
+    ? { text: "Well-connected",   color: "var(--success)" }
+    : connIdx >= 2.5
+    ? { text: "Moderately connected", color: "var(--warning)" }
+    : { text: "Poorly connected", color: "var(--danger)" };
+
+  // Density badge
+  const densityBadge = densityClass === "optimal"
+    ? `<span style="color:var(--success)">Optimal (2–10 km/km²)</span>`
     : densityClass === "low"
-      ? `<span style="color:var(--danger)">Low (underdeveloped)</span>`
-      : `<span style="color:var(--warning)">High (overbuilt)</span>`;
+      ? `<span style="color:var(--danger)">Low — underdeveloped (&lt; 2 km/km²)</span>`
+      : `<span style="color:var(--warning)">High — overbuilt (&gt; 10 km/km²)</span>`;
 
-  const highPct    = parseFloat(stats.high_congestion_pct);
-  const lowPct     = 100 - highPct;
-  const highPctColor = highPct > 30 ? "var(--danger)" : highPct > 10 ? "var(--warning)" : "var(--success)";
+  // Hierarchy stacked bar
+  const hierarchyBar = `
+    <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Road Hierarchy Distribution</div>
+    <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px;">
+      <div style="width:${primPct}%;background:#e74c3c;" title="Primary ${primPct.toFixed(1)}%"></div>
+      <div style="width:${secPct}%;background:#f39c12;"  title="Secondary ${secPct.toFixed(1)}%"></div>
+      <div style="width:${locPct}%;background:#3498db;"  title="Local ${locPct.toFixed(1)}%"></div>
+    </div>
+    <div style="display:flex;gap:10px;font-size:10px;color:var(--text-muted);">
+      <span><span style="color:#e74c3c;">■</span> Primary ${primPct.toFixed(1)}%</span>
+      <span><span style="color:#f39c12;">■</span> Secondary ${secPct.toFixed(1)}%</span>
+      <span><span style="color:#3498db;">■</span> Local ${locPct.toFixed(1)}%</span>
+    </div>`;
 
-  const trafficScore = densityClass === "optimal" ? 75 : densityClass === "low" ? 30 : 45;
-  const cat = perfCategory(trafficScore);
+  // Fragmentation insight
+  const fragInsight = fragPct > 40
+    ? `⚠ ${fragPct.toFixed(0)}% of the AOI has only local roads with no structural connections — highly fragmented zones.`
+    : fragPct > 15
+    ? `Moderate fragmentation: ${fragPct.toFixed(0)}% of the area lacks primary or secondary road access.`
+    : `Road network is well-structured with minimal isolated local areas (${fragPct.toFixed(0)}%).`;
 
   const pressureRow = stats.traffic_pressure ? `
     <div class="insight-card">
       <div class="label">Traffic Pressure</div>
       <div class="value">${parseFloat(stats.traffic_pressure).toFixed(0)} pop / road-km</div>
     </div>` : "";
-
-  const chartHtml = miniBarChart(
-    [lowPct.toFixed(1), highPct.toFixed(1)],
-    2,
-    ["#2ecc71", "#e74c3c"],
-    ["Low/Med", "High Cong."]
-  );
-
-  const ineq = inequalityLabel(calcStdDev([lowPct, highPct]));
-
-  const keyInsight = highPct > 30
-    ? `High congestion affects ${highPct.toFixed(1)}% of the area — road infrastructure is under serious pressure.`
-    : highPct > 10
-    ? `Moderate congestion detected in ${highPct.toFixed(1)}% of the area. Monitor key corridors.`
-    : `Road network is performing well — congestion is limited to ${highPct.toFixed(1)}% of the area.`;
-
-  const aoiKm2 = parseFloat(stats.aoi_area_km2);
 
   const inputsHtml = `
     <div class="insight-card">
@@ -1752,20 +1792,19 @@ function renderTrafficResults(stats, inputs) {
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.aoiFileName}</div>
     </div>
     <div class="insight-card">
-      <div class="label">Data Coverage Area</div>
-      <div class="value">${isNaN(aoiKm2) ? "N/A" : aoiKm2.toFixed(2) + " km²"}</div>
+      <div class="label">AOI Area</div>
+      <div class="value">${aoiKm2.toFixed(2)} km²</div>
     </div>
     ${inputs.population != null ? `
     <div class="insight-card">
       <div class="label">Population (input)</div>
       <div class="value">${inputs.population.toLocaleString()}</div>
-    </div>` : ""}
-  `;
+    </div>` : ""}`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Traffic Analysis — Results</h3>
-      <p class="panel-desc">Road density = km of road per km². Green = low congestion · Orange = medium · Red = high.</p>
+      <p class="panel-desc">Road hierarchy map · Red = primary corridors · Amber = connectors · Blue = local</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -1773,53 +1812,76 @@ function renderTrafficResults(stats, inputs) {
         <div class="tab"        data-tab="grid">Grid / Cell</div>
       </div>
 
+      <!-- RAW tab -->
       <div class="tab-content" id="tab-raw">
         <p class="text-muted">Uploaded input data.</p>
         ${inputsHtml}
       </div>
 
+      <!-- FULL AREA tab — structural network analysis -->
       <div class="tab-content active" id="tab-full">
+
+        <div style="margin:0 0 6px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Network overview</div>
         <div class="insight-card">
           <div class="label">Total Road Length</div>
-          <div class="value">${parseFloat(stats.road_length_km).toFixed(2)} km</div>
+          <div class="value">${roadLenKm.toFixed(2)} km</div>
         </div>
         <div class="insight-card">
-          <div class="label">AOI Area</div>
-          <div class="value">${isNaN(aoiKm2) ? "N/A" : aoiKm2.toFixed(2) + " km²"}</div>
+          <div class="label">Road Segments</div>
+          <div class="value">${segCount.toLocaleString()}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Avg Segment Length</div>
+          <div class="value">${avgSegM >= 1000 ? (avgSegM/1000).toFixed(2) + " km" : avgSegM.toFixed(0) + " m"}</div>
         </div>
         <div class="insight-card">
           <div class="label">Road Density</div>
-          <div class="value">${parseFloat(stats.road_density).toFixed(2)} km / km²</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Density Classification</div>
-          <div class="value">${densityBadge}</div>
-        </div>
-        <div class="insight-card">
-          <div class="label">Performance</div>
-          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+          <div class="value">${roadDensity.toFixed(2)} km / km²  —  ${densityBadge}</div>
         </div>
         ${pressureRow}
+
+        <div style="margin:12px 0 6px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Connectivity &amp; intersections</div>
         <div class="insight-card">
-          <div class="label">High-Congestion Area</div>
-          <div class="value" style="color:${highPctColor}">${highPct.toFixed(1)}% of AOI</div>
+          <div class="label">Connectivity Index</div>
+          <div class="value" style="color:${connLabel.color}">${connIdx.toFixed(2)} avg connections — ${connLabel.text}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Spatial Balance</div>
-          <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
+          <div class="label">Intersection Density</div>
+          <div class="value">${intDensity.toFixed(2)} intersections / km²</div>
         </div>
-        ${chartHtml}
-        <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
-          💡 ${keyInsight}
+        <div class="insight-card">
+          <div class="label">Fragmented Zones</div>
+          <div class="value" style="color:${fragPct > 30 ? "var(--danger)" : fragPct > 15 ? "var(--warning)" : "var(--success)"}">${fragPct.toFixed(1)}% local-only coverage</div>
         </div>
+
+        <div style="margin:12px 0 6px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Road hierarchy</div>
+        ${hierarchyBar}
+        <div class="insight-card" style="margin-top:8px;">
+          <div class="label" style="color:#e74c3c;">Primary corridors</div>
+          <div class="value">${primKm.toFixed(2)} km &nbsp;·&nbsp; ${primPct.toFixed(1)}% of network</div>
+        </div>
+        <div class="insight-card">
+          <div class="label" style="color:#f39c12;">Secondary connectors</div>
+          <div class="value">${secKm.toFixed(2)} km &nbsp;·&nbsp; ${secPct.toFixed(1)}% of network</div>
+        </div>
+        <div class="insight-card">
+          <div class="label" style="color:#3498db;">Local roads</div>
+          <div class="value">${locKm.toFixed(2)} km &nbsp;·&nbsp; ${locPct.toFixed(1)}% of network</div>
+        </div>
+
+        <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:10px;font-size:12px;color:var(--text-primary);">
+          💡 ${fragInsight}
+        </div>
+
         <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
           <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
           Download GeoJSON
         </button>
       </div>
 
+      <!-- GRID tab — congestion scoring -->
       <div class="tab-content" id="tab-grid">
-        <p class="text-muted">Click this tab to generate the cell grid…</p>
+        <p class="text-muted">Click this tab to generate the congestion cell grid…</p>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -3381,6 +3443,17 @@ function wireTabSwitching() {
         try {
           const geojson = await fetchAndRenderGrid(lastResultService, lastResultBlob);
           gridLayer.addTo(map);
+
+          // For traffic: overlay hotspot outlines on the congestion grid
+          if (lastResultService === "traffic" && lastResultBlob) {
+            const hotspotFeats = lastResultBlob.features.filter(f => f.properties.type === "hotspot");
+            if (hotspotFeats.length > 0) {
+              L.geoJSON({ type: "FeatureCollection", features: hotspotFeats }, {
+                style: { color: "#c0392b", weight: 2.5, fill: false, dashArray: "6,3" },
+              }).addTo(map);
+            }
+          }
+
           try {
             const b = gridLayer.getBounds();
             if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
