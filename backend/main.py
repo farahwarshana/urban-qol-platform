@@ -1086,3 +1086,28 @@ def login(user: UserLogin):
     
     token = create_token({"sub": user.email})
     return {"token": token, "username": result.username}
+
+# ____________AnalysisRecord_________
+
+class AnalysisRecord(BaseModel):
+    type: str
+    title: str
+    area: Optional[str] = ""
+    score: Optional[int] = 0
+    status: Optional[str] = "mid"
+
+@app.post("/analyses", tags=["User"])
+def save_analysis(analysis: AnalysisRecord, username: str = "default"):
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO analyses (username, type, title, area, score, status)
+            VALUES (:username, :type, :title, :area, :score, :status)
+        """), {
+            "username": username,
+            "type": analysis.type,
+            "title": analysis.title,
+            "area": analysis.area,
+            "score": analysis.score,
+            "status": analysis.status
+        })
+    return {"message": "Analysis saved successfully"}
