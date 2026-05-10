@@ -4,7 +4,14 @@ from ast import Index
 import os
 from pyproj import datadir
 
-os.environ["PROJ_LIB"] = datadir.get_data_dir()
+from dotenv import load_dotenv
+
+load_dotenv()
+
+proj_path = datadir.get_data_dir()
+
+os.environ["PROJ_LIB"] = proj_path
+os.environ["PROJ_DATA"] = proj_path
 
 import shutil
 import uuid
@@ -24,8 +31,11 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 
-# ----------------------------------------------------
+# -----------------------to render (url online)-----------------------------
+from fastapi.staticfiles import StaticFiles
+from fastapi import Request
 
+# ------------------------------------------------------------------------------
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,6 +65,15 @@ app = FastAPI(
     description="Platform analyzes multiple aspects of urban quality of life in order to identify opportunities for enhancement.",
     version="1.0.0",
 )
+# ----------------------api for (online url)-----------------------
+BASE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "frontend"
+)
+
+app.mount("/css", StaticFiles(directory=os.path.join(BASE_DIR, "css")), name="css")
+app.mount("/js", StaticFiles(directory=os.path.join(BASE_DIR, "js")), name="js")
+app.mount("/images", StaticFiles(directory=os.path.join(BASE_DIR, "images")), name="images")
 
 # ── CORS Middleware ───────────────────────────────────────────────────────────
 app.add_middleware(
@@ -92,9 +111,9 @@ app.add_middleware(
 )
 
 # ── Directories ───────────────────────────────────────────────────────────────
-BASE_DIR   = Path(__file__).parent
-UPLOAD_DIR = BASE_DIR / "temp_uploads"
-OUTPUT_DIR = BASE_DIR / "outputs"
+BACKEND_DIR   = Path(__file__).parent
+UPLOAD_DIR = BACKEND_DIR / "temp_uploads"
+OUTPUT_DIR = BACKEND_DIR / "outputs"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -107,7 +126,7 @@ def get_output_subdir(name):
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/", tags=["Health"])
-def root():
+def Health():
     return {"status": "ok", "message": "Urban QOL API is running."}
 
 
@@ -957,9 +976,12 @@ class UserProfile(BaseModel):
     city: Optional[str] = ""
     organization: Optional[str] = ""
     phone: Optional[str] = ""
-    
+
+
 def init_db():
     with engine.connect() as conn:
+
+        # Users table
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -974,27 +996,46 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
+
+        # Analyses table
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS analyses (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(100) NOT NULL,
+                type VARCHAR(100),
+                title VARCHAR(200),
+                area VARCHAR(200),
+                score INTEGER,
+                status VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+
         conn.commit()
+
 
 init_db()
 
+
 @app.get("/profile", tags=["User"])
 def get_profile(username: str = "default"):
+
     with engine.connect() as conn:
         result = conn.execute(
             text("SELECT * FROM users WHERE username = :username"),
             {"username": username}
         ).fetchone()
-        
+
         if not result:
             return {
                 "full_name": "",
                 "email": "",
                 "city": "",
                 "organization": "",
-                "initials": ""
+                "initials": "",
+                "phone": ""
             }
-        
+
         return {
             "full_name": result.full_name,
             "email": result.email,
@@ -1002,25 +1043,50 @@ def get_profile(username: str = "default"):
             "organization": result.organization,
             "initials": result.initials,
             "phone": result.phone
-            
         }
+
 
 @app.post("/profile", tags=["User"])
 def save_profile(profile: UserProfile, username: str = "default"):
+
     names = profile.full_name.strip().split()
-    initials = (names[0][0] + names[-1][0]).upper() if len(names) >= 2 else names[0][0].upper()
-    
+
+    initials = (
+        (names[0][0] + names[-1][0]).upper()
+        if len(names) >= 2
+        else names[0][0].upper()
+    )
+
     with engine.begin() as conn:
+
         conn.execute(text("""
-            INSERT INTO users (username, full_name, email, city, organization, initials, phone)
-            VALUES (:username, :full_name, :email, :city, :organization, :initials, :phone)
-            ON CONFLICT (username) DO UPDATE SET
-                full_name = :full_name,
-                email = :email,
-                city = :city,
-                organization = :organization,
-                initials = :initials,
-                phone = :phone
+            INSERT INTO users (
+                username,
+                full_name,
+                email,
+                city,
+                organization,
+                initials,
+                phone
+            )
+            VALUES (
+                :username,
+                :full_name,
+                :email,
+                :city,
+                :organization,
+                :initials,
+                :phone
+            )
+
+            ON CONFLICT (username)
+            DO UPDATE SET
+                full_name = EXCLUDED.full_name,
+                email = EXCLUDED.email,
+                city = EXCLUDED.city,
+                organization = EXCLUDED.organization,
+                initials = EXCLUDED.initials,
+                phone = EXCLUDED.phone
         """), {
             "username": username,
             "full_name": profile.full_name,
@@ -1030,15 +1096,14 @@ def save_profile(profile: UserProfile, username: str = "default"):
             "initials": initials,
             "phone": profile.phone
         })
-    
+
     return {"message": "Profile saved successfully"}
 
 # ------------------------ Authentication  endpoints-----------------
 import bcrypt
-from jose import JWTError, jwt
 from datetime import datetime, timedelta
 
-SECRET_KEY = "urban_qol_secret_key_2026"
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
@@ -1157,3 +1222,17 @@ def get_analyses(username: str):
             }
             for row in result
         ]
+    
+    # -------------------- endpoint (online url)-----------------
+@app.get("/", tags=["Frontend"])
+def root():
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
+
+@app.get("/{page_name}.html", tags=["Frontend"])
+def serve_html_page(page_name: str):
+    file_path = os.path.join(BASE_DIR, page_name + ".html")
+
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+
+    return {"error": "HTML page not found", "path": file_path}
