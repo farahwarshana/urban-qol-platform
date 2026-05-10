@@ -1120,7 +1120,7 @@ class AnalysisRecord(BaseModel):
     status: Optional[str] = "mid"
 
 @app.post("/analyses", tags=["User"])
-def save_analysis(analysis: AnalysisRecord, username: str = "default"):
+def save_analysis(analysis: AnalysisRecord, username: str):
     with engine.begin() as conn:
         conn.execute(text("""
             INSERT INTO analyses (username, type, title, area, score, status)
@@ -1138,7 +1138,7 @@ def save_analysis(analysis: AnalysisRecord, username: str = "default"):
 
 
 @app.get("/analyses", tags=["User"])
-def get_analyses(username: str = "default"):
+def get_analyses(username: str):
     with engine.connect() as conn:
         result = conn.execute(
             text("SELECT * FROM analyses WHERE username = :username ORDER BY created_at DESC"),
