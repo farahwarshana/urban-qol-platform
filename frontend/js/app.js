@@ -54,15 +54,22 @@ if (loginForm) {
 }
 
 
-/* ---------- "Continue as guest" button ---------- */
+// /* ---------- "Continue as guest" button ---------- */
+// const guestBtn = document.getElementById("guestBtn");
+// if (guestBtn) {
+//   guestBtn.addEventListener("click", function () {
+//     // TODO: connect to backend if guests should still be tracked
+//     window.location.href = "dashboard.html";
+//   });
+// }
 const guestBtn = document.getElementById("guestBtn");
 if (guestBtn) {
   guestBtn.addEventListener("click", function () {
-    // TODO: connect to backend if guests should still be tracked
+    localStorage.removeItem("token");
+    localStorage.removeItem("username");
     window.location.href = "dashboard.html";
   });
 }
-
 /* ---------- REGISTER FORM ---------- */
 const registerForm = document.getElementById("registerForm");
 if (registerForm) {

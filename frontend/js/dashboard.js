@@ -23,7 +23,7 @@
 
 function autoSaveCurrentAnalysis() {
   const username = localStorage.getItem('username') || 'default';
-  if (!lastResultService) return;
+  if (!username) return;
 
   const serviceNames = {
     'ndvi': 'NDVI Analysis',

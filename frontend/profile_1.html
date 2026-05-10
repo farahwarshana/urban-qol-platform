@@ -731,11 +731,10 @@
 let analyses = [];
 
 async function loadAnalyses() {
-  const res = await fetch('http://localhost:8000/analyses');
+  const username = localStorage.getItem('username') || 'default';
+  const res = await fetch(`http://localhost:8000/analyses?username=${username}`);
   const data = await res.json();
-
   analyses = Array.isArray(data) ? data : [];
-
   renderList('all');
 }
 
