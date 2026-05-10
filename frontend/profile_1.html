@@ -832,20 +832,37 @@ async function saveProfile() {
   toggleEdit();
   showToast('Profile updated successfully');
 }
-
   function handleAvatar(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-      const av = document.getElementById('avatarEl');
-      av.style.backgroundImage = `url(${ev.target.result})`;
-      av.style.backgroundSize = 'cover';
-      av.style.backgroundPosition = 'center';
-      document.getElementById('avatarInitials').style.display = 'none';
-    };
-    reader.readAsDataURL(file);
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const username = localStorage.getItem('username') || 'default';
+    localStorage.setItem(`profileAvatar_${username}`, ev.target.result);
+    setAvatarImage(ev.target.result);
+    showToast('Profile photo saved');
+  };
+
+  reader.readAsDataURL(file);
+ }
+
+ function setAvatarImage(src) {
+  const av = document.getElementById('avatarEl');
+  av.style.backgroundImage = `url(${src})`;
+  av.style.backgroundSize = 'cover';
+  av.style.backgroundPosition = 'center';
+  document.getElementById('avatarInitials').style.display = 'none';
+}
+
+ function loadSavedAvatar() {
+  const username = localStorage.getItem('username') || 'default';
+  const savedAvatar = localStorage.getItem(`profileAvatar_${username}`);
+
+  if (savedAvatar) {
+    setAvatarImage(savedAvatar);
   }
+}
 
   function showToast(msg) {
     const t = document.getElementById('toast');
@@ -876,6 +893,7 @@ async function loadProfile() {
 
 loadProfile();
 loadAnalyses();
+loadSavedAvatar();
 
 </script>
 </body>
