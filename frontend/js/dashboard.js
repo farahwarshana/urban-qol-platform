@@ -49,7 +49,9 @@ function autoSaveCurrentAnalysis() {
   const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
   const status = score >= 75 ? 'high' : score >= 40 ? 'mid' : 'low';
 
-  fetch(`http://localhost:8000/analyses?username=${username}`, {
+
+  fetch(`${API_BASE_URL}/analyses?username=${username}`, {
+  // fetch(`http://localhost:8000/analyses?username=${username}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -407,7 +409,8 @@ async function runNDVIAnalysis() {
   `;
 
   try {
-    const response = await fetch("http://localhost:8000/calculate-ndvi", {
+    const response = await fetch(`${API_BASE_URL}/calculate-ndvi`, {
+    // const response = await fetch("http://localhost:8000/calculate-ndvi", {
       method: "POST",
       body: formData,
     });
@@ -600,7 +603,9 @@ async function runCrimeAnalysis() {
     const params = new URLSearchParams();
     if (latFieldValue) params.set("lat_field", latFieldValue);
     if (lonFieldValue) params.set("lon_field", lonFieldValue);
-    const url = `http://localhost:8000/calculate-crime-density${params.toString() ? "?" + params.toString() : ""}`;
+
+    const url = `${API_BASE_URL}/calculate-crime-density${params.toString() ? "?" + params.toString() : ""}`;
+    // const url = `http://localhost:8000/calculate-crime-density${params.toString() ? "?" + params.toString() : ""}`;
     
     const response = await fetch(url, {
       method: "POST",
@@ -886,7 +891,8 @@ async function runFacilityAccessibilityAnalysis() {
     const formData = new FormData();
     formData.append("facilities_geojson", facilitiesFile);
 
-    const url = `http://localhost:8000/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&network_dist_m=${networkDist}`;
+    const url = `${API_BASE_URL}/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&network_dist_m=${networkDist}`;
+    // const url = `http://localhost:8000/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&network_dist_m=${networkDist}`;
     const response = await fetch(url, { method: "POST", body: formData });
 
     if (!response.ok) {
@@ -1021,7 +1027,8 @@ async function runPublicTransportAnalysis() {
   `;
 
   try {
-    let url = `http://localhost:8000/calculate-transit-coverage?walking_distance_m=${walkingDistance}`;
+    let url = `${API_BASE_URL}/calculate-transit-coverage?walking_distance_m=${walkingDistance}`;
+    // let url = `http://localhost:8000/calculate-transit-coverage?walking_distance_m=${walkingDistance}`;
     if (populationCount) url += `&population_count=${populationCount}`;
 
     const response = await fetch(url, { method: "POST", body: formData });
@@ -1332,7 +1339,8 @@ async function runVegetationAnalysis() {
   const formData = new FormData();
   formData.append("geotiff", tiffFile);
 
-  const url = `http://localhost:8000/calculate-vegetation-density?ndvi_threshold=${threshold}`;
+  // const url = `http://localhost:8000/calculate-vegetation-density?ndvi_threshold=${threshold}`;
+  const url = `${API_BASE_URL}/calculate-vegetation-density?ndvi_threshold=${threshold}`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
@@ -1661,7 +1669,9 @@ async function runTrafficAnalysis() {
   `;
 
   try {
-    let url = "http://localhost:8000/calculate-traffic";
+    // let url = "http://localhost:8000/calculate-traffic";
+    
+    let url = `${API_BASE_URL}/calculate-traffic`;
     if (population !== null) url += `?population=${population}`;
 
     const response = await fetch(url, { method: "POST", body: formData });
@@ -1994,7 +2004,8 @@ async function runInformalSettlementAnalysis() {
 
   try {
     const response = await fetch(
-      "http://localhost:8000/calculate-informal-settlement",
+      `${API_BASE_URL}/calculate-informal-settlement`
+      // "http://localhost:8000/calculate-informal-settlement",
       { method: "POST", body: formData }
     );
 
@@ -3033,7 +3044,8 @@ async function runAirQualityAnalysis() {
   `;
 
   try {
-    const response = await fetch("http://localhost:8000/calculate-air-quality", {
+    `${API_BASE_URL}/calculate-air-quality`
+    // const response = await fetch("http://localhost:8000/calculate-air-quality", {
       method: "POST",
       body: formData,
     });
@@ -4776,30 +4788,67 @@ async function fetchAndRenderGrid(service, blob) {
     if (service === "ndvi" || service === "heat-index" || service === "air-quality") {
       const file = new File([blob], "result.tif", { type: "image/tiff" });
       formData.append("geotiff", file);
+      // endpoint = service === "ndvi"
+      //   ? "http://localhost:8000/calculate-grid/ndvi"
+      //   : service === "heat-index"
+      //     ? "http://localhost:8000/calculate-grid/heat-index"
+      //     : "http://localhost:8000/calculate-grid/air-quality";
+      
       endpoint = service === "ndvi"
-        ? "http://localhost:8000/calculate-grid/ndvi"
-        : service === "heat-index"
-          ? "http://localhost:8000/calculate-grid/heat-index"
-          : "http://localhost:8000/calculate-grid/air-quality";
+  ? `${API_BASE_URL}/calculate-grid/ndvi`
+  : service === "heat-index"
+    ? `${API_BASE_URL}/calculate-grid/heat-index`
+    : `${API_BASE_URL}/calculate-grid/air-quality`;
+
     } else {
       const file = new File(
         [JSON.stringify(blob)],
         "result.geojson",
         { type: "application/json" }
       );
-      formData.append("geojson", file);
-      endpoint = service === "crime"
-        ? "http://localhost:8000/calculate-grid/crime"
-        : service === "urban-density"
-          ? "http://localhost:8000/calculate-grid/urban-density"
-          : service === "public-transport"
-            ? "http://localhost:8000/calculate-grid/public-transport"
-            : service === "vegetation"
-              ? "http://localhost:8000/calculate-grid/vegetation"
-              : service === "informal-settlement"
-                ? "http://localhost:8000/calculate-grid/informal-settlement"
-                : "http://localhost:8000/calculate-grid/facility-accessibility";
-    }
+    //   formData.append("geojson", file);
+    //   endpoint = service === "crime"
+    //     ? "http://localhost:8000/calculate-grid/crime"
+    //     : service === "urban-density"
+    //       ? "http://localhost:8000/calculate-grid/urban-density"
+    //       : service === "public-transport"
+    //         ? "http://localhost:8000/calculate-grid/public-transport"
+    //         : service === "vegetation"
+    //           ? "http://localhost:8000/calculate-grid/vegetation"
+    //           : service === "informal-settlement"
+    //             ? "http://localhost:8000/calculate-grid/informal-settlement"
+    //             : "http://localhost:8000/calculate-grid/facility-accessibility";
+    
+    // }
+    formData.append("geojson", file);
+
+endpoint = service === "crime"
+  ? `${API_BASE_URL}/calculate-grid/crime`
+  : service === "urban-density"
+    ? `${API_BASE_URL}/calculate-grid/urban-density`
+    : service === "public-transport"
+      ? `${API_BASE_URL}/calculate-grid/public-transport`
+      : service === "vegetation"
+        ? `${API_BASE_URL}/calculate-grid/vegetation`
+        : service === "informal-settlement"
+          ? `${API_BASE_URL}/calculate-grid/informal-settlement`
+          : `${API_BASE_URL}/calculate-grid/facility-accessibility`;
+
+
+
+    formData.append("geojson", file);
+
+endpoint = service === "crime"
+  ? `${API_BASE_URL}/calculate-grid/crime`
+  : service === "urban-density"
+    ? `${API_BASE_URL}/calculate-grid/urban-density`
+    : service === "public-transport"
+      ? `${API_BASE_URL}/calculate-grid/public-transport`
+      : service === "vegetation"
+        ? `${API_BASE_URL}/calculate-grid/vegetation`
+        : service === "informal-settlement"
+          ? `${API_BASE_URL}/calculate-grid/informal-settlement`
+          : `${API_BASE_URL}/calculate-grid/facility-accessibility`;
 
     const response = await fetch(endpoint, { method: "POST", body: formData });
     if (!response.ok) {
