@@ -732,7 +732,8 @@ let analyses = [];
 
 async function loadAnalyses() {
   const username = localStorage.getItem('username') || 'default';
-  const res = await fetch(`http://localhost:8000/analyses?username=${username}`);
+  const res = await fetch(`/analyses?username=${username}`);
+  // fetch(`http://localhost:8000/analyses?username=${username}`)
   const data = await res.json();
   analyses = Array.isArray(data) ? data : [];
   renderList('all');
@@ -807,7 +808,8 @@ async function saveProfile() {
   const city  = document.getElementById('cityInput').value.trim();
   const org   = document.getElementById('orgInput').value.trim();
 
-  const res = await fetch(`http://localhost:8000/profile?username=${username}`, {
+  const res = await fetch(`/profile?username=${username}`, {
+  // fetch(`http://localhost:8000/profile?username=${username}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -873,7 +875,8 @@ async function saveProfile() {
 
 async function loadProfile() {
   const username = localStorage.getItem('username') || 'default';
-  const res = await fetch(`http://localhost:8000/profile?username=${username}`);
+  const res = await fetch(`/profile?username=${username}`)
+  // fetch(`http://localhost:8000/profile?username=${username}`);
   const data = await res.json();
   
   document.getElementById('displayName').textContent = data.full_name;
