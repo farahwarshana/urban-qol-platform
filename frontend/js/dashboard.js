@@ -6634,3 +6634,4 @@ async function downloadAnalysisPDF() {
 
   doc.save(`${service}_analysis_report.pdf`);
 }
+}
