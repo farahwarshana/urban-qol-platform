@@ -2003,12 +2003,12 @@ async function runInformalSettlementAnalysis() {
     </div>`;
 
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/calculate-informal-settlement`
-      // "http://localhost:8000/calculate-informal-settlement",
-      { method: "POST", body: formData }
-    );
-
+  const response = await fetch(
+    `${API_BASE_URL}/calculate-informal-settlement`,
+    // "http://localhost:8000/calculate-informal-settlement",
+    { method: "POST", body: formData }
+  );
+  
     if (!response.ok) {
       const err = await response.json();
       throw new Error(err.detail || `HTTP ${response.status}`);
