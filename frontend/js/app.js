@@ -4,7 +4,10 @@
    Shared JavaScript used across every page (login, register,
    dashboard, profile). Keep this file SMALL and SIMPLE.
    ============================================================ */
-
+const API_BASE_URL =
+  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? "http://localhost:8000"
+    : "";
 /* ---------- LOGIN FORM ---------- */
 const loginForm = document.getElementById("loginForm");
 if (loginForm) {
@@ -39,7 +42,7 @@ if (loginForm) {
     // window.location.href = "dashboard.html";  استبدلت السطر ده  بالاسطر الجاية 
 
     try {
-  const res = await fetch("/login", {
+  const res = await fetch(`${API_BASE_URL}/login`, {
   // fetch("http://localhost:8000/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -97,7 +100,7 @@ if (registerForm) {
   //   window.location.href = "login.html";
   // });          هستبدل دول بالاسطر الجاية 
 try {
-  const res = await fetch("/register", {
+  const res = await fetch(`${API_BASE_URL}/register`, {
   // fetch("http://localhost:8000/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

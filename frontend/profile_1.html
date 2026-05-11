@@ -711,6 +711,11 @@
 </div>
 
 <script>
+
+  const API_BASE_URL =
+  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? "http://localhost:8000"
+    : "";
 //   const analyses = [
 //     { id:1, type:'ndvi',    icon:'🌿', title:'NDVI Analysis — New Cairo',          area:'New Cairo District',      date:'May 6, 2026',  time:'11:34 PM', score:78,  status:'high'  },
 //     { id:2, type:'heat',    icon:'🌡️', title:'Heat Index — Heliopolis',            area:'Heliopolis Zone',          date:'May 5, 2026',  time:'10:12 PM', score:42,  status:'mid'   },
@@ -732,7 +737,7 @@ let analyses = [];
 
 async function loadAnalyses() {
   const username = localStorage.getItem('username') || 'default';
-  const res = await fetch(`/analyses?username=${username}`);
+  const res = await fetch(`${API_BASE_URL}/analyses?username=${username}`)
   // fetch(`http://localhost:8000/analyses?username=${username}`)
   const data = await res.json();
   analyses = Array.isArray(data) ? data : [];
@@ -808,18 +813,17 @@ async function saveProfile() {
   const city  = document.getElementById('cityInput').value.trim();
   const org   = document.getElementById('orgInput').value.trim();
 
-  const res = await fetch(`/profile?username=${username}`, {
-  // fetch(`http://localhost:8000/profile?username=${username}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      full_name: first + ' ' + last,
-      email: email,
-      city: city,
-      organization: org,
-      phone: document.getElementById('phoneInput').value.trim()
-    })
-  });
+  const res = await fetch(`${API_BASE_URL}/profile?username=${username}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    full_name: first + ' ' + last,
+    email: email,
+    city: city,
+    organization: org,
+    phone: document.getElementById('phoneInput').value.trim()
+  })
+});
 
   const data = await res.json();
 
@@ -875,7 +879,7 @@ async function saveProfile() {
 
 async function loadProfile() {
   const username = localStorage.getItem('username') || 'default';
-  const res = await fetch(`/profile?username=${username}`)
+  const res = await fetch(`${API_BASE_URL}/profile?username=${username}`);
   // fetch(`http://localhost:8000/profile?username=${username}`);
   const data = await res.json();
   
