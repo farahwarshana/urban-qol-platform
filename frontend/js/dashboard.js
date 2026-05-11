@@ -4855,6 +4855,7 @@ endpoint = service === "crime"
       throw new Error(err.detail || `Grid request failed: ${response.status}`);
     }
     geojson = await response.json();
+    }
   }
 
   const isVeg   = service === "vegetation";
