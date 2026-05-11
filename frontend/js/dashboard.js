@@ -28,6 +28,9 @@ function autoSaveCurrentAnalysis() {
   const username = localStorage.getItem('username') || 'default';
   if (!username) return;
 
+  const panel = document.getElementById('analysisPanel');
+  if (panel && panel.dataset.saved === 'true') return;
+
   const serviceNames = {
     'ndvi': 'NDVI Analysis',
     'heat-index': 'Heat Index',
@@ -43,7 +46,7 @@ function autoSaveCurrentAnalysis() {
 
   const title = serviceNames[lastResultService] || lastResultService;
   
-  const panel = document.getElementById('analysisPanel');
+  // const panel = document.getElementById('analysisPanel');
   const scoreEl = panel ? panel.querySelector('.insight-card .value') : null;
   const scoreMatch = scoreEl ? scoreEl.textContent.match(/(\d+)\s*\/\s*100/) : null;
   const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
@@ -4799,13 +4802,28 @@ async function fetchAndRenderGrid(service, blob) {
     ? `${API_BASE_URL}/calculate-grid/heat-index`
     : `${API_BASE_URL}/calculate-grid/air-quality`;
 
-    } else {
-      const file = new File(
-        [JSON.stringify(blob)],
-        "result.geojson",
-        { type: "application/json" }
-      );
-    //   formData.append("geojson", file);
+} else {
+  const file = new File(
+    [JSON.stringify(blob)],
+    "result.geojson",
+    { type: "application/json" }
+  );
+formData.append("geojson", file);
+
+  endpoint = service === "crime"
+    ? `${API_BASE_URL}/calculate-grid/crime`
+    : service === "urban-density"
+      ? `${API_BASE_URL}/calculate-grid/urban-density`
+      : service === "public-transport"
+        ? `${API_BASE_URL}/calculate-grid/public-transport`
+        : service === "vegetation"
+          ? `${API_BASE_URL}/calculate-grid/vegetation`
+          : service === "informal-settlement"
+            ? `${API_BASE_URL}/calculate-grid/informal-settlement`
+            : `${API_BASE_URL}/calculate-grid/facility-accessibility`;
+}
+
+            //   formData.append("geojson", file);
     //   endpoint = service === "crime"
     //     ? "http://localhost:8000/calculate-grid/crime"
     //     : service === "urban-density"
@@ -4817,46 +4835,15 @@ async function fetchAndRenderGrid(service, blob) {
     //           : service === "informal-settlement"
     //             ? "http://localhost:8000/calculate-grid/informal-settlement"
     //             : "http://localhost:8000/calculate-grid/facility-accessibility";
-    
     // }
-    formData.append("geojson", file);
 
-endpoint = service === "crime"
-  ? `${API_BASE_URL}/calculate-grid/crime`
-  : service === "urban-density"
-    ? `${API_BASE_URL}/calculate-grid/urban-density`
-    : service === "public-transport"
-      ? `${API_BASE_URL}/calculate-grid/public-transport`
-      : service === "vegetation"
-        ? `${API_BASE_URL}/calculate-grid/vegetation`
-        : service === "informal-settlement"
-          ? `${API_BASE_URL}/calculate-grid/informal-settlement`
-          : `${API_BASE_URL}/calculate-grid/facility-accessibility`;
-
-
-
-    formData.append("geojson", file);
-
-endpoint = service === "crime"
-  ? `${API_BASE_URL}/calculate-grid/crime`
-  : service === "urban-density"
-    ? `${API_BASE_URL}/calculate-grid/urban-density`
-    : service === "public-transport"
-      ? `${API_BASE_URL}/calculate-grid/public-transport`
-      : service === "vegetation"
-        ? `${API_BASE_URL}/calculate-grid/vegetation`
-        : service === "informal-settlement"
-          ? `${API_BASE_URL}/calculate-grid/informal-settlement`
-          : `${API_BASE_URL}/calculate-grid/facility-accessibility`;
-
-    const response = await fetch(endpoint, { method: "POST", body: formData });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail || `Grid request failed: ${response.status}`);
-    }
-    geojson = await response.json();
-    }
+  const response = await fetch(endpoint, { method: "POST", body: formData });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `Grid request failed: ${response.status}`);
   }
+  geojson = await response.json();
+}
 
   const isVeg   = service === "vegetation";
   const isTraffic = service === "traffic";
@@ -4940,7 +4927,7 @@ endpoint = service === "crime"
   });
 
   return geojson;
-}
+ }
 
 /* ---------- Attach file input listeners after DOM is updated ---------- */
 function attachFileInputListeners() {
