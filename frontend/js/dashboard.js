@@ -739,7 +739,8 @@ async function runUrbanDensityAnalysis() {
   `;
 
   try {
-    const url = `http://localhost:8000/calculate-urban-density?population_field=${encodeURIComponent(populationFieldValue)}`;
+    // const url = `http://localhost:8000/calculate-urban-density?population_field=${encodeURIComponent(populationFieldValue)}`;
+    const url = `${API_BASE_URL}/calculate-urban-density?population_field=${encodeURIComponent(populationFieldValue)}`;
     
     const response = await fetch(url, {
       method: "POST",
