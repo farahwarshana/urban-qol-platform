@@ -125,7 +125,7 @@ def get_output_subdir(name):
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@app.get("/", tags=["Health"])
+@app.get("/health", tags=["Health"])
 def Health():
     return {"status": "ok", "message": "Urban QOL API is running."}
 
