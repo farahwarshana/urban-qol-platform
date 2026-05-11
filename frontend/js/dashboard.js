@@ -17,7 +17,7 @@
    form is generated from this object — so adding a new service
    only requires editing this map.
    ============================================================ */
-const API_BASE_URL =
+var API_BASE_URL =
   window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
     ? "http://localhost:8000"
     : "";
