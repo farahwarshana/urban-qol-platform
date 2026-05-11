@@ -39,7 +39,8 @@ if (loginForm) {
     // window.location.href = "dashboard.html";  استبدلت السطر ده  بالاسطر الجاية 
 
     try {
-  const res = await fetch("http://localhost:8000/login", {
+  const res = await fetch("/login", {
+  // fetch("http://localhost:8000/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
@@ -96,7 +97,8 @@ if (registerForm) {
   //   window.location.href = "login.html";
   // });          هستبدل دول بالاسطر الجاية 
 try {
-  const res = await fetch("http://localhost:8000/register", {
+  const res = await fetch("/register", {
+  // fetch("http://localhost:8000/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
