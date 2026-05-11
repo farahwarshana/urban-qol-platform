@@ -25,11 +25,13 @@ var API_BASE_URL =
 // ------------------saveAnalysisToProfile--------------------
 
 function autoSaveCurrentAnalysis() {
-  const username = localStorage.getItem('username') || 'default';
+  const username = localStorage.getItem('username');
   if (!username) return;
 
   const panel = document.getElementById('analysisPanel');
   if (panel && panel.dataset.saved === 'true') return;
+
+  if (!lastResultService) return;
 
   const serviceNames = {
     'ndvi': 'NDVI Analysis',
@@ -1207,7 +1209,7 @@ function renderTransitResults(stats, inputs, geojsonData) {
   const score     = parseFloat(stats.overall_score);
   const cat       = !isNaN(score) ? perfCategory(score) : null;
 
-  const chartHtml = covPct !== null ? miniBarChart(
+  const c hartHtml = covPct !== null ? miniBarChart(
     [covPct.toFixed(1), uncovPct],
     2,
     ["#4cc2ff", "#e74c3c"],
@@ -1316,6 +1318,7 @@ function renderTransitResults(stats, inputs, geojsonData) {
   `;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -1577,6 +1580,7 @@ function renderVegetationResults(stats, inputs) {
     </div>`;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -1953,6 +1957,7 @@ function renderTrafficResults(stats, inputs) {
   `;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -2224,6 +2229,7 @@ function renderInformalSettlementResults(stats, inputs) {
     </div>`;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -2558,6 +2564,7 @@ function renderCrimeResults(stats, inputs, geojsonData) {
   `;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -2710,6 +2717,7 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
   `;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -2889,6 +2897,7 @@ function renderNDVIResults(stats, inputs) {
   `;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -3016,6 +3025,7 @@ function renderHeatIndexResults(stats, inputs) {
   `;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -3232,6 +3242,7 @@ function renderAirQualityResults(stats, inputs) {
   `;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -3372,6 +3383,7 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
   `;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -3414,6 +3426,7 @@ function renderResults(service) {
   `;
 
   wireTabSwitching();
+  autoSaveCurrentAnalysis();
 }
 
 
@@ -3471,6 +3484,7 @@ function wireTabSwitching() {
             if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
           } catch (e) { console.warn("Could not restore result layer:", e); }
         }
+        autoSaveCurrentAnalysis();
         _wireFullDownloadBtn();
 
       } else if (target === "grid") {
@@ -4808,7 +4822,8 @@ async function fetchAndRenderGrid(service, blob) {
     "result.geojson",
     { type: "application/json" }
   );
-formData.append("geojson", file);
+
+  formData.append("geojson", file);
 
   endpoint = service === "crime"
     ? `${API_BASE_URL}/calculate-grid/crime`
@@ -4823,27 +4838,17 @@ formData.append("geojson", file);
             : `${API_BASE_URL}/calculate-grid/facility-accessibility`;
 }
 
-            //   formData.append("geojson", file);
-    //   endpoint = service === "crime"
-    //     ? "http://localhost:8000/calculate-grid/crime"
-    //     : service === "urban-density"
-    //       ? "http://localhost:8000/calculate-grid/urban-density"
-    //       : service === "public-transport"
-    //         ? "http://localhost:8000/calculate-grid/public-transport"
-    //         : service === "vegetation"
-    //           ? "http://localhost:8000/calculate-grid/vegetation"
-    //           : service === "informal-settlement"
-    //             ? "http://localhost:8000/calculate-grid/informal-settlement"
-    //             : "http://localhost:8000/calculate-grid/facility-accessibility";
-    // }
+const response = await fetch(endpoint, {
+  method: "POST",
+  body: formData
+});
 
-  const response = await fetch(endpoint, { method: "POST", body: formData });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Grid request failed: ${response.status}`);
-  }
-  geojson = await response.json();
+if (!response.ok) {
+  throw new Error(`HTTP error! status: ${response.status}`);
 }
+
+geojson = await response.json();
+ }
 
   const isVeg   = service === "vegetation";
   const isTraffic = service === "traffic";
