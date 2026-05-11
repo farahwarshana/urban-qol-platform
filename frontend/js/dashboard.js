@@ -2008,7 +2008,7 @@ async function runInformalSettlementAnalysis() {
     // "http://localhost:8000/calculate-informal-settlement",
     { method: "POST", body: formData }
   );
-  
+
     if (!response.ok) {
       const err = await response.json();
       throw new Error(err.detail || `HTTP ${response.status}`);
@@ -3043,12 +3043,11 @@ async function runAirQualityAnalysis() {
     </div>
   `;
 
-  try {
-    `${API_BASE_URL}/calculate-air-quality`
-    // const response = await fetch("http://localhost:8000/calculate-air-quality", {
-      method: "POST",
-      body: formData,
-    });
+ try {
+  const response = await fetch(`${API_BASE_URL}/calculate-air-quality`, {
+    method: "POST",
+    body: formData,
+  });
 
     if (!response.ok) {
       const errorData = await response.json();
