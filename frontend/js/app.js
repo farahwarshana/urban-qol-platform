@@ -4,7 +4,7 @@
    Shared JavaScript used across every page (login, register,
    dashboard, profile). Keep this file SMALL and SIMPLE.
    ============================================================ */
-const API_BASE_URL =
+var API_BASE_URL =
   window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
     ? "http://localhost:8000"
     : "";
