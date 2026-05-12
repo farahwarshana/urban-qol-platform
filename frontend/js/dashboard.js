@@ -1209,7 +1209,7 @@ function renderTransitResults(stats, inputs, geojsonData) {
   const score     = parseFloat(stats.overall_score);
   const cat       = !isNaN(score) ? perfCategory(score) : null;
 
-  const c hartHtml = covPct !== null ? miniBarChart(
+  const chartHtml = covPct !== null ? miniBarChart(
     [covPct.toFixed(1), uncovPct],
     2,
     ["#4cc2ff", "#e74c3c"],
