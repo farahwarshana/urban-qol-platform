@@ -122,6 +122,13 @@ def get_output_subdir(name):
     path.mkdir(parents=True, exist_ok=True)
     return path
 
+def result_file_header(output_path):
+
+    relative_path = Path(output_path)\
+        .relative_to(BACKEND_DIR)
+
+    return str(relative_path)\
+        .replace("\\", "/")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -249,6 +256,7 @@ def calculate_crime_density_endpoint(
                 "X-Area-Count":    str(area_count),
                 "X-Avg-Density":   str(round(avg_density, 2)),
                 "X-Max-Density":   str(round(max_density, 2)),
+                "X-Result-File": f"outputs/urban_density/urban_density_{job_id}.geojson",
             },
         )
 
@@ -310,6 +318,8 @@ def calculate_urban_density_endpoint(
                 "X-Area-Count":       str(area_count),
                 "X-Avg-Density":      str(round(avg_density, 2)),
                 "X-Max-Density":      str(round(max_density, 2)),
+                "X-Result-File":
+        result_file_header(output_path),
             },
         )
 
@@ -1178,28 +1188,55 @@ def login(user: UserLogin):
 # ____________AnalysisRecord_________
 
 class AnalysisRecord(BaseModel):
+
     type: str
     title: str
-    area: Optional[str] = ""
-    score: Optional[int] = 0
-    status: Optional[str] = "mid"
+    area: str
+    score: int
+    status: str
+
+    preview_image: str | None = None
+
+    result_file: str | None = None
 
 @app.post("/analyses", tags=["User"])
 def save_analysis(analysis: AnalysisRecord, username: str):
+
     with engine.begin() as conn:
+
         conn.execute(text("""
-            INSERT INTO analyses (username, type, title, area, score, status)
-            VALUES (:username, :type, :title, :area, :score, :status)
+            INSERT INTO analyses (
+                username,
+                type,
+                title,
+                area,
+                score,
+                status,
+                preview_image,
+                result_file
+            )
+            VALUES (
+                :username,
+                :type,
+                :title,
+                :area,
+                :score,
+                :status,
+                :preview_image,
+                :result_file
+            )
         """), {
             "username": username,
             "type": analysis.type,
             "title": analysis.title,
             "area": analysis.area,
             "score": analysis.score,
-            "status": analysis.status
+            "status": analysis.status,
+            "preview_image": analysis.preview_image,
+            "result_file": analysis.result_file
         })
-    return {"message": "Analysis saved successfully"}
 
+    return {"message": "Analysis saved successfully"}
 
 
 @app.get("/analyses", tags=["User"])
@@ -1209,7 +1246,7 @@ def get_analyses(username: str):
             text("SELECT * FROM analyses WHERE username = :username ORDER BY created_at DESC"),
             {"username": username}
         ).fetchall()
-        
+
         return [
             {
                 "id": row.id,
@@ -1218,11 +1255,12 @@ def get_analyses(username: str):
                 "area": row.area,
                 "score": row.score,
                 "status": row.status,
-                "created_at": str(row.created_at)
+                "created_at": str(row.created_at),
+                "preview_image": row.preview_image,
+                "result_file": row.result_file
             }
             for row in result
         ]
-    
     # -------------------- endpoint (online url)-----------------
 @app.get("/", tags=["Frontend"])
 def root():
