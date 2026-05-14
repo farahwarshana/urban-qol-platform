@@ -82,7 +82,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=[
+    expose_headers=["X-Result-File",
         "X-NDVI-Min", "X-NDVI-Max", "X-NDVI-Mean", "X-Valid-Pixels", "X-NDVI-Stddev",
         "X-Red-Band", "X-NIR-Band", "X-Satellite",
         "X-Img-Width", "X-Img-Height", "X-Pixel-Size-X", "X-Pixel-Size-Y", "X-Pixel-Unit",
@@ -121,6 +121,12 @@ def get_output_subdir(name):
     path = OUTPUT_DIR / name
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+app.mount(
+    "/outputs",
+    StaticFiles(directory=str(OUTPUT_DIR)),
+    name="outputs"
+)
 
 def result_file_header(output_path):
 

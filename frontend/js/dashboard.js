@@ -31,10 +31,13 @@ let lastPreviewImage =
 
 function captureResultFile(response){
 
+  console.log(
+    "HEADER VALUE:",
+    response.headers.get("X-Result-File")
+  );
+
   lastResultFile =
-    response.headers.get(
-      "X-Result-File"
-    ) || "";
+    response.headers.get("X-Result-File") || "";
 
   console.log(
     "Captured result file:",

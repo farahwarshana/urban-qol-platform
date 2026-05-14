@@ -11,6 +11,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
         rel="stylesheet"/>
 
+        <link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet/dist/leaflet.css"
+/>
+
   <style>
 
     *{
@@ -116,16 +121,10 @@
 }
 
     .map-preview{
-      height:520px;
-      border-radius:16px;
-      background:
-        linear-gradient(
-          rgba(0,0,0,.35),
-          rgba(0,0,0,.35)
-        ),
-        url("images/opening-bg.png")
-        center/cover;
-    }
+  height:520px;
+  border-radius:16px;
+  overflow:hidden;
+}
 
     .section-title{
       font-size:18px;
@@ -705,6 +704,8 @@ style="margin-bottom:24px;">
 
 </div>
 
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
 <script>
 
 const API_BASE_URL =
@@ -910,7 +911,10 @@ function animateValue(id, end){
     }, 15);
 
 }
+
+
 </script>
+
 
 </body>
 </html>
