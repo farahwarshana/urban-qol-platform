@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0"/>
+
+  <title>Analysis Details</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+        rel="stylesheet"/>
+
+  <style>
+
+    *{
+      margin:0;
+      padding:0;
+      box-sizing:border-box;
+    }
+
+    :root{
+      --bg:#0f1117;
+      --surface:#1a1d27;
+      --surface2:#222636;
+      --border:rgba(255,255,255,.08);
+      --text:#f1f5f9;
+      --muted:#94a3b8;
+      --accent:#00d4aa;
+    }
+
+    body{
+      background:var(--bg);
+      color:var(--text);
+      font-family:'Space Grotesk',sans-serif;
+      min-height:100vh;
+      padding:40px;
+    }
+
+    .container{
+      max-width:1300px;
+      margin:auto;
+    }
+
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:24px;
+    }
+
+    .back-btn{
+      background:var(--surface2);
+      border:1px solid var(--border);
+      color:var(--text);
+      padding:10px 18px;
+      border-radius:10px;
+      cursor:pointer;
+      transition:.2s;
+      font-family:inherit;
+    }
+
+    .back-btn:hover{
+      border-color:var(--accent);
+      color:var(--accent);
+    }
+
+    .analysis-title{
+      font-size:34px;
+      font-weight:700;
+      margin-bottom:10px;
+    }
+
+    .analysis-sub{
+      color:var(--muted);
+      margin-bottom:30px;
+      font-size:15px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns:1.3fr .7fr;
+      gap:24px;
+    }
+
+    .card{
+
+  background:rgba(26,29,39,.88);
+
+  border:1px solid var(--border);
+
+  border-radius:20px;
+
+  padding:22px;
+
+  backdrop-filter:blur(14px);
+
+  transition:
+    transform .25s ease,
+    border-color .25s ease,
+    box-shadow .25s ease;
+
+}
+
+.card:hover{
+
+  transform:translateY(-4px);
+
+  border-color:
+    rgba(0,212,170,.28);
+
+  box-shadow:
+    0 10px 30px
+    rgba(0,212,170,.08);
+
+}
+
+    .map-preview{
+      height:520px;
+      border-radius:16px;
+      background:
+        linear-gradient(
+          rgba(0,0,0,.35),
+          rgba(0,0,0,.35)
+        ),
+        url("images/opening-bg.png")
+        center/cover;
+    }
+
+    .section-title{
+      font-size:18px;
+      margin-bottom:18px;
+      font-weight:600;
+    }
+
+    .stats{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:16px;
+    }
+
+    .stat-box{
+      background:var(--surface2);
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:20px;
+    }
+
+    .stat-label{
+      color:var(--muted);
+      font-size:13px;
+      margin-bottom:8px;
+    }
+
+    .stat-value{
+      font-size:28px;
+      font-weight:700;
+      color:var(--accent);
+    }
+
+    .recommendation{
+      padding:14px;
+      background:rgba(0,212,170,.08);
+      border:1px solid rgba(0,212,170,.18);
+      border-radius:12px;
+      margin-bottom:12px;
+      color:#d8fffa;
+      font-size:14px;
+      line-height:1.5;
+    }
+
+    .export-btn{
+      margin-top:18px;
+      width:100%;
+      border:none;
+      background:var(--accent);
+      color:#08110f;
+      font-weight:700;
+      padding:14px;
+      border-radius:12px;
+      cursor:pointer;
+      transition:.2s;
+      font-family:inherit;
+    }
+
+    .export-btn:hover{
+      transform:translateY(-2px);
+    }
+    /* _________details-tabs________ */
+
+.details-tabs{
+
+  display:flex;
+  gap:12px;
+  margin-bottom:24px;
+  flex-wrap:wrap;
+
+}
+
+.tab-btn{
+
+  background:var(--surface2);
+
+  border:1px solid var(--border);
+
+  color:var(--muted);
+
+  padding:10px 18px;
+
+  border-radius:12px;
+
+  cursor:pointer;
+
+  transition:.2s;
+
+  font-family:inherit;
+
+}
+
+.tab-btn.active{
+
+  background:rgba(0,212,170,.12);
+
+  border-color:rgba(0,212,170,.4);
+
+  color:var(--accent);
+
+}
+
+.tab-btn:hover{
+
+  border-color:var(--accent);
+
+  color:var(--accent);
+
+}
+
+
+/* __________ Chart Placeholder __________ */
+
+.chart-placeholder{
+
+  height:180px;
+
+  border-radius:16px;
+
+  background:#1f2635;
+
+  border:1px solid rgba(0,212,170,.18);
+
+  color:#d8fffa;
+
+  display:flex;
+
+  align-items:center;
+
+  justify-content:center;
+
+  font-size:14px;
+
+}
+
+    /* __________ Tabs __________ */
+
+    .details-tabs{
+
+      display:flex;
+      gap:12px;
+      margin-bottom:24px;
+      flex-wrap:wrap;
+
+    }
+
+    .tab-btn{
+
+      background:var(--surface2);
+
+      border:1px solid var(--border);
+
+      color:var(--muted);
+
+      padding:10px 18px;
+
+      border-radius:12px;
+
+      cursor:pointer;
+
+      transition:.2s;
+
+      font-family:inherit;
+
+    }
+
+    .tab-btn.active{
+
+      background:rgba(0,212,170,.12);
+
+      border-color:rgba(0,212,170,.4);
+
+      color:var(--accent);
+
+    }
+
+    .tab-btn:hover{
+
+      border-color:var(--accent);
+
+      color:var(--accent);
+
+    }
+
+    /* __________ Chart Placeholder __________ */
+
+    .chart-placeholder{
+
+      height:180px;
+
+      border-radius:16px;
+
+      background:#1f2635;
+
+      border:1px solid rgba(0,212,170,.18);
+
+      color:#d8fffa;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      font-size:14px;
+
+    }
+    .fake-chart{
+
+  width:100%;
+
+  height:100%;
+
+  display:flex;
+
+  align-items:flex-end;
+
+  justify-content:space-evenly;
+
+  padding:20px;
+
+}
+
+.bar{
+
+  width:45px;
+
+  border-radius:12px 12px 0 0;
+
+  background:
+    linear-gradient(
+      to top,
+      rgba(0,212,170,.95),
+      rgba(0,212,170,.25)
+    );
+
+}
+
+.bar1{
+  height:40%;
+}
+
+.bar2{
+  height:70%;
+}
+
+.bar3{
+  height:90%;
+}
+
+.bar4{
+  height:55%;
+}
+
+
+.meta-list{
+
+  display:flex;
+
+  flex-direction:column;
+
+  gap:14px;
+
+}
+
+.meta-row{
+
+  display:flex;
+
+  justify-content:space-between;
+
+  align-items:center;
+
+  padding-bottom:12px;
+
+  border-bottom:
+    1px solid rgba(255,255,255,.05);
+
+}
+
+.meta-row span{
+
+  color:var(--muted);
+
+  font-size:14px;
+
+}
+
+.meta-row strong{
+
+  color:#d8fffa;
+
+  font-size:14px;
+
+}
+.status-good{
+  color:#00d4aa !important;
+}
+
+.status-moderate{
+  color:#ffc857 !important;
+}
+
+.status-critical{
+  color:#ff5c7a !important;
+}
+    @media(max-width:950px){
+
+      body{
+        padding:20px;
+      }
+
+      .grid{
+        grid-template-columns:1fr;
+      }
+
+      .map-preview{
+        height:320px;
+      }
+
+    }
+
+
+
+
+
+
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="topbar">
+
+    <button class="back-btn"
+            onclick="window.location.href='profile_1.html'">
+
+      ← Back
+
+    </button>
+
+  </div>
+
+  <div class="analysis-title"
+       id="analysisTitle">
+
+    Loading...
+
+  </div>
+
+  <div class="analysis-sub"
+       id="analysisMeta">
+
+    Loading analysis info...
+
+  </div>
+
+<!-- Tabs -->
+
+<div class="details-tabs">
+
+  <button class="tab-btn active"
+          onclick="showTab('overview', this)">
+
+    Overview
+
+  </button>
+
+  <button class="tab-btn"
+          onclick="showTab('stats', this)">
+
+    Statistics
+
+  </button>
+
+  <button class="tab-btn"
+          onclick="showTab('metadata', this)">
+
+    Metadata
+
+  </button>
+
+</div>
+
+<div class="grid">
+
+  <!-- LEFT -->
+    <div class="card section-block overview-block">
+
+      <div class="map-preview"
+           id="analysisPreview">
+      </div>
+
+    </div>
+
+    <!-- RIGHT -->
+
+    <div>
+
+      <!-- Statistics -->
+
+<div class="card section-block stats-block overview-block"
+     style="margin-bottom:24px;">
+
+  <div class="section-title">
+    Analysis Statistics
+  </div>
+
+  <div class="stats">
+
+    <div class="stat-box">
+
+      <div class="stat-label">
+        Quality Score
+      </div>
+
+      <div class="stat-value"
+           id="scoreValue">
+
+        --
+
+      </div>
+
+    </div>
+
+    <div class="stat-box">
+
+      <div class="stat-label">
+        Status
+      </div>
+
+      <div class="stat-value"
+           id="statusValue">
+
+        --
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- Chart -->
+
+<div class="card section-block stats-block overview-block"
+style="margin-bottom:24px;">
+
+<div class="section-title">
+    Analysis Distribution
+</div>
+
+<div class="chart-placeholder">
+
+
+  <div class="fake-chart">
+
+    <div class="bar bar1"></div>
+
+    <div class="bar bar2"></div>
+
+    <div class="bar bar3"></div>
+
+    <div class="bar bar4"></div>
+
+  </div>
+
+</div>
+
+        </div>
+
+      </div>
+    
+
+     <!-- Metadata -->
+
+<div class="card section-block metadata-block overview-block"
+     style="margin-bottom:24px;">
+
+  <div class="section-title">
+    Metadata
+  </div>
+
+  <div class="meta-list">
+
+    <div class="meta-row">
+
+      <span>Analysis Type</span>
+
+      <strong id="metaType">
+        Traffic
+      </strong>
+
+    </div>
+
+    <div class="meta-row">
+
+      <span>Area</span>
+
+      <strong id="metaArea">
+        Maadi
+      </strong>
+
+    </div>
+
+    <div class="meta-row">
+
+      <span>Source</span>
+
+      <strong>
+        OpenStreetMap
+      </strong>
+
+    </div>
+
+    <div class="meta-row">
+
+      <span>Resolution</span>
+
+      <strong>
+        10m
+      </strong>
+
+    </div>
+
+    <div class="meta-row">
+
+      <span>Generated</span>
+
+      <strong id="metaDate">
+        --
+      </strong>
+
+    </div>
+
+  </div>
+
+</div>
+
+      
+
+      <!-- Recommendations -->
+
+      <div class="card section-block overview-block">
+
+        <div class="section-title">
+          Recommendations
+        </div>
+
+        <div class="recommendation">
+          Improve green coverage in hotspot zones.
+        </div>
+
+        <div class="recommendation">
+          Increase monitoring frequency for this area.
+        </div>
+
+        <div class="recommendation">
+          Compare with previous analyses for trend tracking.
+        </div>
+
+        <button class="export-btn"
+                onclick="exportCurrentAnalysis()">
+
+          Export Full Report
+
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+
+const API_BASE_URL =
+  "http://localhost:8000";
+
+const params =
+  new URLSearchParams(window.location.search);
+
+const analysisId =
+  params.get("id");
+
+async function loadAnalysisDetails(){
+
+  const username =
+    localStorage.getItem("username")
+    || "default";
+
+  const res =
+    await fetch(
+      `${API_BASE_URL}/analyses?username=${username}`
+    );
+
+  const data =
+    await res.json();
+
+  const analysis =
+    data.find(
+      a => String(a.id) === String(analysisId)
+    );
+
+  if(!analysis){
+
+    document.getElementById(
+      "analysisTitle"
+    ).textContent =
+      "Analysis not found";
+
+    return;
+  }
+
+  document.getElementById(
+    "analysisTitle"
+  ).textContent =
+    analysis.title;
+
+  document.getElementById(
+    "analysisMeta"
+  ).textContent =
+    `${analysis.area} • ${new Date(
+      analysis.created_at
+    ).toLocaleString()}`;
+
+  animateValue(
+  "scoreValue",
+  analysis.score
+);
+
+  document.getElementById(
+    "statusValue"
+  ).textContent =
+    analysis.status;
+
+    const statusElement =
+  document.getElementById(
+    "statusValue"
+  );
+
+if(
+  analysis.status
+    .toLowerCase()
+    .includes("good")
+){
+
+  statusElement.classList.add(
+    "status-good"
+  );
+
+}
+
+else if(
+  analysis.status
+    .toLowerCase()
+    .includes("mid")
+){
+
+  statusElement.classList.add(
+    "status-moderate"
+  );
+
+}
+
+else{
+
+  statusElement.classList.add(
+    "status-critical"
+  );
+
+}
+
+  const preview =
+    analysis.preview_image
+    || "images/opening-bg.png";
+    console.log("Saved result file:", analysis.result_file);
+
+  document.getElementById(
+    "analysisPreview"
+  ).style.background =
+    `
+    linear-gradient(
+      rgba(0,0,0,.35),
+      rgba(0,0,0,.35)
+    ),
+    url(${preview}) center/cover
+    `;
+
+}
+
+function exportCurrentAnalysis(){
+
+  const title =
+    document.getElementById(
+      "analysisTitle"
+    ).textContent;
+
+  const content = `
+MALAZ ANALYSIS REPORT
+=========================
+
+${title}
+
+Generated from MALAZ Platform
+`;
+
+  const blob =
+    new Blob(
+      [content],
+      { type:'text/plain' }
+    );
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const a =
+    document.createElement('a');
+
+  a.href = url;
+
+  a.download =
+    "analysis-report.txt";
+
+  a.click();
+
+  URL.revokeObjectURL(url);
+
+}
+
+loadAnalysisDetails();
+
+
+
+function showTab(tab, btn) {
+
+  document.querySelectorAll('.tab-btn')
+    .forEach(b => {
+      b.classList.remove('active');
+    });
+
+  btn.classList.add('active');
+
+  document.querySelectorAll('.section-block')
+    .forEach(section => {
+      section.style.display = 'none';
+    });
+
+  document.querySelectorAll(`.${tab}-block`)
+    .forEach(section => {
+      section.style.display = 'block';
+    });
+
+}
+
+function animateValue(id, end){
+
+  let start = 0;
+
+  const element =
+    document.getElementById(id);
+
+  const interval =
+    setInterval(() => {
+
+      start++;
+
+      element.textContent =
+        start + "/100";
+
+      if(start >= end){
+
+        clearInterval(interval);
+
+      }
+
+    }, 15);
+
+}
+</script>
+
+</body>
+</html>

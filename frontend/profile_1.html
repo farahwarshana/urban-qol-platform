@@ -765,7 +765,8 @@ list.innerHTML = filtered.map(a => {
   const date = a.created_at ? new Date(a.created_at).toLocaleDateString() : '';
   const time = a.created_at ? new Date(a.created_at).toLocaleTimeString() : '';
   return `
-    <div class="analysis-item">
+    // <div class="analysis-item">
+    <div class="analysis-item" onclick="openAnalysisDetails(${a.id})">
       <div class="analysis-icon ${a.type}">${icon}</div>
       <div class="analysis-meta">
         <h4>${a.title}</h4>
@@ -895,6 +896,10 @@ async function loadProfile() {
   document.getElementById('cityInput').value = data.city || '';
   document.getElementById('orgInput').value = data.organization || '';
   document.getElementById('phoneInput').value = data.phone || '';
+}
+
+function openAnalysisDetails(id) {
+  window.location.href = `analysis-details.html?id=${id}`;
 }
 
 

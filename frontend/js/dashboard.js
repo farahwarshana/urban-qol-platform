@@ -22,6 +22,29 @@ var API_BASE_URL =
     ? "http://localhost:8000"
     : "";
 
+// --------------------------------
+
+    let lastResultFile = "";
+
+let lastPreviewImage =
+  "images/opening-bg.png";
+
+function captureResultFile(response){
+
+  lastResultFile =
+    response.headers.get(
+      "X-Result-File"
+    ) || "";
+
+  console.log(
+    "Captured result file:",
+    lastResultFile
+  );
+
+}
+
+
+
 // ------------------saveAnalysisToProfile--------------------
 
 function autoSaveCurrentAnalysis() {
@@ -60,12 +83,19 @@ function autoSaveCurrentAnalysis() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      type: lastResultService,
-      title: title,
-      area: '',
-      score: score,
-      status: status
-    })
+  type: lastResultService,
+  title: title,
+  area: '',
+  score: score,
+  status: status,
+
+ preview_image:
+  lastPreviewImage,
+
+result_file:
+  lastResultFile
+})
+
   }).catch(e => console.warn('Could not save analysis:', e));
 }
 // ---------------------------------------------------------------
@@ -761,11 +791,13 @@ async function runUrbanDensityAnalysis() {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-    }
+  const errorData = await response.json();
+  throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+}
 
-    // Get urban density stats from response headers
+captureResultFile(response);
+
+// Get urban density stats from response headers
     const totalPopulation = response.headers.get("X-Total-Population");
     const totalArea = response.headers.get("X-Total-Area");
     const areaCount = response.headers.get("X-Area-Count");
