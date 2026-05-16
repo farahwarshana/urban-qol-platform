@@ -1270,7 +1270,8 @@ def get_analyses(username: str):
     # -------------------- endpoint (online url)-----------------
 @app.get("/", tags=["Frontend"])
 def root():
-    return FileResponse(os.path.join(BASE_DIR, "index.html"))
+    return FileResponse(os.path.join(BASE_DIR, "index.html","index3.html"
+    ))
 
 @app.get("/{page_name}.html", tags=["Frontend"])
 def serve_html_page(page_name: str):
