@@ -3,28 +3,16 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1.0"/>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Analysis Details</title>
-
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
-        rel="stylesheet"/>
-
-        <link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet/dist/leaflet.css"
-/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
 
-    *{
-      margin:0;
-      padding:0;
-      box-sizing:border-box;
-    }
+    * { margin:0; padding:0; box-sizing:border-box; }
 
-    :root{
+    :root {
       --bg:#0f1117;
       --surface:#1a1d27;
       --surface2:#222636;
@@ -34,7 +22,7 @@
       --accent:#00d4aa;
     }
 
-    body{
+    body {
       background:var(--bg);
       color:var(--text);
       font-family:'Space Grotesk',sans-serif;
@@ -42,19 +30,16 @@
       padding:40px;
     }
 
-    .container{
-      max-width:1300px;
-      margin:auto;
-    }
+    .container { max-width:1800px; margin:auto; }
 
-    .topbar{
+    .topbar {
       display:flex;
       justify-content:space-between;
       align-items:center;
       margin-bottom:24px;
     }
 
-    .back-btn{
+    .back-btn {
       background:var(--surface2);
       border:1px solid var(--border);
       color:var(--text);
@@ -65,99 +50,136 @@
       font-family:inherit;
     }
 
-    .back-btn:hover{
-      border-color:var(--accent);
-      color:var(--accent);
+    .back-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+    .analysis-title { font-size:34px; font-weight:700; margin-bottom:10px; }
+    .analysis-sub   { color:var(--muted); margin-bottom:30px; font-size:15px; }
+
+    .card {
+      background:rgba(26,29,39,.88);
+      border:1px solid var(--border);
+      border-radius:20px;
+      padding:22px;
+      backdrop-filter:blur(14px);
+      transition:transform .25s ease, border-color .25s ease, box-shadow .25s ease;
     }
 
-    .analysis-title{
-      font-size:34px;
-      font-weight:700;
-      margin-bottom:10px;
+    .card:hover {
+      transform:translateY(-4px);
+      border-color:rgba(0,212,170,.28);
+      box-shadow:0 10px 30px rgba(0,212,170,.08);
     }
 
-    .analysis-sub{
-      color:var(--muted);
-      margin-bottom:30px;
-      font-size:15px;
-    }
+    .section-title { font-size:18px; margin-bottom:18px; font-weight:600; }
 
-    .grid{
+    .two-col {
       display:grid;
       grid-template-columns:1.3fr .7fr;
       gap:24px;
+      margin-bottom:24px;
     }
 
-    .card{
-
-  background:rgba(26,29,39,.88);
-
-  border:1px solid var(--border);
-
-  border-radius:20px;
-
-  padding:22px;
-
-  backdrop-filter:blur(14px);
-
-  transition:
-    transform .25s ease,
-    border-color .25s ease,
-    box-shadow .25s ease;
-
-}
-
-.card:hover{
-
-  transform:translateY(-4px);
-
-  border-color:
-    rgba(0,212,170,.28);
-
-  box-shadow:
-    0 10px 30px
-    rgba(0,212,170,.08);
-
-}
-
-    .map-preview{
-  height:520px;
-  border-radius:16px;
-  overflow:hidden;
-}
-
-    .section-title{
-      font-size:18px;
-      margin-bottom:18px;
-      font-weight:600;
-    }
-
-    .stats{
+    .two-col-equal {
       display:grid;
       grid-template-columns:1fr 1fr;
-      gap:16px;
+      gap:24px;
+      margin-bottom:24px;
     }
 
-    .stat-box{
+    /* ── Map ── */
+    #analysisPreview {
+      width:100%;
+      height:500px;
+      border-radius:16px;
+      overflow:hidden;
+      background:#1f2635;
+    }
+
+    /* ── Legend ── */
+    .legend-list { display:flex; flex-direction:column; gap:12px; }
+
+    .legend-item {
+      display:flex;
+      align-items:center;
+      gap:14px;
+      padding:12px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:12px;
+    }
+
+    .legend-color { width:36px; height:36px; border-radius:10px; flex-shrink:0; }
+    .legend-label { font-size:14px; color:#d8fffa; font-weight:500; }
+    .legend-range { font-size:12px; color:#94a3b8; margin-top:2px; }
+
+    /* ── Top Areas ── */
+    .chart-placeholder {
+      padding:16px;
+      border-radius:16px;
+      background:#1f2635;
+      border:1px solid rgba(0,212,170,.18);
+      color:#d8fffa;
+      font-size:14px;
+    }
+
+    .top-area-item {
+      display:flex;
+      align-items:center;
+      gap:16px;
+      padding:14px;
+      margin-bottom:12px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:14px;
+    }
+
+    .top-area-item:last-child { margin-bottom:0; }
+
+    .top-area-rank {
+      width:42px; height:42px;
+      border-radius:12px;
+      background:rgba(0,212,170,.12);
+      color:#00d4aa;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:700;
+      flex-shrink:0;
+    }
+
+    .top-area-name    { font-weight:600; margin-bottom:4px; }
+    .top-area-density { color:#94a3b8; font-size:13px; }
+
+    /* ── Metadata ── */
+    .meta-list { display:flex; flex-direction:column; gap:14px; }
+
+    .meta-row {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:30px;
+      padding-bottom:12px;
+      border-bottom:1px solid rgba(255,255,255,.05);
+    }
+
+    .meta-row span   { color:var(--muted); font-size:17px; min-width:160px; }
+    .meta-row strong { color:#d8fffa; font-size:17px; text-align:right; max-width:260px; word-break:break-word; }
+
+    /* ── Stats ── */
+    .stats { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+
+    .stat-box {
       background:var(--surface2);
       border:1px solid var(--border);
       border-radius:14px;
       padding:20px;
     }
 
-    .stat-label{
-      color:var(--muted);
-      font-size:13px;
-      margin-bottom:8px;
-    }
+    .stat-label { color:var(--muted); font-size:13px; margin-bottom:8px; }
+    .stat-value { font-size:28px; font-weight:700; color:var(--accent); }
 
-    .stat-value{
-      font-size:28px;
-      font-weight:700;
-      color:var(--accent);
-    }
-
-    .recommendation{
+    /* ── Recommendations ── */
+    .recommendation {
       padding:14px;
       background:rgba(0,212,170,.08);
       border:1px solid rgba(0,212,170,.18);
@@ -168,7 +190,7 @@
       line-height:1.5;
     }
 
-    .export-btn{
+    .export-btn {
       margin-top:18px;
       width:100%;
       border:none;
@@ -182,274 +204,13 @@
       font-family:inherit;
     }
 
-    .export-btn:hover{
-      transform:translateY(-2px);
+    .export-btn:hover { transform:translateY(-2px); }
+
+    @media(max-width:950px) {
+      body { padding:20px; }
+      .two-col, .two-col-equal { grid-template-columns:1fr; }
+      #analysisPreview { height:320px; }
     }
-    /* _________details-tabs________ */
-
-.details-tabs{
-
-  display:flex;
-  gap:12px;
-  margin-bottom:24px;
-  flex-wrap:wrap;
-
-}
-
-.tab-btn{
-
-  background:var(--surface2);
-
-  border:1px solid var(--border);
-
-  color:var(--muted);
-
-  padding:10px 18px;
-
-  border-radius:12px;
-
-  cursor:pointer;
-
-  transition:.2s;
-
-  font-family:inherit;
-
-}
-
-.tab-btn.active{
-
-  background:rgba(0,212,170,.12);
-
-  border-color:rgba(0,212,170,.4);
-
-  color:var(--accent);
-
-}
-
-.tab-btn:hover{
-
-  border-color:var(--accent);
-
-  color:var(--accent);
-
-}
-
-
-/* __________ Chart Placeholder __________ */
-
-.chart-placeholder{
-
-  height:180px;
-
-  border-radius:16px;
-
-  background:#1f2635;
-
-  border:1px solid rgba(0,212,170,.18);
-
-  color:#d8fffa;
-
-  display:flex;
-
-  align-items:center;
-
-  justify-content:center;
-
-  font-size:14px;
-
-}
-
-    /* __________ Tabs __________ */
-
-    .details-tabs{
-
-      display:flex;
-      gap:12px;
-      margin-bottom:24px;
-      flex-wrap:wrap;
-
-    }
-
-    .tab-btn{
-
-      background:var(--surface2);
-
-      border:1px solid var(--border);
-
-      color:var(--muted);
-
-      padding:10px 18px;
-
-      border-radius:12px;
-
-      cursor:pointer;
-
-      transition:.2s;
-
-      font-family:inherit;
-
-    }
-
-    .tab-btn.active{
-
-      background:rgba(0,212,170,.12);
-
-      border-color:rgba(0,212,170,.4);
-
-      color:var(--accent);
-
-    }
-
-    .tab-btn:hover{
-
-      border-color:var(--accent);
-
-      color:var(--accent);
-
-    }
-
-    /* __________ Chart Placeholder __________ */
-
-    .chart-placeholder{
-
-      height:180px;
-
-      border-radius:16px;
-
-      background:#1f2635;
-
-      border:1px solid rgba(0,212,170,.18);
-
-      color:#d8fffa;
-
-      display:flex;
-
-      align-items:center;
-
-      justify-content:center;
-
-      font-size:14px;
-
-    }
-    .fake-chart{
-
-  width:100%;
-
-  height:100%;
-
-  display:flex;
-
-  align-items:flex-end;
-
-  justify-content:space-evenly;
-
-  padding:20px;
-
-}
-
-.bar{
-
-  width:45px;
-
-  border-radius:12px 12px 0 0;
-
-  background:
-    linear-gradient(
-      to top,
-      rgba(0,212,170,.95),
-      rgba(0,212,170,.25)
-    );
-
-}
-
-.bar1{
-  height:40%;
-}
-
-.bar2{
-  height:70%;
-}
-
-.bar3{
-  height:90%;
-}
-
-.bar4{
-  height:55%;
-}
-
-
-.meta-list{
-
-  display:flex;
-
-  flex-direction:column;
-
-  gap:14px;
-
-}
-
-.meta-row{
-
-  display:flex;
-
-  justify-content:space-between;
-
-  align-items:center;
-
-  padding-bottom:12px;
-
-  border-bottom:
-    1px solid rgba(255,255,255,.05);
-
-}
-
-.meta-row span{
-
-  color:var(--muted);
-
-  font-size:14px;
-
-}
-
-.meta-row strong{
-
-  color:#d8fffa;
-
-  font-size:14px;
-
-}
-.status-good{
-  color:#00d4aa !important;
-}
-
-.status-moderate{
-  color:#ffc857 !important;
-}
-
-.status-critical{
-  color:#ff5c7a !important;
-}
-    @media(max-width:950px){
-
-      body{
-        padding:20px;
-      }
-
-      .grid{
-        grid-template-columns:1fr;
-      }
-
-      .map-preview{
-        height:320px;
-      }
-
-    }
-
-
-
-
-
 
   </style>
 </head>
@@ -459,245 +220,123 @@
 <div class="container">
 
   <div class="topbar">
-
-    <button class="back-btn"
-            onclick="window.location.href='profile_1.html'">
-
-      ← Back
-
-    </button>
-
+    <button class="back-btn" onclick="window.location.href='profile_1.html'">← Back</button>
   </div>
 
-  <div class="analysis-title"
-       id="analysisTitle">
+  <div class="analysis-title" id="analysisTitle">Loading...</div>
+  <div class="analysis-sub"   id="analysisMeta">Loading analysis info...</div>
 
-    Loading...
+  <!-- ROW 1: Map + Legend -->
+  <div class="two-col">
 
-  </div>
-
-  <div class="analysis-sub"
-       id="analysisMeta">
-
-    Loading analysis info...
-
-  </div>
-
-<!-- Tabs -->
-
-<div class="details-tabs">
-
-  <button class="tab-btn active"
-          onclick="showTab('overview', this)">
-
-    Overview
-
-  </button>
-
-  <button class="tab-btn"
-          onclick="showTab('stats', this)">
-
-    Statistics
-
-  </button>
-
-  <button class="tab-btn"
-          onclick="showTab('metadata', this)">
-
-    Metadata
-
-  </button>
-
-</div>
-
-<div class="grid">
-
-  <!-- LEFT -->
-    <div class="card section-block overview-block">
-
-      <div class="map-preview"
-           id="analysisPreview">
-      </div>
-
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div id="analysisPreview"></div>
     </div>
 
-    <!-- RIGHT -->
-
-    <div>
-
-      <!-- Statistics -->
-
-<div class="card section-block stats-block overview-block"
-     style="margin-bottom:24px;">
-
-  <div class="section-title">
-    Analysis Statistics
-  </div>
-
-  <div class="stats">
-
-    <div class="stat-box">
-
-      <div class="stat-label">
-        Quality Score
-      </div>
-
-      <div class="stat-value"
-           id="scoreValue">
-
-        --
-
-      </div>
-
-    </div>
-
-    <div class="stat-box">
-
-      <div class="stat-label">
-        Status
-      </div>
-
-      <div class="stat-value"
-           id="statusValue">
-
-        --
-
-      </div>
-
-    </div>
-
-  </div>
-
-</div>
-
-
-<!-- Chart -->
-
-<div class="card section-block stats-block overview-block"
-style="margin-bottom:24px;">
-
-<div class="section-title">
-    Analysis Distribution
-</div>
-
-<div class="chart-placeholder">
-
-
-  <div class="fake-chart">
-
-    <div class="bar bar1"></div>
-
-    <div class="bar bar2"></div>
-
-    <div class="bar bar3"></div>
-
-    <div class="bar bar4"></div>
-
-  </div>
-
-</div>
-
+    <div class="card">
+      <div class="section-title">Map Legend</div>
+      <div class="legend-list">
+        <div class="legend-item">
+          <div class="legend-color" style="background:#d50000;"></div>
+          <div>
+            <div class="legend-label">Very High Density</div>
+            <div class="legend-range">&gt; 2000 pop/km²</div>
+          </div>
         </div>
-
+        <div class="legend-item">
+          <div class="legend-color" style="background:#ff6d00;"></div>
+          <div>
+            <div class="legend-label">High Density</div>
+            <div class="legend-range">1000 – 2000 pop/km²</div>
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background:#ffd600;"></div>
+          <div>
+            <div class="legend-label">Medium Density</div>
+            <div class="legend-range">500 – 1000 pop/km²</div>
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background:#aeea00;"></div>
+          <div>
+            <div class="legend-label">Low Density</div>
+            <div class="legend-range">100 – 500 pop/km²</div>
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background:#00c853;"></div>
+          <div>
+            <div class="legend-label">Very Low Density</div>
+            <div class="legend-range">&lt; 100 pop/km²</div>
+          </div>
+        </div>
       </div>
-    
-
-     <!-- Metadata -->
-
-<div class="card section-block metadata-block overview-block"
-     style="margin-bottom:24px;">
-
-  <div class="section-title">
-    Metadata
-  </div>
-
-  <div class="meta-list">
-
-    <div class="meta-row">
-
-      <span>Analysis Type</span>
-
-      <strong id="metaType">
-        Traffic
-      </strong>
-
-    </div>
-
-    <div class="meta-row">
-
-      <span>Area</span>
-
-      <strong id="metaArea">
-        Maadi
-      </strong>
-
-    </div>
-
-    <div class="meta-row">
-
-      <span>Source</span>
-
-      <strong>
-        OpenStreetMap
-      </strong>
-
-    </div>
-
-    <div class="meta-row">
-
-      <span>Resolution</span>
-
-      <strong>
-        10m
-      </strong>
-
-    </div>
-
-    <div class="meta-row">
-
-      <span>Generated</span>
-
-      <strong id="metaDate">
-        --
-      </strong>
-
     </div>
 
   </div>
 
-</div>
+  <!-- ROW 2: Top 5 + Metadata -->
+  <div class="two-col-equal">
 
-      
-
-      <!-- Recommendations -->
-
-      <div class="card section-block overview-block">
-
-        <div class="section-title">
-          Recommendations
-        </div>
-
-        <div class="recommendation">
-          Improve green coverage in hotspot zones.
-        </div>
-
-        <div class="recommendation">
-          Increase monitoring frequency for this area.
-        </div>
-
-        <div class="recommendation">
-          Compare with previous analyses for trend tracking.
-        </div>
-
-        <button class="export-btn"
-                onclick="exportCurrentAnalysis()">
-
-          Export Full Report
-
-        </button>
-
+    <div class="card">
+      <div class="section-title">Top 5 Highest Density Areas</div>
+      <div class="chart-placeholder">
+        <div id="topAreasList"></div>
       </div>
+    </div>
 
+    <div class="card">
+      <div class="section-title">Metadata</div>
+      <div class="meta-list">
+        <div class="meta-row">
+          <span>Analysis Type</span>
+          <strong id="metaType">--</strong>
+        </div>
+        <div class="meta-row">
+          <span>Generated At</span>
+          <strong id="metaDate">--</strong>
+        </div>
+        <div class="meta-row">
+          <span>Total Areas</span>
+          <strong id="metaTotalAreas">--</strong>
+        </div>
+        <div class="meta-row">
+          <span>Highest Density Area</span>
+          <strong id="metaHighestArea">--</strong>
+        </div>
+        <div class="meta-row">
+          <span>Data Format</span>
+          <strong>GeoJSON</strong>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ROW 3: Statistics + Recommendations -->
+  <div class="two-col-equal">
+
+    <div class="card">
+      <div class="section-title">Analysis Statistics</div>
+      <div class="stats">
+        <div class="stat-box">
+          <div class="stat-label">Average Density</div>
+          <div class="stat-value" id="avgDensityValue">--</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Max Density</div>
+          <div class="stat-value" id="maxDensityValue">--</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Recommendations</div>
+      <div class="recommendation" id="densityInsight"></div>
+      <div class="recommendation">Increase monitoring frequency for this area.</div>
+      <div class="recommendation">Compare with previous analyses for trend tracking.</div>
+      <button class="export-btn" onclick="exportCurrentAnalysis()">Export Full Report</button>
     </div>
 
   </div>
@@ -709,212 +348,127 @@ style="margin-bottom:24px;">
 <script>
 
 const API_BASE_URL =
-  "http://localhost:8000";
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+    ? "http://localhost:8000"
+    : "";
 
-const params =
-  new URLSearchParams(window.location.search);
+const params     = new URLSearchParams(window.location.search);
+const analysisId = params.get("id");
 
-const analysisId =
-  params.get("id");
+async function loadAnalysisDetails() {
 
-async function loadAnalysisDetails(){
+  const username = localStorage.getItem("username") || "default";
+  const res      = await fetch(`${API_BASE_URL}/analyses?username=${username}`);
+  const data     = await res.json();
+  const analysis = data.find(a => String(a.id) === String(analysisId));
 
-  const username =
-    localStorage.getItem("username")
-    || "default";
-
-  const res =
-    await fetch(
-      `${API_BASE_URL}/analyses?username=${username}`
-    );
-
-  const data =
-    await res.json();
-
-  const analysis =
-    data.find(
-      a => String(a.id) === String(analysisId)
-    );
-
-  if(!analysis){
-
-    document.getElementById(
-      "analysisTitle"
-    ).textContent =
-      "Analysis not found";
-
+  if (!analysis) {
+    document.getElementById("analysisTitle").textContent = "Analysis not found";
     return;
   }
 
-  document.getElementById(
-    "analysisTitle"
-  ).textContent =
-    analysis.title;
+  document.getElementById("analysisTitle").textContent = analysis.title;
+  document.getElementById("analysisMeta").textContent  =
+    `${analysis.area} • ${new Date(analysis.created_at).toLocaleString()}`;
+  document.getElementById("metaType").textContent = analysis.title || analysis.type || "Unknown";
+  document.getElementById("metaDate").textContent = new Date(analysis.created_at).toLocaleString();
 
-  document.getElementById(
-    "analysisMeta"
-  ).textContent =
-    `${analysis.area} • ${new Date(
-      analysis.created_at
-    ).toLocaleString()}`;
+  if (analysis.result_file) {
 
-  animateValue(
-  "scoreValue",
-  analysis.score
-);
+    const map = L.map("analysisPreview").setView([30.0444, 31.2357], 10);
 
-  document.getElementById(
-    "statusValue"
-  ).textContent =
-    analysis.status;
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap"
+    }).addTo(map);
 
-    const statusElement =
-  document.getElementById(
-    "statusValue"
-  );
+    const geojsonUrl = `${API_BASE_URL}/${analysis.result_file}`;
+    const geoRes     = await fetch(geojsonUrl);
+    const geoData    = await geoRes.json();
 
-if(
-  analysis.status
-    .toLowerCase()
-    .includes("good")
-){
+    const topAreas = geoData.features
+      .map((feature, index) => {
+        const props = feature.properties || {};
+        return {
+          name: props.name || props.NAME || props.area || props.Area ||
+                props.region || props.district || `Area ${index + 1}`,
+          density: Number(props.urban_density || 0)
+        };
+      })
+      .sort((a, b) => b.density - a.density)
+      .slice(0, 5);
 
-  statusElement.classList.add(
-    "status-good"
-  );
+    const densities   = topAreas.map(a => a.density);
+    const avgDensity  = Math.round(densities.reduce((a, b) => a + b, 0) / densities.length);
+    const maxDensity  = Math.max(...densities);
+    const highestArea = topAreas[0]?.name || "Unknown";
 
+    document.getElementById("avgDensityValue").textContent = avgDensity.toLocaleString();
+    document.getElementById("maxDensityValue").textContent = maxDensity.toLocaleString();
+    document.getElementById("metaTotalAreas").textContent  = geoData.features.length;
+    document.getElementById("metaHighestArea").textContent = highestArea;
+
+    document.getElementById("topAreasList").innerHTML = topAreas.map((area, i) => `
+      <div class="top-area-item">
+        <div class="top-area-rank">#${i + 1}</div>
+        <div class="top-area-info">
+          <div class="top-area-name">${area.name}</div>
+          <div class="top-area-density">${area.density.toLocaleString()} pop/km²</div>
+        </div>
+      </div>
+    `).join("");
+
+    let densityInsight = "";
+    if (avgDensity > 2000)      densityInsight = `Very high urban density detected, especially in ${highestArea}.`;
+    else if (avgDensity > 1000) densityInsight = `Moderate-to-high urban concentration observed across analyzed areas.`;
+    else                         densityInsight = `Most analyzed zones show relatively low urban density.`;
+    document.getElementById("densityInsight").textContent = densityInsight;
+
+    const geoLayer = L.geoJSON(geoData, {
+      style: function(feature) {
+        const density = feature.properties.urban_density || 0;
+        let color = "#00c853";
+        if (density > 100)  color = "#aeea00";
+        if (density > 500)  color = "#ffd600";
+        if (density > 1000) color = "#ff6d00";
+        if (density > 2000) color = "#d50000";
+        return { fillColor: color, fillOpacity: 0.6, color: "#333", weight: 1 };
+      },
+      onEachFeature: function(feature, layer) {
+        const props = feature.properties || {};
+        const popupContent = Object.entries(props)
+          .map(([k, v]) => `<strong>${k}:</strong> ${v}`)
+          .join("<br>");
+        layer.bindPopup(popupContent);
+      }
+    }).addTo(map);
+
+    map.fitBounds(geoLayer.getBounds());
+    setTimeout(() => map.invalidateSize(), 300);
+
+  } else {
+
+    const preview = analysis.preview_image || "images/opening-bg.png";
+    document.getElementById("analysisPreview").style.background =
+      `linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url(${preview}) center/cover`;
+  }
 }
 
-else if(
-  analysis.status
-    .toLowerCase()
-    .includes("mid")
-){
-
-  statusElement.classList.add(
-    "status-moderate"
-  );
-
-}
-
-else{
-
-  statusElement.classList.add(
-    "status-critical"
-  );
-
-}
-
-  const preview =
-    analysis.preview_image
-    || "images/opening-bg.png";
-    console.log("Saved result file:", analysis.result_file);
-
-  document.getElementById(
-    "analysisPreview"
-  ).style.background =
-    `
-    linear-gradient(
-      rgba(0,0,0,.35),
-      rgba(0,0,0,.35)
-    ),
-    url(${preview}) center/cover
-    `;
-
-}
-
-function exportCurrentAnalysis(){
-
-  const title =
-    document.getElementById(
-      "analysisTitle"
-    ).textContent;
-
-  const content = `
-MALAZ ANALYSIS REPORT
-=========================
-
-${title}
-
-Generated from MALAZ Platform
-`;
-
-  const blob =
-    new Blob(
-      [content],
-      { type:'text/plain' }
-    );
-
-  const url =
-    URL.createObjectURL(blob);
-
-  const a =
-    document.createElement('a');
-
-  a.href = url;
-
-  a.download =
-    "analysis-report.txt";
-
+function exportCurrentAnalysis() {
+  const title   = document.getElementById("analysisTitle").textContent;
+  const content = `MALAZ ANALYSIS REPORT\n=========================\n\n${title}\n\nGenerated from MALAZ Platform\n`;
+  const blob    = new Blob([content], { type: 'text/plain' });
+  const url     = URL.createObjectURL(blob);
+  const a       = document.createElement('a');
+  a.href        = url;
+  a.download    = "analysis-report.txt";
   a.click();
-
   URL.revokeObjectURL(url);
-
 }
 
 loadAnalysisDetails();
 
-
-
-function showTab(tab, btn) {
-
-  document.querySelectorAll('.tab-btn')
-    .forEach(b => {
-      b.classList.remove('active');
-    });
-
-  btn.classList.add('active');
-
-  document.querySelectorAll('.section-block')
-    .forEach(section => {
-      section.style.display = 'none';
-    });
-
-  document.querySelectorAll(`.${tab}-block`)
-    .forEach(section => {
-      section.style.display = 'block';
-    });
-
-}
-
-function animateValue(id, end){
-
-  let start = 0;
-
-  const element =
-    document.getElementById(id);
-
-  const interval =
-    setInterval(() => {
-
-      start++;
-
-      element.textContent =
-        start + "/100";
-
-      if(start >= end){
-
-        clearInterval(interval);
-
-      }
-
-    }, 15);
-
-}
-
-
 </script>
-
 
 </body>
 </html>
