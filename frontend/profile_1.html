@@ -509,8 +509,12 @@
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
       transition: all 0.2s;
+      html[dir="rtl"] .dl-btn{
+  direction:rtl;
+}
+      
     }
 
     .dl-btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -575,6 +579,7 @@
   </a>
   <div class="nav-right">
     <button class="nav-btn" onclick="window.location.href='dashboard.html'">← Back to Map</button>
+    <button class="nav-btn" id="langBtn" onclick="toggleLang()">🌐 العربية</button>
   </div>
 </nav>
 
@@ -700,14 +705,35 @@
     </div>
 
     <!-- Analysis History -->
-    <div class="card">
-      <div class="section-header">
-        <div class="section-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          Analysis History
-        </div>
-        <span class="section-count" id="historyCount">12 runs</span>
-      </div>
+<div class="card">
+
+  <div class="section-header">
+
+    <div class="section-title">
+
+      <svg viewBox="0 0 24 24"
+           fill="none"
+           stroke="currentColor"
+           stroke-width="2">
+
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+
+      </svg>
+
+      <span id="historyTitle">
+        Analysis History
+      </span>
+
+    </div>
+
+    <span class="section-count"
+          id="historyCount">
+
+      12 runs
+
+    </span>
+
+  </div>
 
       <div class="filters">
         <button class="filter-btn active" onclick="filterHistory('all', this)">All</button>
@@ -755,6 +781,7 @@
 
 
 let analyses = [];
+let currentFilter = "all";
 
 async function loadAnalyses() {
   const username = localStorage.getItem('username') || 'default';
@@ -766,11 +793,12 @@ async function loadAnalyses() {
 }
 
   function renderList(filter) {
+    currentFilter = filter;
     const list = document.getElementById('analysisList');
     const count = document.getElementById('historyCount');
     const filtered = filter === 'all' ? analyses : analyses.filter(a => a.type === filter);
-    count.textContent = filtered.length + ' runs';
-
+    count.textContent =
+    filtered.length + ' ' + translations[currentLang].runs;
     if (!filtered.length) {
       list.innerHTML = `<div class="empty-state">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -782,15 +810,30 @@ async function loadAnalyses() {
     const icons = { ndvi: '🌿', heat: '🌡️', transit: '🚌', urban: '🏙️', crime: '🔴', air: '💨' };
 
 list.innerHTML = filtered.map(a => {
-  const icon = icons[a.type] || '📊';
-  const date = a.created_at ? new Date(a.created_at).toLocaleDateString() : '';
-  const time = a.created_at ? new Date(a.created_at).toLocaleTimeString() : '';
+
+  const icon =
+    icons[a.type] || '📊';
+
+  const translatedTitle =
+    analysisTranslations[a.type]?.[currentLang]
+    || a.title;
+
+  const date =
+    a.created_at
+      ? new Date(a.created_at).toLocaleDateString()
+      : '';
+
+  const time =
+    a.created_at
+      ? new Date(a.created_at).toLocaleTimeString()
+      : '';
+
   return `
 
     <div class="analysis-item" onclick="openAnalysisDetails(${a.id})">
       <div class="analysis-icon ${a.type}">${icon}</div>
       <div class="analysis-meta">
-        <h4>${a.title}</h4>
+        <h4>${translatedTitle}</h4>
         <p>
           <span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -804,9 +847,10 @@ list.innerHTML = filtered.map(a => {
       </div>
       <div class="analysis-right">
         <span class="score-badge score-${a.status}">${a.score}/100</span>
-        <button class="dl-btn">
+        <button class="dl-btn"
+        onclick="exportAnalysis(event, ${a.id})">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export
+          ${translations[currentLang].export}
         </button>
       </div>
     </div>
@@ -923,10 +967,260 @@ function openAnalysisDetails(id) {
   window.location.href = `analysis-details.html?id=${id}`;
 }
 
+const analysisTranslations = {
+
+  "urban-density": {
+  en: "Urban Density",
+  ar: "الكثافة السكانية"
+},
+
+  ndvi: {
+    en: "NDVI",
+    ar: "الغطاء النباتي"
+  },
+
+  heat: {
+    en: "Heat Index",
+    ar: "مؤشر الحرارة"
+  },
+
+ "public-transport": {
+  en: "Public Transport Coverage",
+  ar: "تغطية المواصلات العامة"
+},
+
+
+  crime: {
+    en: "Crime",
+    ar: "الجريمة"
+  },
+
+  air: {
+    en: "Air Quality",
+    ar: "جودة الهواء"
+  }
+
+};
+
+const translations = {
+  en: {
+    backToMap:      "← Back to Map",
+    langBtn:        "🌐 العربية",
+    editProfile:    "✏️ Edit Profile",
+    analysisHistory:"Analysis History",
+    allFilter:      "All",
+    ndviFilter:     "NDVI",
+    heatFilter:     "Heat Index",
+    transitFilter:  "Transport",
+    crimeFilter:    "Crime",
+    urbanFilter:    "Urban Density",
+    airFilter:      "Air Quality",
+    analyses:       "Analyses",
+    layerTypes:     "Layer Types",
+    region:         "Region",
+    memberSince:    "Member Since",
+    activeResearcher:"Active Researcher",
+    runs:           "runs",
+    firstName:      "First Name",
+    lastName:       "Last Name",
+    email:          "Email Address",
+    phone:          "Phone",
+    city:           "City",
+    org:            "Organization",
+    bio:            "Bio",
+    focus:          "Research Focus",
+    country:        "Country",
+    cancel:         "Cancel",
+    save:           "Save Changes",
+    export:         "Export",
+    noAnalyses:     "No analyses found for this filter.",
+    toastSaved:     "Changes saved successfully",
+  },
+  ar: {
+    backToMap:      "→ العودة للخريطة",
+    langBtn:        "🌐 English",
+    editProfile:    "✏️ تعديل الملف الشخصي",
+    analysisHistory:"سجل التحليلات",
+    allFilter:      "الكل",
+    ndviFilter:     "NDVI",
+    heatFilter:     "مؤشر الحرارة",
+    transitFilter:  "المواصلات",
+    crimeFilter:    "الجريمة",
+    urbanFilter:    "الكثافة السكانية",
+    airFilter:      "جودة الهواء",
+    analyses:       "تحليل",
+    layerTypes:     "أنواع الطبقات",
+    region:         "المنطقة",
+    memberSince:    "عضو منذ",
+    activeResearcher:"باحث نشط",
+    runs:           "تشغيل",
+    firstName:      "الاسم الأول",
+    lastName:       "اسم العائلة",
+    email:          "البريد الإلكتروني",
+    phone:          "الهاتف",
+    city:           "المدينة",
+    org:            "المؤسسة",
+    bio:            "نبذة شخصية",
+    focus:          "مجال البحث",
+    country:        "الدولة",
+    cancel:         "إلغاء",
+    save:           "حفظ التغييرات",
+    export:         "تصدير",
+    noAnalyses:     "لا توجد تحليلات لهذا الفلتر.",
+    toastSaved:     "تم حفظ التغييرات بنجاح",
+  }
+};
+
+let currentLang = "en";
+
+function toggleLang() {
+  currentLang = currentLang === "en" ? "ar" : "en";
+  applyLang();
+}
+
+function applyLang() {
+  const t = translations[currentLang];
+  const isAr = currentLang === "ar";
+
+  // اتجاه الصفحة
+  document.documentElement.dir = isAr ? "rtl" : "ltr";
+
+  // الـ navbar
+  document.querySelector(".nav-btn").textContent = t.backToMap;
+  document.getElementById("langBtn").textContent  = t.langBtn;
+
+  // الـ profile
+  document.querySelector(".profile-badge").innerHTML = `<span></span> ${t.activeResearcher}`;
+  document.querySelector('[onclick="toggleEdit()"]').textContent = t.editProfile;
+
+  // الـ stat labels
+  const statLabels = document.querySelectorAll(".stat-label");
+  statLabels[0].textContent = t.analyses;
+  statLabels[1].textContent = t.layerTypes;
+  statLabels[2].textContent = t.region;
+  statLabels[3].textContent = t.memberSince;
+
+  // الـ section title
+document.getElementById("historyTitle").textContent =
+  t.analysisHistory;
+
+  // الـ filters
+  const filterBtns = document.querySelectorAll(".filter-btn");
+  filterBtns[0].textContent = t.allFilter;
+  filterBtns[1].textContent = t.ndviFilter;
+  filterBtns[2].textContent = t.heatFilter;
+  filterBtns[3].textContent = t.transitFilter;
+  filterBtns[4].textContent = t.crimeFilter;
+  filterBtns[5].textContent = t.urbanFilter;
+  filterBtns[6].textContent = t.airFilter;
+
+  // الـ form labels
+  const labels = document.querySelectorAll("label");
+  labels[0].textContent = t.firstName;
+  labels[1].textContent = t.lastName;
+  labels[2].textContent = t.email;
+  labels[3].textContent = t.phone;
+  labels[4].textContent = t.city;
+  labels[5].textContent = t.org;
+  labels[6].textContent = t.bio;
+  labels[7].textContent = t.focus;
+  labels[8].textContent = t.country;
+
+  // الـ buttons
+  document.querySelector(".btn-cancel").textContent = t.cancel;
+  document.querySelector(".btn-save").textContent   = t.save;
+
+  // إعادة رسم القايمة عشان تتغير كلمة Export والـ runs
+  renderList(currentFilter || "all");
+}
+
+function exportAnalysis(event, id) {
+
+  event.stopPropagation();
+
+  const analysis =
+    analyses.find(a => a.id === id);
+
+  if (!analysis) return;
+
+  const isAr =
+  currentLang === "ar";
+
+const content = isAr ? `
+
+تقرير تحليل MALAZ
+=========================
+
+العنوان:
+${analysis.title}
+
+المنطقة:
+${analysis.area}
+
+النتيجة:
+${analysis.score}/100
+
+الحالة:
+${analysis.status}
+
+تاريخ الإنشاء:
+${new Date(
+  analysis.created_at
+).toLocaleString()}
+
+`
+:
+`
+
+MALAZ ANALYSIS REPORT
+=========================
+
+Title:
+${analysis.title}
+
+Area:
+${analysis.area}
+
+Score:
+${analysis.score}/100
+
+Status:
+${analysis.status}
+
+Generated:
+${new Date(
+  analysis.created_at
+).toLocaleString()}
+
+`;
+
+  const blob =
+    new Blob(
+      [content],
+      { type:'text/plain' }
+    );
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const a =
+    document.createElement('a');
+
+  a.href = url;
+
+  a.download =
+    `${analysis.title}.txt`;
+
+  a.click();
+
+  URL.revokeObjectURL(url);
+
+}
 
 loadProfile();
 loadAnalyses();
 loadSavedAvatar();
+applyLang();
 
 </script>
 </body>

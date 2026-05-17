@@ -344,6 +344,8 @@
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/georaster"></script>
+<script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
 
 <script>
 
@@ -376,11 +378,16 @@ async function loadAnalysisDetails() {
 
   if (analysis.result_file) {
 
-    const map = L.map("analysisPreview").setView([30.0444, 31.2357], 10);
+    const type = analysis.type || "urban-density";
+    const map  = L.map("analysisPreview").setView([30.0444, 31.2357], 10);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap"
     }).addTo(map);
+  
+  if (type === "ndvi") {
+      await loadNdviMap(analysis, map);
+    } else {
 
     const geojsonUrl = `${API_BASE_URL}/${analysis.result_file}`;
     const geoRes     = await fetch(geojsonUrl);
@@ -446,6 +453,8 @@ async function loadAnalysisDetails() {
     map.fitBounds(geoLayer.getBounds());
     setTimeout(() => map.invalidateSize(), 300);
 
+    } // end else (ndvi check)
+
   } else {
 
     const preview = analysis.preview_image || "images/opening-bg.png";
@@ -453,7 +462,6 @@ async function loadAnalysisDetails() {
       `linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url(${preview}) center/cover`;
   }
 }
-
 function exportCurrentAnalysis() {
   const title   = document.getElementById("analysisTitle").textContent;
   const content = `MALAZ ANALYSIS REPORT\n=========================\n\n${title}\n\nGenerated from MALAZ Platform\n`;
@@ -464,6 +472,34 @@ function exportCurrentAnalysis() {
   a.download    = "analysis-report.txt";
   a.click();
   URL.revokeObjectURL(url);
+}
+
+
+async function loadNdviMap(analysis, map) {
+
+  const tiffUrl     = `${API_BASE_URL}/${analysis.result_file}`;
+  const response    = await fetch(tiffUrl);
+  const arrayBuffer = await response.arrayBuffer();
+  const georaster   = await parseGeoraster(arrayBuffer);
+
+  const layer = new GeoRasterLayer({
+    georaster,
+    opacity: 0.8,
+    pixelValuesToColorFn: values => {
+      const v = values[0];
+      if (v === null || v === undefined || isNaN(v)) return null;
+      if (v < 0)   return "rgba(69,117,180,0.8)";
+      if (v < 0.2) return "rgba(217,168,90,0.8)";
+      if (v < 0.4) return "rgba(255,255,191,0.8)";
+      if (v < 0.6) return "rgba(166,217,106,0.8)";
+      return "rgba(26,150,65,0.8)";
+    },
+    resolution: 256,
+  });
+
+  layer.addTo(map);
+  map.fitBounds(layer.getBounds());
+  setTimeout(() => map.invalidateSize(), 300);
 }
 
 loadAnalysisDetails();
