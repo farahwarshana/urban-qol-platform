@@ -107,6 +107,8 @@ app.add_middleware(
         "X-Overall-QoL-Score", "X-High-Zone-Count",
         "X-Pollutant", "X-Good-Pct", "X-Moderate-Pct", "X-Sensitive-Pct",
         "X-Unhealthy-Pct", "X-Very-Unhealthy-Pct", "X-Hazardous-Pct",
+        "X-Total-Facilities", "X-Facilities-Processed", "X-Walking-Speed-Kmh",
+        "X-Has-Aoi", "X-Zone-Pcts", "X-Uncovered-Pct",
     ],
 )
 

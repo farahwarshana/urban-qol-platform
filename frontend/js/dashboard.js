@@ -3440,7 +3440,13 @@ function renderAirQualityResults(stats, inputs) {
 
 /* ---------- Render Facility Accessibility Results ---------- */
 function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
-  const facilitiesProcessed = parseInt(stats.facilities_processed) || parseInt(stats.total_facilities) || "N/A";
+  // Prefer header values; fall back to facility_count embedded in zone features
+  let facilitiesProcessed = parseInt(stats.facilities_processed) || parseInt(stats.total_facilities) || null;
+  if (!facilitiesProcessed && geojsonData && geojsonData.features) {
+    const zoneFeature = geojsonData.features.find(f => f.properties && f.properties.type === "zone" && f.properties.facility_count != null);
+    if (zoneFeature) facilitiesProcessed = zoneFeature.properties.facility_count;
+  }
+  facilitiesProcessed = facilitiesProcessed ?? "N/A";
   const hasAoi              = stats.has_aoi === true || stats.has_aoi === "true";
   const coveragePct         = stats.coverage_pct  != null ? parseFloat(stats.coverage_pct)  : null;
   const uncoveredPct        = stats.uncovered_pct != null ? parseFloat(stats.uncovered_pct) : null;
@@ -3449,13 +3455,16 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
   const zonePcts    = stats.zone_pcts   || {};
   const resultTimes = stats.result_times || Object.keys(zonePcts).map(Number).sort((a, b) => a - b);
 
+  // Helper: look up zone pct by time (handles both string and number keys)
+  const getZonePct = t => parseFloat(zonePcts[String(t)] ?? zonePcts[t]);
+
   // ── Overall score: weighted average, innermost zone weighted highest ────────
   const n = resultTimes.length;
   let overallScore = null;
   if (n > 0) {
     let weightedSum = 0, totalWeight = 0;
     resultTimes.forEach((t, i) => {
-      const pct = parseFloat(zonePcts[t]);
+      const pct = getZonePct(t);
       const w   = n - i;
       if (!isNaN(pct)) { weightedSum += pct * w; totalWeight += w; }
     });
@@ -3466,7 +3475,7 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
 
   // ── % area accessible per zone (cards) ────────────────────────────────────
   const zoneCardsHtml = resultTimes.map((t, i) => {
-    const pct   = parseFloat(zonePcts[t]);
+    const pct   = getZonePct(t);
     const color = FACILITY_ZONE_COLORS[i] ?? "#888";
     return isNaN(pct) ? "" : `
       <div class="insight-card">
@@ -3475,26 +3484,11 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
       </div>`;
   }).join("");
 
-  // ── Distribution bar chart (incremental bands) ─────────────────────────────
-  const chartVals   = resultTimes.map((t, i) => {
-    const cur  = parseFloat(zonePcts[t]) || 0;
-    const prev = i === 0 ? 0 : (parseFloat(zonePcts[resultTimes[i - 1]]) || 0);
-    return Math.max(0, cur - prev).toFixed(1);
-  });
-  const chartColors = resultTimes.map((_, i) => FACILITY_ZONE_COLORS[i] ?? "#888");
-  const chartLabels = resultTimes.map((t, i) =>
-    i === 0 ? `≤ ${t} min` : `${resultTimes[i - 1]}–${t} min`
-  );
-  const chartHtml = resultTimes.length > 0
-    ? miniBarChart(chartVals, resultTimes.length, chartColors, chartLabels)
-    : "";
-
   // ── Accessibility curve (cumulative % vs time) ─────────────────────────────
   const curveHtml = resultTimes.length >= 2 ? (() => {
-    const maxPct = Math.max(...resultTimes.map(t => parseFloat(zonePcts[t]) || 0), 1);
-    const barW   = 100 / resultTimes.length;
+    const maxPct = Math.max(...resultTimes.map(t => getZonePct(t) || 0), 1);
     const bars   = resultTimes.map((t, i) => {
-      const pct   = parseFloat(zonePcts[t]) || 0;
+      const pct   = getZonePct(t) || 0;
       const color = FACILITY_ZONE_COLORS[i] ?? "#888";
       const h     = Math.max(4, Math.round((pct / maxPct) * 48));
       return `<div title="${t} min: ${pct.toFixed(1)}%" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">
@@ -3510,8 +3504,8 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
   // ── Comparison between time bands ─────────────────────────────────────────
   const bandCompareHtml = resultTimes.length >= 2 ? (() => {
     const rows = resultTimes.map((t, i) => {
-      const pct   = parseFloat(zonePcts[t]) || 0;
-      const prev  = i === 0 ? 0 : (parseFloat(zonePcts[resultTimes[i - 1]]) || 0);
+      const pct   = getZonePct(t) || 0;
+      const prev  = i === 0 ? 0 : (getZonePct(resultTimes[i - 1]) || 0);
       const gain  = Math.max(0, pct - prev);
       const color = FACILITY_ZONE_COLORS[i] ?? "#888";
       const label = i === 0 ? `≤ ${t} min` : `${resultTimes[i - 1]}–${t} min`;
@@ -3531,8 +3525,8 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
   // ── Key insight ────────────────────────────────────────────────────────────
   const firstT   = resultTimes[0];
   const lastT    = resultTimes[resultTimes.length - 1];
-  const firstPct = parseFloat(zonePcts[firstT]);
-  const lastPct  = parseFloat(zonePcts[lastT]);
+  const firstPct = getZonePct(firstT);
+  const lastPct  = getZonePct(lastT);
   const keyInsight = !isNaN(firstPct) && !isNaN(lastPct)
     ? firstPct > 50
       ? `More than half the area is within a ${firstT}-minute walk — excellent accessibility.`
@@ -3662,7 +3656,6 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
         ${zoneCardsHtml}
         ${curveHtml}
         ${bandCompareHtml}
-        ${chartHtml}
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
@@ -3994,7 +3987,7 @@ function wireTabSwitching() {
               const coveredCount = cellCount - facNoAccess;
               gridChartHtml = miniBarChart(
                 [coveredCount, facNoAccess],
-                2, [qolScoreColor(80), "#888"],
+                2, [FACILITY_ZONE_COLORS[0], "#c0392b"],
                 ["Accessible", "No access"]
               );
             } else if (scores.length) {
@@ -4139,7 +4132,7 @@ function wireTabSwitching() {
               <div class="insight-card">
                 <div class="label">Cell breakdown</div>
                 <div class="value" style="font-size:13px;"><span style="color:var(--success)">${cellCount ? ((ispaLow/cellCount)*100).toFixed(0) : 0}% Planned</span> · <span style="color:var(--warning)">${cellCount ? ((ispaMed/cellCount)*100).toFixed(0) : 0}% Mixed</span> · <span style="color:var(--danger)">${cellCount ? ((ispaHigh/cellCount)*100).toFixed(0) : 0}% Informal</span></div>
-              </div>` : `
+              </div>` : isFacilityGrid ? "" : `
               <div class="insight-card">
                 <div class="label">Cell breakdown</div>
                 <div class="value" style="font-size:13px;"><span style="color:${qolScoreColor(88)}">${cellCount ? ((tierExcellent/cellCount)*100).toFixed(0) : 0}% Exc</span> · <span style="color:${qolScoreColor(62)}">${cellCount ? ((tierGood/cellCount)*100).toFixed(0) : 0}% Good</span> · <span style="color:${qolScoreColor(37)}">${cellCount ? ((tierPoor/cellCount)*100).toFixed(0) : 0}% Fair</span> · <span style="color:${qolScoreColor(12)}">${cellCount ? ((tierBad/cellCount)*100).toFixed(0) : 0}% Poor</span></div>
@@ -4152,10 +4145,6 @@ function wireTabSwitching() {
               <div class="insight-card">
                 <div class="label">Worst Cell</div>
                 <div class="value" style="color:${qolScoreTextColor(worst)}">${worst}/100 <span style="font-size:11px;color:var(--text-muted);">(value: ${typeof worstVal === "number" ? worstVal.toFixed ? worstVal.toFixed(2) : worstVal : worstVal})</span></div>
-              </div>` : ""}
-              ${clusterInfo && lastResultService !== "public-transport" && lastResultService !== "crime" ? `<div class="insight-card">
-                <div class="label">Spatial Clustering</div>
-                <div class="value" style="color:${clusterInfo.color};font-size:13px;">${clusterInfo.text}</div>
               </div>` : ""}
               ${lastResultService === "crime" && scores.length >= 2 ? (() => {
                 const scoreMin = Math.min(...scores);

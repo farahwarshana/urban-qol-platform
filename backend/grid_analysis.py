@@ -26,11 +26,10 @@ Urban Density: moderate density is best for QoL (too low = poor services,
               2000-5000/km²→ 60
               >5000   /km² → 25  (overcrowded)
 
-Facility Accessibility: smaller walk time → higher score.
-              5 min zone  → 100
-              10 min zone → 65
-              15 min zone → 35
-              outside     → 0
+Facility Accessibility: smaller walk time → higher score (dynamic intervals).
+              smallest interval zone → 100
+              each subsequent zone   → 100 - (100/n * i)   where n = interval count
+              outside all zones      → 0
 
 Public Transport: cell is inside transit walking coverage → high score.
               covered (type="covered")   → 100
@@ -150,6 +149,55 @@ def _build_grid_cells(bounds_4326):
         for yi in ys
     ]
 
+    if not utm_boxes:
+        return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326"), cell_m
+
+    gdf_utm = gpd.GeoDataFrame(geometry=utm_boxes, crs=utm_crs)
+    gdf     = gdf_utm.to_crs("EPSG:4326")
+    return gdf, cell_m
+
+
+def _build_grid_cells_n(bounds_4326, target_cells):
+    """Like _build_grid_cells but with a caller-supplied target cell count."""
+    minx, miny, maxx, maxy = bounds_4326
+    cx = (minx + maxx) / 2
+    cy = (miny + maxy) / 2
+
+    lat_rad  = math.radians((miny + maxy) / 2)
+    width_m  = abs(maxx - minx) * 111_000 * math.cos(lat_rad)
+    height_m = abs(maxy - miny) * 111_000
+    raw = (width_m * height_m / target_cells) ** 0.5
+
+    if raw < 500:
+        base = 25
+    elif raw < 2_000:
+        base = 100
+    elif raw < 10_000:
+        base = 500
+    elif raw < 50_000:
+        base = 2_000
+    else:
+        base = 10_000
+
+    cell_m = max(_CELL_MIN_M, round(raw / base) * base)
+    if cell_m == 0:
+        cell_m = base
+    cell_m = int(cell_m)
+
+    utm_epsg = _get_utm_crs(cx, cy)
+    utm_crs  = f"EPSG:{utm_epsg}"
+
+    corners_gdf = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy([minx, maxx], [miny, maxy]),
+        crs="EPSG:4326",
+    ).to_crs(utm_crs)
+    x0, y0 = corners_gdf.geometry.iloc[0].x, corners_gdf.geometry.iloc[0].y
+    x1, y1 = corners_gdf.geometry.iloc[1].x, corners_gdf.geometry.iloc[1].y
+
+    xs = np.arange(x0, x1, cell_m)
+    ys = np.arange(y0, y1, cell_m)
+
+    utm_boxes = [box(xi, yi, xi + cell_m, yi + cell_m) for xi in xs for yi in ys]
     if not utm_boxes:
         return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326"), cell_m
 
@@ -310,21 +358,33 @@ def _score_aqi(cls_value):
     return lut.get(int(round(cls_value)), None)
 
 
-def _score_facility_accessibility(walk_time_min):
+def _score_facility_accessibility(walk_time_min, sorted_times=None):
     """
-    Walk time to nearest facility (minutes) → QoL score.
+    Walk time to nearest facility zone → QoL score (dynamic, interval-aware).
 
-    The closer a facility, the higher the score.  There is no penalty for
-    being "too close" — maximum accessibility is always best.
+    When sorted_times is provided the score is computed as equal steps:
+      smallest interval → 100
+      next interval     → 100 - step
+      ...
+      largest interval  → step   (always > 0)
+      outside all zones → 0
 
-    Tier 4 Excellent :  0 – 5  min → 100– 75  (immediate neighbourhood)
-    Tier 3 Good      :  5 – 10 min →  74– 50  (short walk)
-    Tier 2 Poor      : 10 – 20 min →  49– 25  (long walk, limits usage)
-    Tier 1 Bad       : 20 – 30+min →  24–  0  (effectively inaccessible on foot)
-    Outside all zones: 0 (no access)
+    step = 100 / len(sorted_times)
+
+    Without sorted_times falls back to the fixed legacy thresholds.
     """
     if walk_time_min is None:
         return 0
+
+    if sorted_times:
+        n = len(sorted_times)
+        step = 100.0 / n
+        for i, t in enumerate(sorted_times):
+            if walk_time_min <= t:
+                return int(round(100.0 - i * step))
+        return 0
+
+    # Legacy fallback
     if walk_time_min <= 5:
         return int(np.interp(walk_time_min, [0, 5], [100, 75]))
     if walk_time_min <= 10:
@@ -611,15 +671,23 @@ def grid_from_transit_coverage(geojson_path):
     }
 
 
+_FACILITY_GRID_TARGET_CELLS = 1200   # denser grid for facility accessibility
+
+
 def grid_from_facility_accessibility(geojson_path):
     """
     Score cells based on the minimum walk time from a facility accessibility
     isochrone GeoJSON.
 
+    Scoring is dynamic: the user-provided time intervals are read from the
+    zone features and equal score steps are assigned:
+      smallest interval → 100, next → 100-step, ..., outside all zones → 0
+    where step = 100 / number_of_intervals.
+
     When a boundary feature (layer == "boundary") is present the grid covers
     the full AOI and every cell inside it is scored — cells outside all
     isochrone zones get qol_score 0 (no access).  Without a boundary the grid
-    covers only the union of isochrone zones (no-AOI behaviour).
+    covers only the union of isochrone zones.
     """
     gdf = gpd.read_file(geojson_path)
     if gdf.crs is None:
@@ -648,11 +716,24 @@ def grid_from_facility_accessibility(geojson_path):
     if zone_gdf.empty:
         return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
 
-    # ── Grid extent and cell size ─────────────────────────────────────────────
-    # Use boundary for extent when present so grid covers the whole AOI
-    extent_gdf   = boundary_gdf if has_boundary else zone_gdf
-    bounds       = extent_gdf.total_bounds
-    grid, cell_m = _build_grid_cells(tuple(bounds))
+    # ── Extract sorted time intervals from zone data ──────────────────────────
+    time_col = None
+    for candidate in ["time_min", "walk_time", "minutes", "travel_time"]:
+        if candidate in zone_gdf.columns:
+            time_col = candidate
+            break
+
+    sorted_times = None
+    if time_col:
+        raw_times = zone_gdf[time_col].dropna().unique()
+        if len(raw_times) > 0:
+            sorted_times = sorted([int(t) for t in raw_times])
+
+    # ── Grid extent and cell size (denser than default) ───────────────────────
+    extent_gdf = boundary_gdf if has_boundary else zone_gdf
+    bounds     = extent_gdf.total_bounds
+
+    grid, cell_m = _build_grid_cells_n(tuple(bounds), _FACILITY_GRID_TARGET_CELLS)
 
     if grid.empty:
         return {"type": "FeatureCollection", "features": [], "cell_size_m": cell_m}
@@ -683,19 +764,13 @@ def grid_from_facility_accessibility(geojson_path):
             .buffer(0)
         )
 
-    in_aoi    = centroids_utm.apply(lambda pt: aoi_union_utm.contains(pt))
-    grid_utm  = grid_utm[in_aoi].copy()
+    in_aoi   = centroids_utm.apply(lambda pt: aoi_union_utm.contains(pt))
+    grid_utm = grid_utm[in_aoi].copy()
 
     if grid_utm.empty:
         return {"type": "FeatureCollection", "features": [], "cell_size_m": cell_m}
 
     # ── Spatial join: centroid within isochrone zone ──────────────────────────
-    time_col = None
-    for candidate in ["time_min", "walk_time", "minutes", "travel_time"]:
-        if candidate in zone_gdf.columns:
-            time_col = candidate
-            break
-
     centroids_gdf = gpd.GeoDataFrame(
         geometry=grid_utm.geometry.centroid.values,
         index=grid_utm.index,
@@ -712,7 +787,6 @@ def grid_from_facility_accessibility(geojson_path):
 
         if matches.empty or matches["index_right"].isna().all():
             if has_boundary:
-                # Inside AOI but outside all zones → no access, score 0
                 features.append({
                     "type": "Feature",
                     "geometry": mapping(row.geometry),
@@ -722,7 +796,6 @@ def grid_from_facility_accessibility(geojson_path):
                         "service":   "facility-accessibility",
                     },
                 })
-            # Without boundary: outside zone union → skip (not part of analysis)
             continue
 
         if time_col and time_col in matches.columns:
@@ -736,7 +809,7 @@ def grid_from_facility_accessibility(geojson_path):
             "geometry": mapping(row.geometry),
             "properties": {
                 "value":     walk_time,
-                "qol_score": _score_facility_accessibility(walk_time),
+                "qol_score": _score_facility_accessibility(walk_time, sorted_times),
                 "service":   "facility-accessibility",
             },
         })
