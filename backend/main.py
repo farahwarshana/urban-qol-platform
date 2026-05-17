@@ -388,12 +388,12 @@ def calculate_heat_index_endpoint(
 def facility_accessibility_endpoint(
     facilities_geojson: UploadFile = File(..., description="GeoJSON point layer of facilities"),
     walking_speed_kmh: float = Query(4.5, description="Walking speed in km/h (default 4.5)"),
-    network_dist_m: int = Query(2000, description="OSM network download radius in metres (default 2000)"),
 ):
     """
-    Compute 5, 10, and 15-minute walking isochrones for every point in the
-    uploaded facilities GeoJSON.  Isochrones for each time band are unioned
-    across all facilities and returned as a single FeatureCollection.
+    Compute 5, 10, and 15-minute walkable service areas for every point in the
+    uploaded facilities GeoJSON using Euclidean buffers with a tortuosity correction.
+    Zones for each time band are unioned across all facilities and returned as a
+    single FeatureCollection.
     """
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
@@ -408,7 +408,6 @@ def facility_accessibility_endpoint(
             facilities_geojson_path=str(tmp_dir / "input.geojson"),
             output_path=str(output_path),
             walking_speed_kmh=walking_speed_kmh,
-            network_dist_m=network_dist_m,
         )
 
         with open(str(output_path), "r", encoding="utf-8") as f:
@@ -418,7 +417,6 @@ def facility_accessibility_endpoint(
             "X-Total-Facilities":     str(result["total_facilities"]),
             "X-Facilities-Processed": str(result["facilities_processed"]),
             "X-Walking-Speed-Kmh":    str(result["walking_speed_kmh"]),
-            "X-Network-Dist-M":       str(result["network_dist_m"]),
         }
         if result["pct_5min"]  is not None: headers["X-Pct-5min"]  = str(result["pct_5min"])
         if result["pct_10min"] is not None: headers["X-Pct-10min"] = str(result["pct_10min"])

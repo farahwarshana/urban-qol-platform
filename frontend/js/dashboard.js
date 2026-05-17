@@ -128,8 +128,7 @@ const SERVICES = {
     inputs: [
       { type: "file",   id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
       { type: "number", id: "walkingSpeedInput",       label: "Walking speed (km/h)",            value: 4.5  },
-      { type: "number", id: "networkDistInput",        label: "Network download radius (meters)", value: 2000 },
-      { type: "tip",    text: "All points in the uploaded file will be analysed. Larger datasets and wider radii take longer." },
+      { type: "tip",    text: "All points in the uploaded file will be analysed. Walking buffers use a tortuosity factor of 0.75 to approximate real street-level reach." },
     ],
     action: runFacilityAccessibilityAnalysis
   },
@@ -910,19 +909,17 @@ async function runFacilityAccessibilityAnalysis() {
   }
 
   const facilitiesFile = facilitiesInput.files[0];
-  const walkingSpeed   = parseFloat(document.getElementById("walkingSpeedInput")?.value) || 4.5;
-  const networkDist    = parseInt(document.getElementById("networkDistInput")?.value)    || 2000;
+  const walkingSpeed = parseFloat(document.getElementById("walkingSpeedInput")?.value) || 4.5;
 
   const inputs = {
     facilitiesFileName: facilitiesFile.name,
     walkingSpeed,
-    networkDist,
   };
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Facility Accessibility — Processing</h3>
-      <p class="panel-desc">Downloading walking networks and computing isochrones for every facility point…</p>
+      <p class="panel-desc">Computing walkable service areas for every facility point…</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading…</span>
@@ -935,8 +932,7 @@ async function runFacilityAccessibilityAnalysis() {
     const formData = new FormData();
     formData.append("facilities_geojson", facilitiesFile);
 
-    const url = `${API_BASE_URL}/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&network_dist_m=${networkDist}`;
-    // const url = `http://localhost:8000/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&network_dist_m=${networkDist}`;
+    const url = `${API_BASE_URL}/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}`;
     const response = await fetch(url, { method: "POST", body: formData });
 
     if (!response.ok) {
@@ -946,9 +942,8 @@ async function runFacilityAccessibilityAnalysis() {
 
     const totalFacilities     = response.headers.get("X-Total-Facilities");
     const facilitiesProcessed = response.headers.get("X-Facilities-Processed");
-    const walkingSpeedHdr     = response.headers.get("X-Walking-Speed-Kmh");
-    const networkDistHdr      = response.headers.get("X-Network-Dist-M");
-    const pct5min             = response.headers.get("X-Pct-5min");
+    const walkingSpeedHdr = response.headers.get("X-Walking-Speed-Kmh");
+    const pct5min         = response.headers.get("X-Pct-5min");
     const pct10min            = response.headers.get("X-Pct-10min");
     const pct15min            = response.headers.get("X-Pct-15min");
 
@@ -1007,7 +1002,6 @@ async function runFacilityAccessibilityAnalysis() {
       total_facilities:     totalFacilities,
       facilities_processed: facilitiesProcessed,
       walking_speed_kmh:    walkingSpeedHdr,
-      network_dist_m:       networkDistHdr,
       pct_5min:             pct5min,
       pct_10min:            pct10min,
       pct_15min:            pct15min,
@@ -3442,10 +3436,6 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
     <div class="insight-card">
       <div class="label">Walking speed</div>
       <div class="value">${inputs.walkingSpeed} km/h</div>
-    </div>
-    <div class="insight-card">
-      <div class="label">Network download radius</div>
-      <div class="value">${parseInt(inputs.networkDist).toLocaleString()} m</div>
     </div>`;
 
   analysisPanel.innerHTML = `
