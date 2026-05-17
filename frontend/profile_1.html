@@ -77,6 +77,12 @@
       transition: all 0.2s;
     }
 
+    .analysis-svg{
+  width:22px;
+  height:22px;
+  object-fit:contain;
+}
+
     .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
 
     /* ── Layout ── */
@@ -440,23 +446,44 @@
   box-shadow:0 10px 30px rgba(0,212,170,.08);
 }
 
-    .analysis-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      flex-shrink: 0;
-    }
+    .analysis-icon{
+  width:52px;
+  height:52px;
 
-    .analysis-icon.ndvi    { background: rgba(16,185,129,0.12); }
+  border-radius:16px;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  flex-shrink:0;
+
+  background:linear-gradient(
+    135deg,
+    rgba(0,212,170,.12),
+    rgba(0,153,255,.08)
+  );
+
+  border:1px solid rgba(255,255,255,.06);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 4px 14px rgba(0,0,0,.18);
+}
+
+.analysis-icon img{
+  width:26px;
+  height:26px;
+  object-fit:contain;
+  opacity:.95;
+}
+
+    /* .analysis-icon.ndvi    { background: rgba(16,185,129,0.12); }
     .analysis-icon.heat    { background: rgba(245,158,11,0.12); }
     .analysis-icon.crime   { background: rgba(255,77,109,0.12); }
     .analysis-icon.transit { background: rgba(0,153,255,0.12); }
     .analysis-icon.urban   { background: rgba(168,85,247,0.12); }
-    .analysis-icon.air     { background: rgba(0,212,170,0.12); }
+    .analysis-icon.air     { background: rgba(0,212,170,0.12); } */
 
     .analysis-meta h4 {
       font-size: 14px;
@@ -511,11 +538,12 @@
       align-items: center;
       gap: 6px;
       transition: all 0.2s;
-      html[dir="rtl"] .dl-btn{
-  direction:rtl;
-}
       
     }
+
+    html[dir="rtl"] .dl-btn{
+  direction: rtl;
+}
 
     .dl-btn:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -570,13 +598,20 @@
 <!-- Navbar -->
 <nav>
   <a href="#" class="nav-logo">
-    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="28" height="28" rx="7" fill="#00d4aa" fill-opacity="0.15"/>
-      <path d="M7 20L11 12L15 16L19 8L21 12" stroke="#00d4aa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="21" cy="12" r="2" fill="#00d4aa"/>
-    </svg>
-    Urban Quality of Life Analysis Platform
-  </a>
+
+  <span>
+    <img width="45"
+         height="45"
+         src="https://img.icons8.com/isometric-line/50/4cc2ff/building.png"
+         alt="building"/>
+  </span>
+
+  <span>
+    Malaz · Urban Quality of Life Analysis
+  </span>
+
+</a>
+
   <div class="nav-right">
     <button class="nav-btn" onclick="window.location.href='dashboard.html'">← Back to Map</button>
     <button class="nav-btn" id="langBtn" onclick="toggleLang()">🌐 العربية</button>
@@ -757,6 +792,7 @@
   <span id="toastMsg">Changes saved successfully</span>
 </div>
 
+<script src="js/config.js"></script>
 <script>
 
   const API_BASE_URL =
@@ -807,15 +843,15 @@ async function loadAnalyses() {
       return;
     }
 
-    const icons = { ndvi: '🌿', heat: '🌡️', transit: '🚌', urban: '🏙️', crime: '🔴', air: '💨' };
-
 list.innerHTML = filtered.map(a => {
 
   const icon =
-    icons[a.type] || '📊';
+  ANALYSIS_ICONS[a.type]
+    ? `<img src="${ANALYSIS_ICONS[a.type]}" alt="${a.type}">`
+    : "📊";
 
   const translatedTitle =
-    analysisTranslations[a.type]?.[currentLang]
+    ANALYSIS_LABELS[a.type]?.[currentLang]
     || a.title;
 
   const date =
@@ -967,40 +1003,6 @@ function openAnalysisDetails(id) {
   window.location.href = `analysis-details.html?id=${id}`;
 }
 
-const analysisTranslations = {
-
-  "urban-density": {
-  en: "Urban Density",
-  ar: "الكثافة السكانية"
-},
-
-  ndvi: {
-    en: "NDVI",
-    ar: "الغطاء النباتي"
-  },
-
-  heat: {
-    en: "Heat Index",
-    ar: "مؤشر الحرارة"
-  },
-
- "public-transport": {
-  en: "Public Transport Coverage",
-  ar: "تغطية المواصلات العامة"
-},
-
-
-  crime: {
-    en: "Crime",
-    ar: "الجريمة"
-  },
-
-  air: {
-    en: "Air Quality",
-    ar: "جودة الهواء"
-  }
-
-};
 
 const translations = {
   en: {
