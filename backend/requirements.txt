@@ -12,3 +12,5 @@ python-dotenv
 passlib[bcrypt]
 python-jose
 osmnx
+pyproj==3.6.1
+fiona==1.9.6
