@@ -214,6 +214,12 @@
           <p>Map will be rendered here.</p>
         </div>
 
+        <!-- Map legend — populated dynamically by updateLegend() -->
+        <div id="mapLegend" class="map-legend" style="display:none;">
+          <div class="map-legend-title" id="mapLegendTitle"></div>
+          <div class="map-legend-items" id="mapLegendItems"></div>
+        </div>
+
         <!-- Bottom map HUD: scale bar + coordinates -->
         <div class="map-hud">
           <div class="map-scale-bar" id="mapScaleBar">

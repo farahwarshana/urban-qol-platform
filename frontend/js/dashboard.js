@@ -228,6 +228,7 @@ function renderServicePanel(key) {
   const service = SERVICES[key];
   if (!service) return;
 
+  hideLegend();
   clearMap();
   inputLayer = null;
   resultLayer = null;
@@ -482,6 +483,7 @@ async function runNDVIAnalysis() {
     // Keep a copy for the grid endpoint (slice() creates a detached copy)
     lastResultBlob    = arrayBuffer.slice(0);
     lastResultService = "ndvi";
+    updateLegend("ndvi", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     // Render the NDVI result: low NDVI → red, high NDVI → green
@@ -667,6 +669,7 @@ async function runCrimeAnalysis() {
     // Store for grid analysis
     lastResultBlob    = geojsonData;
     lastResultService = "crime";
+    updateLegend("crime", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     if (inputLayer) {
@@ -818,6 +821,7 @@ captureResultFile(response);
     // Store for grid analysis
     lastResultBlob    = geojsonData;
     lastResultService = "urban-density";
+    updateLegend("urban-density", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     if (inputLayer) {
@@ -952,6 +956,7 @@ async function runFacilityAccessibilityAnalysis() {
 
     lastResultBlob    = geojsonData;
     lastResultService = "facility-accessibility";
+    updateLegend("facility-accessibility", "full");
 
     if (gridLayer)  { map.removeLayer(gridLayer);  gridLayer  = null; }
     if (inputLayer)   map.removeLayer(inputLayer);
@@ -1095,6 +1100,7 @@ async function runPublicTransportAnalysis() {
 
     lastResultBlob    = geojsonData;
     lastResultService = "public-transport";
+    updateLegend("public-transport", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     if (inputLayer) map.removeLayer(inputLayer);
@@ -1300,6 +1306,7 @@ function renderTransitResults(stats, inputs, geojsonData) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -1343,6 +1350,15 @@ function renderTransitResults(stats, inputs, geojsonData) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -1416,6 +1432,7 @@ async function runVegetationAnalysis() {
     lastVegResult     = geojsonData;
     lastResultBlob    = geojsonData;
     lastResultService = "vegetation";
+    updateLegend("vegetation", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     if (inputLayer) map.removeLayer(inputLayer);
@@ -1549,6 +1566,7 @@ function renderVegetationResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <!-- RAW tab -->
@@ -1602,6 +1620,15 @@ function renderVegetationResults(stats, inputs) {
       <!-- GRID tab -->
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to score cells…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <div style="display:flex;gap:6px;margin-top:12px;">
@@ -1748,6 +1775,7 @@ async function runTrafficAnalysis() {
 
     lastResultBlob    = geojsonData;
     lastResultService = "traffic";
+    updateLegend("traffic", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
     if (inputLayer) map.removeLayer(inputLayer);
     clearMap();
@@ -1910,6 +1938,7 @@ function renderTrafficResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <!-- RAW tab -->
@@ -1982,6 +2011,15 @@ function renderTrafficResults(stats, inputs) {
       <!-- GRID tab — congestion scoring -->
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the congestion cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -2070,6 +2108,7 @@ async function runInformalSettlementAnalysis() {
     lastISPAResult    = geojsonData;
     lastResultBlob    = geojsonData;
     lastResultService = "informal-settlement";
+    updateLegend("informal-settlement", "full");
 
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
     if (inputLayer) map.removeLayer(inputLayer);
@@ -2181,6 +2220,7 @@ function renderInformalSettlementResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <!-- RAW tab -->
@@ -2251,6 +2291,15 @@ function renderInformalSettlementResults(stats, inputs) {
       <!-- GRID tab -->
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to score cells…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <div style="display:flex;gap:6px;margin-top:12px;">
@@ -2550,6 +2599,7 @@ function renderCrimeResults(stats, inputs, geojsonData) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -2589,6 +2639,15 @@ function renderCrimeResults(stats, inputs, geojsonData) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -2691,6 +2750,7 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -2742,6 +2802,15 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -2853,6 +2922,7 @@ function renderNDVIResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -2922,6 +2992,15 @@ function renderNDVIResults(stats, inputs) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -2998,6 +3077,7 @@ function renderHeatIndexResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -3050,6 +3130,15 @@ function renderHeatIndexResults(stats, inputs) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -3114,6 +3203,7 @@ async function runAirQualityAnalysis() {
     const arrayBuffer = await response.arrayBuffer();
     lastResultBlob    = arrayBuffer.slice(0);
     lastResultService = "air-quality";
+    updateLegend("air-quality", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
@@ -3211,6 +3301,7 @@ function renderAirQualityResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -3267,6 +3358,15 @@ function renderAirQualityResults(stats, inputs) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -3357,6 +3457,7 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -3410,6 +3511,15 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
         <p class="text-muted">Click this tab to generate the cell grid…</p>
       </div>
 
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
+      </div>
+
       <button class="btn btn-ghost btn-block mt-3"
               onclick="renderServicePanel('facility_Accessibility_index')">
         ← Back to inputs
@@ -3434,6 +3544,7 @@ function renderResults(service) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <!-- Tab contents -->
@@ -3451,6 +3562,15 @@ function renderResults(service) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -3481,6 +3601,8 @@ function wireTabSwitching() {
       analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
       tab.classList.add("active");
       analysisPanel.querySelector("#tab-" + target).classList.add("active");
+
+      updateLegend(lastResultService, target);
 
       if (target === "raw") {
         if (gridLayer && map.hasLayer(gridLayer)) map.removeLayer(gridLayer);
@@ -3871,6 +3993,15 @@ function wireTabSwitching() {
             gridTabContent.innerHTML = `<p class="text-danger">Failed to generate grid: ${err.message}</p>`;
           }
         }
+
+      } else if (target === "ai") {
+        // Hide all map layers — the AI tab is purely textual
+        if (inputLayer  && map.hasLayer(inputLayer))  map.removeLayer(inputLayer);
+        if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+        if (gridLayer   && map.hasLayer(gridLayer))   map.removeLayer(gridLayer);
+        // The #tab-ai placeholder is static for now.
+        // When the AI agent is ready, call a function here (e.g. fetchAIRecommendations())
+        // that populates #tab-ai with the agent's response.
       }
     });
   });
@@ -4410,6 +4541,245 @@ function toggleAnnotate() {
   overlay.addEventListener('mouseup', annotateOnPointerUp);
   overlay.addEventListener('mouseleave', annotateOnPointerUp);
 }
+
+/* ============================================================
+   MAP LEGEND  — global, tab-aware
+   Call updateLegend(service, tab) any time the visible layer changes.
+   service : lastResultService value  e.g. "crime", "traffic" …
+   tab     : "raw" | "full" | "grid"  (or null to hide)
+   ============================================================ */
+
+(function () {
+
+  // ── low-level helpers ───────────────────────────────────────
+  function swatch(color, shape) {
+    // shape: "rect" (default) | "circle" | "line" | "dashed-line"
+    const cls = shape === 'circle'       ? 'legend-swatch circle'
+              : shape === 'line'         ? 'legend-swatch line'
+              : shape === 'dashed-line'  ? 'legend-swatch dashed-line'
+              : 'legend-swatch';
+    if (shape === 'dashed-line') {
+      return `<span class="${cls}" style="border-color:${color};width:18px;"></span>`;
+    }
+    return `<span class="${cls}" style="background:${color};"></span>`;
+  }
+
+  function row(color, label, shape) {
+    return `<div class="legend-row">${swatch(color, shape)}<span>${label}</span></div>`;
+  }
+
+  function divider() { return '<div class="legend-divider"></div>'; }
+
+  function gradientRow(stops, label) {
+    // stops: array of hex/rgba colours forming a gradient left→right
+    const grad = `linear-gradient(to right, ${stops.join(',')})`;
+    return `<div class="legend-row">
+      <span class="legend-swatch" style="background:${grad};width:60px;border-radius:3px;"></span>
+      <span>${label}</span>
+    </div>`;
+  }
+
+  // ── QoL score gradient helper (4-tier: red→orange→yellow-green→green) ──
+  const QOL_GRADIENT = ['#dc1400','#f0a500','#c8d200','#1ea028'];
+  function qolGradientRow() {
+    return `
+      ${gradientRow(QOL_GRADIENT, 'Score 0 → 100')}
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:1px;padding:0 1px;">
+        <span>Bad</span><span>Poor</span><span>Good</span><span>Exc.</span>
+      </div>`;
+  }
+
+  // ── per-service, per-tab legend configs ────────────────────
+  // Each entry returns an HTML string (title already set separately)
+  const LEGENDS = {
+
+    'urban-density': {
+      title: 'Population Density',
+      raw:  () => row('#4cc2ff','Input boundary','rect'),
+      full: () => [
+        row('#add8e6', '≤ 100 pop/km²'),
+        row('#87ceeb', '100 – 500'),
+        row('#4682b4', '500 – 1 000'),
+        row('#4169e1', '1 000 – 2 000'),
+        row('#000080', '> 2 000'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'public-transport': {
+      title: 'Transport Coverage',
+      raw: () => [
+        row('#f0a500', 'Study boundary', 'dashed-line'),
+        row('#1a8fc1', 'Transit stations', 'circle'),
+      ].join(''),
+      full: () => [
+        row('#4cc2ff', 'Covered zones'),
+        row('#e74c3c', 'Uncovered zones'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'facility-accessibility': {
+      title: 'Facility Accessibility',
+      raw: () => [
+        row('#f0a500', 'Study boundary', 'dashed-line'),
+        row('#4cc2ff', 'Facilities', 'circle'),
+      ].join(''),
+      full: () => [
+        row('#198754', '≤ 5 min walk'),
+        row('#ffc107', '≤ 10 min walk'),
+        row('#dc3545', '≤ 15 min walk'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    // alias used in codebase
+    'facility_Accessibility_index': {
+      title: 'Facility Accessibility',
+      raw: () => [
+        row('#f0a500', 'Study boundary', 'dashed-line'),
+        row('#4cc2ff', 'Facilities', 'circle'),
+      ].join(''),
+      full: () => [
+        row('#198754', '≤ 5 min walk'),
+        row('#ffc107', '≤ 10 min walk'),
+        row('#dc3545', '≤ 15 min walk'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'heat-index': {
+      title: 'Heat Index',
+      raw:  () => '',
+      full: () => [
+        row('var(--success)',  '< 27 °C — Comfortable'),
+        row('#8bc34a',        '27 – 32 °C — Caution'),
+        row('var(--warning)', '32 – 38 °C — Extreme caution'),
+        row('var(--danger)',  '≥ 38 °C — Danger'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'vegetation': {
+      title: 'Vegetation Density',
+      raw:  () => gradientRow(['#c82800','#e6a000','#50b400'], 'Low → High cover'),
+      full: () => [
+        gradientRow(['#c82800','#e6a000','#50b400'], 'Vegetation %'),
+        divider(),
+        row('#e6a000','≥ 30% benchmark','dashed-line'),
+      ].join(''),
+      grid: () => [
+        gradientRow(['#c82800','#e6a000','#50b400'], 'Vegetation %'),
+        divider(),
+        row('#e6a000', '30% WHO benchmark', 'dashed-line'),
+      ].join(''),
+    },
+
+    'ndvi': {
+      title: 'NDVI',
+      raw:  () => gradientRow(['#c81400','#b4c800','#009600'], 'Low → High NDVI'),
+      full: () => gradientRow(['#c81400','#b4c800','#009600'], 'Low → High NDVI'),
+      grid: () => qolGradientRow(),
+    },
+
+    'crime': {
+      title: 'Crime Density',
+      raw: () => row('#ff7800', 'Reported incidents', 'circle'),
+      full: () => [
+        row('#2ecc71', '0 – 5 crimes/km²'),
+        row('#f1c40f', '5 – 10'),
+        row('#e67e22', '10 – 15'),
+        row('#e74c3c', '15 – 20'),
+        row('#891508', '> 20'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'traffic': {
+      title: 'Traffic',
+      raw: () => [
+        row('#e67e22', 'Road network', 'line'),
+        row('#f0a500', 'Study boundary', 'dashed-line'),
+      ].join(''),
+      full: () => [
+        row('#e74c3c', 'Primary roads', 'line'),
+        row('#f39c12', 'Secondary roads', 'line'),
+        row('#3498db', 'Local roads', 'line'),
+      ].join(''),
+      grid: () => [
+        row('#2ecc71', 'Low congestion'),
+        row('#f39c12', 'Medium congestion'),
+        row('#e74c3c', 'High congestion'),
+      ].join(''),
+    },
+
+    'informal-settlement': {
+      title: 'Settlement Pattern',
+      raw:  () => gradientRow(['rgba(46,180,50,0.72)','rgba(240,200,0,0.72)','rgba(180,20,0,0.72)'], 'Planned → Informal'),
+      full: () => [
+        gradientRow(['rgba(46,180,50,0.72)','rgba(240,200,0,0.72)','rgba(180,20,0,0.72)'], 'Irregularity score'),
+        divider(),
+        row('#e74c3c', 'Informal hotspots', 'dashed-line'),
+      ].join(''),
+      grid: () => [
+        row('rgba(46,180,50,0.85)',  'Planned (0 – 33)'),
+        row('rgba(230,130,0,0.85)',  'Mixed (34 – 66)'),
+        row('rgba(180,20,0,0.85)',   'Informal (67 – 100)'),
+      ].join(''),
+    },
+
+    'air-quality': {
+      title: 'Air Quality Index',
+      raw:  () => '',
+      full: () => [
+        row('#34d399', 'AQI ≤ 50 — Good'),
+        row('#a3e635', '51 – 100 — Moderate'),
+        row('#fbbf24', '101 – 150 — Sensitive groups'),
+        row('#f97316', '151 – 200 — Unhealthy'),
+        row('#f87171', '201 – 300 — Very unhealthy'),
+        row('#7f1d1d', '> 300 — Hazardous'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'expansion': {
+      title: 'Expansion Suitability',
+      raw:  () => '',
+      full: () => qolGradientRow(),
+      grid: () => qolGradientRow(),
+    },
+  };
+
+  // ── public API ──────────────────────────────────────────────
+  window.updateLegend = function (service, tab) {
+    const el      = document.getElementById('mapLegend');
+    const titleEl = document.getElementById('mapLegendTitle');
+    const itemsEl = document.getElementById('mapLegendItems');
+    if (!el) return;
+
+    // Hide legend for the AI tab or when no service is set
+    if (!service || tab === 'ai') { el.style.display = 'none'; return; }
+
+    const cfg = LEGENDS[service];
+    if (!cfg) { el.style.display = 'none'; return; }
+
+    const tabFn = cfg[tab];
+    if (!tabFn) { el.style.display = 'none'; return; }
+
+    const html = tabFn();
+    if (!html || html.trim() === '') { el.style.display = 'none'; return; }
+
+    titleEl.textContent = cfg.title;
+    itemsEl.innerHTML   = html;
+    el.style.display    = 'block';
+  };
+
+  window.hideLegend = function () {
+    const el = document.getElementById('mapLegend');
+    if (el) el.style.display = 'none';
+  };
+
+}());
 
 /* changning basemap*/
 
