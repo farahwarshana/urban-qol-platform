@@ -7,20 +7,11 @@
   <title>Analysis Details</title>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-
+  <link rel="stylesheet" href="css/theme.css">
   <style>
 
     * { margin:0; padding:0; box-sizing:border-box; }
 
-    :root {
-      --bg:#0f1117;
-      --surface:#1a1d27;
-      --surface2:#222636;
-      --border:rgba(255,255,255,.08);
-      --text:#f1f5f9;
-      --muted:#94a3b8;
-      --accent:#00d4aa;
-    }
 
     body {
       background:var(--bg);
@@ -342,7 +333,7 @@
   </div>
 
 </div>
-
+<script src="js/config.js"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/georaster"></script>
 <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
@@ -365,15 +356,22 @@ async function loadAnalysisDetails() {
   const data     = await res.json();
   const analysis = data.find(a => String(a.id) === String(analysisId));
 
+  const analysisLabel =
+  ANALYSIS_LABELS[analysis.type]?.en
+  || analysis.title
+  || analysis.type;
+
   if (!analysis) {
     document.getElementById("analysisTitle").textContent = "Analysis not found";
     return;
   }
 
-  document.getElementById("analysisTitle").textContent = analysis.title;
+  document.getElementById("analysisTitle").textContent =
+  analysisLabel;
   document.getElementById("analysisMeta").textContent  =
     `${analysis.area} • ${new Date(analysis.created_at).toLocaleString()}`;
-  document.getElementById("metaType").textContent = analysis.title || analysis.type || "Unknown";
+  document.getElementById("metaType").textContent =
+  analysisLabel;
   document.getElementById("metaDate").textContent = new Date(analysis.created_at).toLocaleString();
 
   if (analysis.result_file) {

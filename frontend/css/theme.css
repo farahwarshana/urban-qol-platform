@@ -1,0 +1,69 @@
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #222636;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --accent: #00d4aa;
+  --accent2: #0099ff;
+  --text: #e8eaf0;
+  --muted: #7a7f94;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Space Grotesk', sans-serif;
+  min-height: 100vh;
+}
+
+
+/* Dashboard color override only */
+body{
+  background:var(--bg) !important;
+  color:var(--text) !important;
+}
+
+.navbar,
+.top-navbar,
+.sidebar,
+.analysis-panel,
+.right-panel,
+.panel,
+.card{
+  background:var(--surface) !important;
+  color:var(--text) !important;
+  border-color:var(--border) !important;
+}
+
+.sidebar,
+.right-sidebar{
+  background:var(--surface) !important;
+}
+
+.service-card,
+.service-item,
+.analysis-card{
+  background:var(--surface2) !important;
+  border-color:var(--border) !important;
+  color:var(--text) !important;
+}
+
+button,
+.btn{
+  border-color:var(--border2);
+}
+
+.btn-primary,
+.run-btn,
+.analyze-btn{
+  background:var(--accent) !important;
+  border-color:var(--accent) !important;
+  color:#0f1117 !important;
+}
