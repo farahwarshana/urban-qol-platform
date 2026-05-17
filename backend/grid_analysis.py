@@ -58,6 +58,7 @@ import rasterio
 import geopandas as gpd
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from shapely.geometry import box, mapping
+from shapely.ops import unary_union
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -613,10 +614,12 @@ def grid_from_transit_coverage(geojson_path):
 def grid_from_facility_accessibility(geojson_path):
     """
     Score cells based on the minimum walk time from a facility accessibility
-    isochrone GeoJSON.  Only zone features (type == "zone", or any non-boundary/
-    non-uncovered feature for backwards compatibility) are used for scoring.
-    Boundary and uncovered features are filtered out before the spatial join.
-    Cell size is chosen automatically based on extent (target ~600 cells max).
+    isochrone GeoJSON.
+
+    When a boundary feature (layer == "boundary") is present the grid covers
+    the full AOI and every cell inside it is scored — cells outside all
+    isochrone zones get qol_score 0 (no access).  Without a boundary the grid
+    covers only the union of isochrone zones (no-AOI behaviour).
     """
     gdf = gpd.read_file(geojson_path)
     if gdf.crs is None:
@@ -626,51 +629,100 @@ def grid_from_facility_accessibility(geojson_path):
     if gdf.empty:
         return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
 
-    # Keep only zone features for the spatial join — drop boundary outlines and
-    # uncovered polygons which carry no walk-time data.
+    # ── Split features by role ────────────────────────────────────────────────
+    has_boundary = "layer" in gdf.columns and (gdf["layer"] == "boundary").any()
+
+    if has_boundary:
+        boundary_gdf = gdf[gdf["layer"] == "boundary"].copy()
+    else:
+        boundary_gdf = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+
+    # Zone features: anything that is not a boundary outline or an uncovered polygon
     keep = np.ones(len(gdf), dtype=bool)
     if "type" in gdf.columns:
         keep &= ~gdf["type"].isin({"uncovered"}).values
     if "layer" in gdf.columns:
         keep &= ~gdf["layer"].isin({"boundary"}).values
-
     zone_gdf = gdf[keep].copy()
 
     if zone_gdf.empty:
         return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
 
-    bounds       = zone_gdf.total_bounds
+    # ── Grid extent and cell size ─────────────────────────────────────────────
+    # Use boundary for extent when present so grid covers the whole AOI
+    extent_gdf   = boundary_gdf if has_boundary else zone_gdf
+    bounds       = extent_gdf.total_bounds
     grid, cell_m = _build_grid_cells(tuple(bounds))
 
-    # Boundary filter: keep only cells whose centroid is inside the data bbox
-    minx, miny, maxx, maxy = bounds
-    centroids = grid.geometry.centroid
-    in_bounds = (
-        (centroids.x >= minx) & (centroids.x <= maxx) &
-        (centroids.y >= miny) & (centroids.y <= maxy)
-    )
-    grid = grid[in_bounds].copy()
+    if grid.empty:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": cell_m}
 
+    # ── Project to UTM for accurate containment tests ─────────────────────────
+    cx = (bounds[0] + bounds[2]) / 2
+    cy = (bounds[1] + bounds[3]) / 2
+    utm_zone = int((cx + 180) / 6) + 1
+    utm_epsg = (32600 if cy >= 0 else 32700) + utm_zone
+    utm_crs  = f"EPSG:{utm_epsg}"
+
+    grid_utm      = grid.to_crs(utm_crs)
+    centroids_utm = grid_utm.geometry.centroid
+
+    # ── Clip grid to AOI boundary (or zone union when no boundary given) ──────
+    if has_boundary:
+        aoi_union_utm = (
+            gpd.GeoDataFrame(geometry=[unary_union(boundary_gdf.geometry)], crs="EPSG:4326")
+            .to_crs(utm_crs)
+            .geometry.iloc[0]
+            .buffer(0)
+        )
+    else:
+        aoi_union_utm = (
+            gpd.GeoDataFrame(geometry=[unary_union(zone_gdf.geometry)], crs="EPSG:4326")
+            .to_crs(utm_crs)
+            .geometry.iloc[0]
+            .buffer(0)
+        )
+
+    in_aoi    = centroids_utm.apply(lambda pt: aoi_union_utm.contains(pt))
+    grid_utm  = grid_utm[in_aoi].copy()
+
+    if grid_utm.empty:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": cell_m}
+
+    # ── Spatial join: centroid within isochrone zone ──────────────────────────
     time_col = None
     for candidate in ["time_min", "walk_time", "minutes", "travel_time"]:
         if candidate in zone_gdf.columns:
             time_col = candidate
             break
 
-    # Vectorised sjoin: centroid within isochrone polygon
     centroids_gdf = gpd.GeoDataFrame(
-        geometry=grid.geometry.centroid.values,
-        index=grid.index,
-        crs="EPSG:4326",
-    )
+        geometry=grid_utm.geometry.centroid.values,
+        index=grid_utm.index,
+        crs=utm_crs,
+    ).to_crs("EPSG:4326")
+
     joined = gpd.sjoin(centroids_gdf, zone_gdf, how="left", predicate="within")
 
+    grid_wgs = grid_utm.to_crs("EPSG:4326")
+
     features = []
-    for idx, row in grid.iterrows():
+    for idx, row in grid_wgs.iterrows():
         matches = joined.loc[[idx]] if idx in joined.index else joined.iloc[0:0]
 
         if matches.empty or matches["index_right"].isna().all():
-            # Centroid outside all isochrone zones — outside analysis extent, skip
+            if has_boundary:
+                # Inside AOI but outside all zones → no access, score 0
+                features.append({
+                    "type": "Feature",
+                    "geometry": mapping(row.geometry),
+                    "properties": {
+                        "value":     None,
+                        "qol_score": 0,
+                        "service":   "facility-accessibility",
+                    },
+                })
+            # Without boundary: outside zone union → skip (not part of analysis)
             continue
 
         if time_col and time_col in matches.columns:
@@ -679,16 +731,14 @@ def grid_from_facility_accessibility(geojson_path):
         else:
             walk_time = None
 
-        score = _score_facility_accessibility(walk_time)
-
         features.append({
             "type": "Feature",
             "geometry": mapping(row.geometry),
             "properties": {
                 "value":     walk_time,
-                "qol_score": score,
+                "qol_score": _score_facility_accessibility(walk_time),
                 "service":   "facility-accessibility",
-            }
+            },
         })
 
     return {
