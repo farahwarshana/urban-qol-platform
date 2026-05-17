@@ -386,18 +386,20 @@ def calculate_heat_index_endpoint(
 
 @app.post("/calculate-facility-accessibility", tags=["Facility Accessibility"])
 def facility_accessibility_endpoint(
-    facilities_geojson: UploadFile = File(..., description="GeoJSON point layer of facilities"),
-    walking_speed_kmh: float = Query(4.5, description="Walking speed in km/h (default 4.5)"),
-    times_minutes: str = Query("5,10,15", description="Comma-separated walk-time intervals in minutes, e.g. '5,10,15'"),
+    facilities_geojson: UploadFile = File(...,       description="GeoJSON point layer of facilities"),
+    aoi_geojson:        UploadFile = File(None,      description="Optional GeoJSON polygon for area of interest"),
+    walking_speed_kmh:  float      = Query(4.5,      description="Walking speed in km/h (default 4.5)"),
+    times_minutes:      str        = Query("5,10,15",description="Comma-separated walk-time intervals, e.g. '5,10,15'"),
 ):
     """
     Compute walkable service areas for every point in the uploaded facilities GeoJSON
-    using Euclidean buffers with a tortuosity correction.  Pass any number of
-    walk-time intervals via times_minutes (e.g. '3,7,12,20').
+    using Euclidean buffers with a tortuosity correction.
+
+    Optionally supply an AOI polygon — zones will be clipped to it and an
+    uncovered area layer will be added to the response.
     """
     import urllib.parse
 
-    # Parse and validate times_minutes
     try:
         parsed_times = sorted({
             int(t.strip()) for t in times_minutes.split(",")
@@ -411,17 +413,25 @@ def facility_accessibility_endpoint(
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    output_path = tmp_dir / "facility_accessibility_zones.geojson"
+    output_path  = tmp_dir / "facility_accessibility_zones.geojson"
+    input_path   = tmp_dir / "input.geojson"
+    aoi_path     = None
 
     try:
-        with (tmp_dir / "input.geojson").open("wb") as f:
+        with input_path.open("wb") as f:
             shutil.copyfileobj(facilities_geojson.file, f)
 
+        if aoi_geojson is not None:
+            aoi_path = tmp_dir / "aoi.geojson"
+            with aoi_path.open("wb") as f:
+                shutil.copyfileobj(aoi_geojson.file, f)
+
         result = calculate_facility_accessibility(
-            facilities_geojson_path=str(tmp_dir / "input.geojson"),
+            facilities_geojson_path=str(input_path),
             output_path=str(output_path),
             walking_speed_kmh=walking_speed_kmh,
             times_minutes=parsed_times,
+            aoi_geojson_path=str(aoi_path) if aoi_path else None,
         )
 
         with open(str(output_path), "r", encoding="utf-8") as f:
@@ -431,9 +441,11 @@ def facility_accessibility_endpoint(
             "X-Total-Facilities":     str(result["total_facilities"]),
             "X-Facilities-Processed": str(result["facilities_processed"]),
             "X-Walking-Speed-Kmh":    str(result["walking_speed_kmh"]),
-            # All zone percentages in one header: {"5": 100.0, "10": 82.3, ...}
-            "X-Zone-Pcts": urllib.parse.quote(json.dumps(result["zone_pcts"])),
+            "X-Has-Aoi":              str(result["has_aoi"]).lower(),
+            "X-Zone-Pcts":            urllib.parse.quote(json.dumps(result["zone_pcts"])),
         }
+        if result["coverage_pct"]  is not None: headers["X-Coverage-Pct"]  = str(result["coverage_pct"])
+        if result["uncovered_pct"] is not None: headers["X-Uncovered-Pct"] = str(result["uncovered_pct"])
 
         return JSONResponse(content=geojson_data, headers=headers)
 

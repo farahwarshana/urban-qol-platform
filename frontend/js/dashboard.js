@@ -127,9 +127,10 @@ const SERVICES = {
     desc: "Compute walkable service areas for every facility point in your dataset.",
     inputs: [
       { type: "file",   id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
+      { type: "file",   id: "facilityAoiInput",       label: "Upload area of interest (GeoJSON, optional)" },
       { type: "number", id: "walkingSpeedInput",       label: "Walking speed (km/h)", value: 4.5 },
       { type: "text",   id: "walkingIntervalsInput",   label: "Walking time intervals (minutes, comma-separated)", placeholder: "e.g. 5, 10, 15" },
-      { type: "tip",    text: "Enter any number of intervals (e.g. 3, 7, 12, 20). All points in the file will be analysed. Buffers use a tortuosity factor of 0.75 to approximate real street-level reach." },
+      { type: "tip",    text: "AOI is optional. When provided, zones are clipped to it and uncovered areas are shown. Buffers use a tortuosity factor of 0.75 to approximate real street-level reach." },
     ],
     action: runFacilityAccessibilityAnalysis
   },
@@ -928,12 +929,15 @@ async function runFacilityAccessibilityAnalysis() {
   }
 
   const facilitiesFile = facilitiesInput.files[0];
+  const aoiInput       = document.getElementById("facilityAoiInput");
+  const aoiFile        = aoiInput?.files[0] || null;
   const walkingSpeed   = parseFloat(document.getElementById("walkingSpeedInput")?.value) || 4.5;
   const intervalsRaw   = document.getElementById("walkingIntervalsInput")?.value || "";
   const intervals      = _parseIntervals(intervalsRaw);
 
   const inputs = {
     facilitiesFileName: facilitiesFile.name,
+    aoiFileName:        aoiFile ? aoiFile.name : null,
     walkingSpeed,
     intervals,
   };
@@ -953,6 +957,7 @@ async function runFacilityAccessibilityAnalysis() {
   try {
     const formData = new FormData();
     formData.append("facilities_geojson", facilitiesFile);
+    if (aoiFile) formData.append("aoi_geojson", aoiFile);
 
     const url = `${API_BASE_URL}/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&times_minutes=${intervals.join(",")}`;
     const response = await fetch(url, { method: "POST", body: formData });
@@ -965,6 +970,9 @@ async function runFacilityAccessibilityAnalysis() {
     const totalFacilities     = response.headers.get("X-Total-Facilities");
     const facilitiesProcessed = response.headers.get("X-Facilities-Processed");
     const walkingSpeedHdr     = response.headers.get("X-Walking-Speed-Kmh");
+    const hasAoi              = response.headers.get("X-Has-Aoi") === "true";
+    const coveragePct         = response.headers.get("X-Coverage-Pct");
+    const uncoveredPct        = response.headers.get("X-Uncovered-Pct");
     // Zone percentages arrive as a JSON object: {"5": 100.0, "10": 82.3, ...}
     const zonePctsRaw = response.headers.get("X-Zone-Pcts");
     const zonePcts    = zonePctsRaw ? JSON.parse(decodeURIComponent(zonePctsRaw)) : {};
@@ -984,18 +992,28 @@ async function runFacilityAccessibilityAnalysis() {
       geojsonData.features.map(f => f.properties.time_min).filter(t => t != null)
     )].sort((a, b) => a - b);
 
-    // Result layer: zones coloured from innermost (darkest) to outermost (lightest)
+    // Result layer: zone polygons + uncovered area (boundary outline filtered out)
     resultLayer = L.geoJSON(geojsonData, {
+      filter: function(feature) {
+        return feature.properties.layer !== "boundary";
+      },
       style: function(feature) {
-        const t     = feature.properties.time_min;
+        const p = feature.properties;
+        if (p.type === "uncovered" || p.category === "uncovered") {
+          return { color: "#e74c3c", fillColor: "#e74c3c", fillOpacity: 0.18, weight: 1, dashArray: "4, 3" };
+        }
+        const t     = p.time_min;
         const color = _facilityZoneColor(resultTimes, t);
-        // Opacity decreases for outer zones so inner ones stay visible
-        const idx     = resultTimes.indexOf(t);
+        const idx   = resultTimes.indexOf(t);
         const opacity = Math.max(0.20, 0.45 - idx * 0.05);
         return { color, fillColor: color, fillOpacity: opacity, weight: 1.5 };
       },
       onEachFeature: function(feature, layer) {
-        const p     = feature.properties;
+        const p = feature.properties;
+        if (p.type === "uncovered" || p.category === "uncovered") {
+          layer.bindPopup("<strong style='color:#e74c3c'>Outside walking range</strong><br>No facility reachable within the maximum walk time.");
+          return;
+        }
         const color = _facilityZoneColor(resultTimes, p.time_min);
         layer.bindPopup(
           `<strong style="color:${color}">Within ${p.time_min} min walk</strong><br>` +
@@ -1005,10 +1023,17 @@ async function runFacilityAccessibilityAnalysis() {
       }
     }).addTo(map);
 
-    // Input layer: facility point markers (shown in Raw Data tab)
+    // Input layer: facility points + AOI boundary outline (shown in Raw Data tab)
+    inputLayer = L.geoJSON(geojsonData, {
+      filter: function(feature) { return feature.properties.layer === "boundary"; },
+      style: { color: "#f0a500", weight: 2.5, fill: false, dashArray: "6, 3" },
+      onEachFeature: function(feature, layer) { layer.bindPopup("<strong>Area of Interest</strong>"); }
+    });
+
+    // Add facility point markers to inputLayer (layered with AOI boundary above)
     try {
       const gj = JSON.parse(await facilitiesFile.text());
-      inputLayer = L.geoJSON(gj, {
+      const pointsLayer = L.geoJSON(gj, {
         pointToLayer: function(feature, latlng) {
           return L.circleMarker(latlng, {
             radius: 5, fillColor: "#4cc2ff", color: "#1a8fc1",
@@ -1021,6 +1046,12 @@ async function runFacilityAccessibilityAnalysis() {
           layer.bindPopup(`<strong>${nameKey ? p[nameKey] : "Facility"}</strong>`);
         }
       });
+      // Merge points into inputLayer (which may already hold the boundary outline)
+      if (inputLayer) {
+        inputLayer = L.layerGroup([inputLayer, pointsLayer]);
+      } else {
+        inputLayer = pointsLayer;
+      }
     } catch(err) { console.warn("Could not build input layer from facilities file:", err); }
 
     try {
@@ -1032,6 +1063,9 @@ async function runFacilityAccessibilityAnalysis() {
       total_facilities:     totalFacilities,
       facilities_processed: facilitiesProcessed,
       walking_speed_kmh:    walkingSpeedHdr,
+      has_aoi:              hasAoi,
+      coverage_pct:         coveragePct,
+      uncovered_pct:        uncoveredPct,
       zone_pcts:            zonePcts,
       result_times:         resultTimes,
     }, inputs, geojsonData);
@@ -3408,6 +3442,9 @@ function renderAirQualityResults(stats, inputs) {
 function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
   const totalFacilities     = parseInt(stats.total_facilities)     || "N/A";
   const facilitiesProcessed = parseInt(stats.facilities_processed) || "N/A";
+  const hasAoi              = stats.has_aoi === true || stats.has_aoi === "true";
+  const coveragePct         = stats.coverage_pct  != null ? parseFloat(stats.coverage_pct)  : null;
+  const uncoveredPct        = stats.uncovered_pct != null ? parseFloat(stats.uncovered_pct) : null;
 
   // zone_pcts: { "5": 100.0, "10": 82.3, ... }  keyed by time as string
   const zonePcts   = stats.zone_pcts   || {};
@@ -3477,13 +3514,42 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
     return `<span style="color:${color};font-weight:600;">${t} min</span>`;
   }).join(" · ");
 
+  // AOI coverage block (shown in Full Area tab when AOI was uploaded)
+  const aoiCoverageHtml = hasAoi && coveragePct !== null ? `
+    <div style="border:1px solid var(--border-color);border-radius:6px;padding:10px 12px;margin-top:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">AOI Coverage</div>
+      <div class="insight-card" style="margin-bottom:4px;">
+        <div class="label">Covered area</div>
+        <div class="value" style="color:#198754">${coveragePct.toFixed(1)}%</div>
+      </div>
+      <div class="insight-card" style="margin-bottom:4px;">
+        <div class="label">Uncovered area</div>
+        <div class="value" style="color:#e74c3c">${(uncoveredPct ?? (100 - coveragePct)).toFixed(1)}%</div>
+      </div>
+      ${miniBarChart(
+        [coveragePct.toFixed(1), (uncoveredPct ?? 100 - coveragePct).toFixed(1)],
+        2,
+        ["#198754", "#e74c3c"],
+        ["Covered", "Uncovered"]
+      )}
+      ${coveragePct < 50 ? `<div style="background:rgba(231,76,60,0.08);border-left:3px solid #e74c3c;border-radius:4px;padding:8px 10px;margin-top:6px;font-size:12px;color:var(--text-primary);">
+        ⚠️ More than half the area of interest is outside walking range of any facility.
+      </div>` : coveragePct >= 80 ? `<div style="background:rgba(25,135,84,0.08);border-left:3px solid #198754;border-radius:4px;padding:8px 10px;margin-top:6px;font-size:12px;color:var(--text-primary);">
+        ✓ Most of the area of interest is within walking range — good facility coverage.
+      </div>` : ""}
+    </div>` : "";
+
   // Raw Data tab
   const inputsHtml = `
-    <p class="text-muted" style="font-size:11px;">Input data summary. Facility points are shown on the map.</p>
+    <p class="text-muted" style="font-size:11px;">Input data summary. Facility points${hasAoi ? " and AOI boundary" : ""} are shown on the map.</p>
     <div class="insight-card">
       <div class="label">Facilities file</div>
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.facilitiesFileName}</div>
     </div>
+    ${inputs.aoiFileName ? `<div class="insight-card">
+      <div class="label">Area of interest</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.aoiFileName}</div>
+    </div>` : ""}
     <div class="insight-card">
       <div class="label">Total features</div>
       <div class="value">${totalFacilities}</div>
@@ -3543,6 +3609,7 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
+        ${aoiCoverageHtml}
         <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
           <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
           Download GeoJSON
@@ -5531,6 +5598,30 @@ function attachFileInputListeners() {
             if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
           } catch(e) {}
         } catch(err) { console.warn("Could not parse facilities GeoJSON:", err); }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // Facility AOI file input — previews boundary outline, layered on top of points
+  const facilityAoiInput = document.getElementById("facilityAoiInput");
+  if (facilityAoiInput) {
+    facilityAoiInput.addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          const geojsonData = JSON.parse(event.target.result);
+          // Add as a separate layer so it doesn't replace the facility points
+          const aoiPreviewLayer = L.geoJSON(geojsonData, {
+            style: { color: "#f0a500", weight: 2.5, fill: false, dashArray: "6, 3" },
+          }).addTo(map);
+          try {
+            const b = aoiPreviewLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch(e) {}
+        } catch(err) { console.warn("Could not parse facility AOI GeoJSON:", err); }
       };
       reader.readAsText(file);
     });
