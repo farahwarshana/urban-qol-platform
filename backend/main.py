@@ -10,14 +10,18 @@ load_dotenv()
 
 proj_path = datadir.get_data_dir()
 
-os.environ["PROJ_LIB"] = proj_path
-os.environ["PROJ_DATA"] = proj_path
+# os.environ["PROJ_LIB"] = proj_path
+# os.environ["PROJ_DATA"] = proj_path
+
+os.environ.pop("PROJ_LIB", None)
+os.environ.pop("PROJ_DATA", None)
 
 import shutil
 import uuid
 import geopandas as gpd
 import json
 from pathlib import Path
+import rasterio
 
 from sqlalchemy import create_engine, text
 
