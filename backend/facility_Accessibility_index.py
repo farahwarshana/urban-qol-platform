@@ -1,119 +1,220 @@
+"""
+facility_Accessibility_index.py
+Walkable service-area analysis around facility points.
+
+Approach
+--------
+Euclidean walking buffers with a tortuosity correction factor (0.75).
+Real pedestrian paths are never straight lines; the walkable straight-line
+radius for a given time is ~75 % of the theoretical straight-line distance.
+
+  radius_m = (speed_kmh × 1000 / 60) × time_min × TORTUOSITY
+
+When an AOI boundary is supplied the zones are clipped to it and an
+uncovered layer (AOI minus outermost zone) is added to the output.
+Zones are nested — each larger band fully contains all smaller bands.
+"""
+
 import os
+import json
 import geopandas as gpd
-import osmnx as ox
-import networkx as nx
-import pandas as pd
 from shapely.ops import unary_union
+
+TORTUOSITY = 0.75
+
+
+def _utm_epsg(lon: float, lat: float) -> int:
+    zone = int((lon + 180) / 6) + 1
+    return 32600 + zone if lat >= 0 else 32700 + zone
+
+
+def _explode_to_features(geom, props: dict) -> list:
+    """Split a (multi-)polygon into individual GeoJSON Feature dicts."""
+    if geom is None or geom.is_empty:
+        return []
+    gdf = gpd.GeoDataFrame(geometry=[geom], crs="EPSG:4326")
+    gdf = gdf.explode(index_parts=False).reset_index(drop=True)
+    return [
+        {"type": "Feature", "geometry": row.geometry.__geo_interface__, "properties": dict(props)}
+        for _, row in gdf.iterrows()
+    ]
 
 
 def calculate_facility_accessibility(
-    facilities_geojson_path,
-    output_path,
-    walking_speed_kmh=4.5,
-    times_minutes=[5, 10, 15],
-    network_dist_m=2000
-):
-    facilities = gpd.read_file(facilities_geojson_path)
+    facilities_geojson_path: str,
+    output_path: str,
+    walking_speed_kmh: float = 4.5,
+    times_minutes: list = [5, 10, 15],
+    aoi_geojson_path: str = None,
+) -> dict:
+    """
+    Compute walkable service areas for every facility point.
 
+    Parameters
+    ----------
+    facilities_geojson_path : str
+        GeoJSON file of Point features.
+    output_path : str
+        Where to write the combined zones GeoJSON.
+    walking_speed_kmh : float
+        Pedestrian speed in km/h (default 4.5).
+    times_minutes : list[int]
+        Walk-time bands to produce (default [5, 10, 15]).
+    aoi_geojson_path : str, optional
+        GeoJSON polygon defining the area of interest.  When provided:
+        - zones are clipped to the AOI
+        - an uncovered layer (AOI − outermost zone) is appended
+        - coverage % is computed relative to the AOI area
+
+    Returns
+    -------
+    dict consumed by the FastAPI endpoint.
+    """
+    # ── 1. Load & validate facilities ────────────────────────────────────────
+    facilities = gpd.read_file(facilities_geojson_path)
+    if facilities.empty:
+        raise ValueError("The uploaded GeoJSON has no features.")
     if facilities.crs is None:
         facilities = facilities.set_crs("EPSG:4326")
     facilities = facilities.to_crs("EPSG:4326")
 
-    meters_per_minute = (walking_speed_kmh * 1000) / 60
-
-    # Collect isochrone polygons per time band across every facility point
-    time_polygons = {t: [] for t in times_minutes}
-    processed = 0
-
-    for idx, row in facilities.iterrows():
-        geom = row.geometry
+    points = []
+    for geom in facilities.geometry:
         if geom is None:
             continue
-        if geom.geom_type != "Point":
-            geom = geom.centroid
+        points.append(geom if geom.geom_type == "Point" else geom.centroid)
+    if not points:
+        raise ValueError("No valid geometries found in the uploaded GeoJSON.")
 
-        lat, lon = geom.y, geom.x
+    # ── 2. Optional AOI ───────────────────────────────────────────────────────
+    aoi_union_wgs = None
+    aoi_gdf = None
+    if aoi_geojson_path:
+        aoi_gdf = gpd.read_file(aoi_geojson_path)
+        if aoi_gdf.crs is None:
+            aoi_gdf = aoi_gdf.set_crs("EPSG:4326")
+        aoi_gdf = aoi_gdf.to_crs("EPSG:4326")
+        if aoi_gdf.empty:
+            raise ValueError("AOI GeoJSON contains no features.")
+        aoi_union_wgs = unary_union(aoi_gdf.geometry)
 
-        print(f"  Facility {idx}: network from ({lat:.5f}, {lon:.5f})…")
+    # ── 3. Choose UTM projection centred on the dataset ───────────────────────
+    all_lons = [p.x for p in points]
+    all_lats = [p.y for p in points]
+    utm_epsg = _utm_epsg(sum(all_lons) / len(all_lons), sum(all_lats) / len(all_lats))
+    utm_crs  = f"EPSG:{utm_epsg}"
 
-        try:
-            G = ox.graph_from_point(
-                (lat, lon),
-                dist=network_dist_m,
-                network_type="walk",
-                simplify=True
-            )
-        except Exception as e:
-            print(f"    Skipping facility {idx}: {e}")
-            continue
+    pts_gdf = gpd.GeoDataFrame(geometry=points, crs="EPSG:4326").to_crs(utm_crs)
 
-        G = ox.project_graph(G)
-        nodes, _ = ox.graph_to_gdfs(G)
+    aoi_union_utm = None
+    if aoi_union_wgs is not None:
+        aoi_union_utm = (
+            gpd.GeoDataFrame(geometry=[aoi_union_wgs], crs="EPSG:4326")
+            .to_crs(utm_crs)
+            .geometry.iloc[0]
+        )
 
-        pt_proj = gpd.GeoSeries([geom], crs="EPSG:4326").to_crs(nodes.crs).iloc[0]
-        nearest = nodes.geometry.distance(pt_proj).idxmin()
+    # ── 4. Build walking buffers for every time band ──────────────────────────
+    meters_per_minute = (walking_speed_kmh * 1000) / 60
+    times_sorted = sorted(times_minutes)
 
-        for t in times_minutes:
-            reached = nx.single_source_dijkstra_path_length(
-                G, nearest, cutoff=meters_per_minute * t, weight="length"
-            )
-            pts = nodes.loc[list(reached.keys())]
-            if len(pts) < 3:
-                continue
-            poly_proj = pts.geometry.unary_union.convex_hull
-            poly_wgs = gpd.GeoDataFrame(geometry=[poly_proj], crs=nodes.crs).to_crs("EPSG:4326").geometry.iloc[0]
-            time_polygons[t].append(poly_wgs)
+    zone_features = []       # GeoJSON features for zone polygons
+    zone_geoms_utm = {}      # time → merged UTM geometry (for coverage calc)
 
-        processed += 1
+    for t in times_sorted:
+        radius_m   = meters_per_minute * t * TORTUOSITY
+        circles    = pts_gdf.geometry.buffer(radius_m)
+        merged_utm = unary_union(circles)
 
-    if processed == 0:
-        raise ValueError("No facility points could be processed — check your GeoJSON and network distance.")
+        # Clip to AOI if provided
+        if aoi_union_utm is not None:
+            merged_utm = merged_utm.intersection(aoi_union_utm)
 
-    zones = []
-    for t in times_minutes:
-        polys = time_polygons[t]
-        if not polys:
-            continue
-        merged = unary_union(polys)
-        zones.append(gpd.GeoDataFrame(
-            {
-                "time_min":         [t],
-                "distance_m":       [round(meters_per_minute * t, 2)],
-                "walking_speed_kmh":[walking_speed_kmh],
-                "facility_count":   [len(polys)],
-                "category":         [f"within_{t}_min"],
-            },
-            geometry=[merged],
-            crs="EPSG:4326"
-        ))
+        zone_geoms_utm[t] = merged_utm
 
-    if not zones:
+        merged_wgs = (
+            gpd.GeoDataFrame(geometry=[merged_utm], crs=utm_crs)
+            .to_crs("EPSG:4326")
+            .geometry.iloc[0]
+        )
+
+        zone_features += _explode_to_features(merged_wgs, {
+            "type":              "zone",
+            "time_min":          t,
+            "radius_m":          round(radius_m, 1),
+            "walking_speed_kmh": walking_speed_kmh,
+            "facility_count":    len(pts_gdf),
+            "category":          f"within_{t}_min",
+        })
+
+    if not zone_features:
         raise ValueError("No accessibility zones could be created.")
 
-    all_zones = gpd.GeoDataFrame(pd.concat(zones, ignore_index=True), crs="EPSG:4326")
+    # ── 5. Covered / uncovered split (only when AOI is provided) ─────────────
+    coverage_pct  = None
+    uncovered_pct = None
+    has_aoi       = aoi_union_utm is not None
 
+    if has_aoi:
+        aoi_area_m2      = aoi_union_utm.area
+        outermost_utm    = zone_geoms_utm[times_sorted[-1]]
+        covered_area_m2  = outermost_utm.area if not outermost_utm.is_empty else 0.0
+        coverage_pct     = round(covered_area_m2 / aoi_area_m2 * 100.0, 2) if aoi_area_m2 > 0 else 0.0
+        uncovered_pct    = round(100.0 - coverage_pct, 2)
+
+        uncovered_utm = aoi_union_utm.difference(outermost_utm)
+        uncovered_wgs = (
+            gpd.GeoDataFrame(geometry=[uncovered_utm], crs=utm_crs)
+            .to_crs("EPSG:4326")
+            .geometry.iloc[0]
+        ) if not uncovered_utm.is_empty else None
+
+        zone_features += _explode_to_features(uncovered_wgs, {
+            "type":     "uncovered",
+            "time_min": None,
+            "category": "uncovered",
+        })
+
+        # Add AOI boundary outline feature
+        aoi_wgs = (
+            gpd.GeoDataFrame(geometry=[aoi_union_wgs], crs="EPSG:4326")
+            .geometry.iloc[0]
+        )
+        zone_features += _explode_to_features(aoi_wgs, {"layer": "boundary"})
+
+    # ── 6. Write combined GeoJSON ─────────────────────────────────────────────
+    geojson_out = {"type": "FeatureCollection", "features": zone_features}
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    all_zones.to_file(output_path, driver="GeoJSON")
+    with open(output_path, "w", encoding="utf-8") as fh:
+        json.dump(geojson_out, fh)
 
-    # Compute area-based coverage percentages
-    all_proj = all_zones.to_crs("EPSG:3857")
-    total_area = all_proj[all_proj["time_min"] == max(times_minutes)].geometry.area.sum()
+    # ── 7. Coverage percentages per zone ─────────────────────────────────────
+    # Relative to AOI area (if provided) or outermost zone area (fallback)
+    if has_aoi:
+        ref_area_m2 = aoi_union_utm.area
+    else:
+        outermost_geom = zone_geoms_utm[times_sorted[-1]]
+        ref_area_m2    = outermost_geom.area if not outermost_geom.is_empty else 1.0
 
-    def _pct(t):
-        rows = all_proj[all_proj["time_min"] == t]
-        if rows.empty or total_area == 0:
-            return None
-        return round(rows.geometry.area.sum() / total_area * 100, 2)
+    zone_pcts = {}
+    for t in times_sorted:
+        geom = zone_geoms_utm[t]
+        zone_pcts[str(t)] = (
+            round(geom.area / ref_area_m2 * 100.0, 2)
+            if (geom and not geom.is_empty and ref_area_m2 > 0)
+            else None
+        )
 
     return {
-        "indicator":           "Facility Accessibility Index",
-        "total_facilities":    len(facilities),
-        "facilities_processed": processed,
-        "walking_speed_kmh":   walking_speed_kmh,
-        "network_dist_m":      network_dist_m,
-        "time_zones_minutes":  times_minutes,
-        "pct_5min":            _pct(5),
-        "pct_10min":           _pct(10),
-        "pct_15min":           _pct(15),
-        "combined_output":     output_path,
+        "indicator":            "Facility Accessibility Index",
+        "total_facilities":     len(facilities),
+        "facilities_processed": len(pts_gdf),
+        "walking_speed_kmh":    walking_speed_kmh,
+        "tortuosity_factor":    TORTUOSITY,
+        "time_zones_minutes":   times_sorted,
+        "zone_pcts":            zone_pcts,
+        "has_aoi":              has_aoi,
+        "coverage_pct":         coverage_pct,
+        "uncovered_pct":        uncovered_pct,
+        "combined_output":      output_path,
     }

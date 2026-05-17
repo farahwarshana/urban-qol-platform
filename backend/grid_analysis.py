@@ -613,9 +613,9 @@ def grid_from_transit_coverage(geojson_path):
 def grid_from_facility_accessibility(geojson_path):
     """
     Score cells based on the minimum walk time from a facility accessibility
-    isochrone GeoJSON (zones for 5/10/15 min).
-    Only cells whose centroid falls inside an isochrone zone are kept —
-    cells outside all zones are outside the analysis boundary and are dropped.
+    isochrone GeoJSON.  Only zone features (type == "zone", or any non-boundary/
+    non-uncovered feature for backwards compatibility) are used for scoring.
+    Boundary and uncovered features are filtered out before the spatial join.
     Cell size is chosen automatically based on extent (target ~600 cells max).
     """
     gdf = gpd.read_file(geojson_path)
@@ -623,7 +623,23 @@ def grid_from_facility_accessibility(geojson_path):
         gdf = gdf.set_crs("EPSG:4326")
     gdf = gdf.to_crs("EPSG:4326")
 
-    bounds       = gdf.total_bounds
+    if gdf.empty:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
+
+    # Keep only zone features for the spatial join — drop boundary outlines and
+    # uncovered polygons which carry no walk-time data.
+    keep = np.ones(len(gdf), dtype=bool)
+    if "type" in gdf.columns:
+        keep &= ~gdf["type"].isin({"uncovered"}).values
+    if "layer" in gdf.columns:
+        keep &= ~gdf["layer"].isin({"boundary"}).values
+
+    zone_gdf = gdf[keep].copy()
+
+    if zone_gdf.empty:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
+
+    bounds       = zone_gdf.total_bounds
     grid, cell_m = _build_grid_cells(tuple(bounds))
 
     # Boundary filter: keep only cells whose centroid is inside the data bbox
@@ -636,8 +652,8 @@ def grid_from_facility_accessibility(geojson_path):
     grid = grid[in_bounds].copy()
 
     time_col = None
-    for candidate in ["walk_time", "time_min", "minutes", "travel_time"]:
-        if candidate in gdf.columns:
+    for candidate in ["time_min", "walk_time", "minutes", "travel_time"]:
+        if candidate in zone_gdf.columns:
             time_col = candidate
             break
 
@@ -647,7 +663,7 @@ def grid_from_facility_accessibility(geojson_path):
         index=grid.index,
         crs="EPSG:4326",
     )
-    joined = gpd.sjoin(centroids_gdf, gdf, how="left", predicate="within")
+    joined = gpd.sjoin(centroids_gdf, zone_gdf, how="left", predicate="within")
 
     features = []
     for idx, row in grid.iterrows():
@@ -661,7 +677,7 @@ def grid_from_facility_accessibility(geojson_path):
             times     = matches[time_col].dropna()
             walk_time = float(times.min()) if len(times) > 0 else None
         else:
-            walk_time = 5  # inside a zone but no time column — assume closest
+            walk_time = None
 
         score = _score_facility_accessibility(walk_time)
 

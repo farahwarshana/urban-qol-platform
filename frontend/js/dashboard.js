@@ -124,12 +124,13 @@ const SERVICES = {
   },
   "facility_Accessibility_index": {
     title: "Facility Accessibility Index",
-    desc: "Compute 5, 10, and 15-minute walking service areas for every facility point in your dataset.",
+    desc: "Compute walkable service areas for every facility point in your dataset.",
     inputs: [
       { type: "file",   id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
-      { type: "number", id: "walkingSpeedInput",       label: "Walking speed (km/h)",            value: 4.5  },
-      { type: "number", id: "networkDistInput",        label: "Network download radius (meters)", value: 2000 },
-      { type: "tip",    text: "All points in the uploaded file will be analysed. Larger datasets and wider radii take longer." },
+      { type: "file",   id: "facilityAoiInput",       label: "Upload area of interest (GeoJSON, optional)" },
+      { type: "number", id: "walkingSpeedInput",       label: "Walking speed (km/h)", value: 4.5 },
+      { type: "text",   id: "walkingIntervalsInput",   label: "Walking time intervals (minutes, comma-separated)", placeholder: "e.g. 5, 10, 15" },
+      { type: "tip",    text: "AOI is optional. When provided, zones are clipped to it and uncovered areas are shown. Buffers use a tortuosity factor of 0.75 to approximate real street-level reach." },
     ],
     action: runFacilityAccessibilityAnalysis
   },
@@ -228,6 +229,7 @@ function renderServicePanel(key) {
   const service = SERVICES[key];
   if (!service) return;
 
+  hideLegend();
   clearMap();
   inputLayer = null;
   resultLayer = null;
@@ -482,6 +484,7 @@ async function runNDVIAnalysis() {
     // Keep a copy for the grid endpoint (slice() creates a detached copy)
     lastResultBlob    = arrayBuffer.slice(0);
     lastResultService = "ndvi";
+    updateLegend("ndvi", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     // Render the NDVI result: low NDVI → red, high NDVI → green
@@ -667,6 +670,7 @@ async function runCrimeAnalysis() {
     // Store for grid analysis
     lastResultBlob    = geojsonData;
     lastResultService = "crime";
+    updateLegend("crime", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     if (inputLayer) {
@@ -818,6 +822,7 @@ captureResultFile(response);
     // Store for grid analysis
     lastResultBlob    = geojsonData;
     lastResultService = "urban-density";
+    updateLegend("urban-density", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     if (inputLayer) {
@@ -896,6 +901,24 @@ captureResultFile(response);
   }
 }
 
+// Colour palette for up to 8 walk-time zones, lightest (outermost) to darkest (innermost)
+const FACILITY_ZONE_COLORS = ["#198754","#52b788","#ffc107","#fd7e14","#dc3545","#9b2335","#6f42c1","#343a40"];
+
+function _facilityZoneColor(sortedTimes, t) {
+  const idx = sortedTimes.indexOf(t);
+  return FACILITY_ZONE_COLORS[idx] ?? "#888";
+}
+
+function _parseIntervals(raw) {
+  // Parse a comma-separated string of positive integers; returns sorted array.
+  const vals = (raw || "")
+    .split(",")
+    .map(s => parseInt(s.trim(), 10))
+    .filter(n => Number.isFinite(n) && n >= 1);
+  if (vals.length === 0) return [5, 10, 15];
+  return [...new Set(vals)].sort((a, b) => a - b);
+}
+
 /*---------------------facility accessibility-------------------------*/
 async function runFacilityAccessibilityAnalysis() {
   const facilitiesInput = document.getElementById("facilitiesGeojsonInput");
@@ -906,19 +929,23 @@ async function runFacilityAccessibilityAnalysis() {
   }
 
   const facilitiesFile = facilitiesInput.files[0];
+  const aoiInput       = document.getElementById("facilityAoiInput");
+  const aoiFile        = aoiInput?.files[0] || null;
   const walkingSpeed   = parseFloat(document.getElementById("walkingSpeedInput")?.value) || 4.5;
-  const networkDist    = parseInt(document.getElementById("networkDistInput")?.value)    || 2000;
+  const intervalsRaw   = document.getElementById("walkingIntervalsInput")?.value || "";
+  const intervals      = _parseIntervals(intervalsRaw);
 
   const inputs = {
     facilitiesFileName: facilitiesFile.name,
+    aoiFileName:        aoiFile ? aoiFile.name : null,
     walkingSpeed,
-    networkDist,
+    intervals,
   };
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Facility Accessibility — Processing</h3>
-      <p class="panel-desc">Downloading walking networks and computing isochrones for every facility point…</p>
+      <p class="panel-desc">Computing walkable service areas for every facility point…</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading…</span>
@@ -930,9 +957,9 @@ async function runFacilityAccessibilityAnalysis() {
   try {
     const formData = new FormData();
     formData.append("facilities_geojson", facilitiesFile);
+    if (aoiFile) formData.append("aoi_geojson", aoiFile);
 
-    const url = `${API_BASE_URL}/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&network_dist_m=${networkDist}`;
-    // const url = `http://localhost:8000/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&network_dist_m=${networkDist}`;
+    const url = `${API_BASE_URL}/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&times_minutes=${intervals.join(",")}`;
     const response = await fetch(url, { method: "POST", body: formData });
 
     if (!response.ok) {
@@ -943,42 +970,70 @@ async function runFacilityAccessibilityAnalysis() {
     const totalFacilities     = response.headers.get("X-Total-Facilities");
     const facilitiesProcessed = response.headers.get("X-Facilities-Processed");
     const walkingSpeedHdr     = response.headers.get("X-Walking-Speed-Kmh");
-    const networkDistHdr      = response.headers.get("X-Network-Dist-M");
-    const pct5min             = response.headers.get("X-Pct-5min");
-    const pct10min            = response.headers.get("X-Pct-10min");
-    const pct15min            = response.headers.get("X-Pct-15min");
+    const hasAoi              = response.headers.get("X-Has-Aoi") === "true";
+    const coveragePct         = response.headers.get("X-Coverage-Pct");
+    const uncoveredPct        = response.headers.get("X-Uncovered-Pct");
+    // Zone percentages arrive as a JSON object: {"5": 100.0, "10": 82.3, ...}
+    const zonePctsRaw = response.headers.get("X-Zone-Pcts");
+    const zonePcts    = zonePctsRaw ? JSON.parse(decodeURIComponent(zonePctsRaw)) : {};
 
     const geojsonData = await response.json();
 
     lastResultBlob    = geojsonData;
     lastResultService = "facility-accessibility";
+    updateLegend("facility-accessibility", "full");
 
     if (gridLayer)  { map.removeLayer(gridLayer);  gridLayer  = null; }
     if (inputLayer)   map.removeLayer(inputLayer);
     clearMap();
 
-    // Result layer: isochrone zones coloured by walk-time band
+    // Collect the sorted time values actually present in the result
+    const resultTimes = [...new Set(
+      geojsonData.features.map(f => f.properties.time_min).filter(t => t != null)
+    )].sort((a, b) => a - b);
+
+    // Result layer: zone polygons + uncovered area (boundary outline filtered out)
     resultLayer = L.geoJSON(geojsonData, {
+      filter: function(feature) {
+        return feature.properties.layer !== "boundary";
+      },
       style: function(feature) {
-        const t = feature.properties.time_min;
-        if (t === 5)  return { color: "#198754", fillColor: "#198754", fillOpacity: 0.40, weight: 1.5 };
-        if (t === 10) return { color: "#ffc107", fillColor: "#ffc107", fillOpacity: 0.32, weight: 1.5 };
-        return              { color: "#dc3545", fillColor: "#dc3545", fillOpacity: 0.24, weight: 1.5 };
+        const p = feature.properties;
+        if (p.type === "uncovered" || p.category === "uncovered") {
+          return { color: "#e74c3c", fillColor: "#e74c3c", fillOpacity: 0.18, weight: 1, dashArray: "4, 3" };
+        }
+        const t     = p.time_min;
+        const color = _facilityZoneColor(resultTimes, t);
+        const idx   = resultTimes.indexOf(t);
+        const opacity = Math.max(0.20, 0.45 - idx * 0.05);
+        return { color, fillColor: color, fillOpacity: opacity, weight: 1.5 };
       },
       onEachFeature: function(feature, layer) {
         const p = feature.properties;
+        if (p.type === "uncovered" || p.category === "uncovered") {
+          layer.bindPopup("<strong style='color:#e74c3c'>Outside walking range</strong><br>No facility reachable within the maximum walk time.");
+          return;
+        }
+        const color = _facilityZoneColor(resultTimes, p.time_min);
         layer.bindPopup(
-          `<strong>${p.category || ("Within " + p.time_min + " min")}</strong><br>` +
-          `Walk time: ${p.time_min} min<br>` +
+          `<strong style="color:${color}">Within ${p.time_min} min walk</strong><br>` +
+          `Radius: ${p.radius_m} m<br>` +
           `Facilities: ${p.facility_count}`
         );
       }
     }).addTo(map);
 
-    // Input layer: facility point markers (shown in Raw Data tab)
+    // Input layer: facility points + AOI boundary outline (shown in Raw Data tab)
+    inputLayer = L.geoJSON(geojsonData, {
+      filter: function(feature) { return feature.properties.layer === "boundary"; },
+      style: { color: "#f0a500", weight: 2.5, fill: false, dashArray: "6, 3" },
+      onEachFeature: function(feature, layer) { layer.bindPopup("<strong>Area of Interest</strong>"); }
+    });
+
+    // Add facility point markers to inputLayer (layered with AOI boundary above)
     try {
       const gj = JSON.parse(await facilitiesFile.text());
-      inputLayer = L.geoJSON(gj, {
+      const pointsLayer = L.geoJSON(gj, {
         pointToLayer: function(feature, latlng) {
           return L.circleMarker(latlng, {
             radius: 5, fillColor: "#4cc2ff", color: "#1a8fc1",
@@ -991,6 +1046,12 @@ async function runFacilityAccessibilityAnalysis() {
           layer.bindPopup(`<strong>${nameKey ? p[nameKey] : "Facility"}</strong>`);
         }
       });
+      // Merge points into inputLayer (which may already hold the boundary outline)
+      if (inputLayer) {
+        inputLayer = L.layerGroup([inputLayer, pointsLayer]);
+      } else {
+        inputLayer = pointsLayer;
+      }
     } catch(err) { console.warn("Could not build input layer from facilities file:", err); }
 
     try {
@@ -1002,10 +1063,11 @@ async function runFacilityAccessibilityAnalysis() {
       total_facilities:     totalFacilities,
       facilities_processed: facilitiesProcessed,
       walking_speed_kmh:    walkingSpeedHdr,
-      network_dist_m:       networkDistHdr,
-      pct_5min:             pct5min,
-      pct_10min:            pct10min,
-      pct_15min:            pct15min,
+      has_aoi:              hasAoi,
+      coverage_pct:         coveragePct,
+      uncovered_pct:        uncoveredPct,
+      zone_pcts:            zonePcts,
+      result_times:         resultTimes,
     }, inputs, geojsonData);
 
   } catch (error) {
@@ -1095,6 +1157,7 @@ async function runPublicTransportAnalysis() {
 
     lastResultBlob    = geojsonData;
     lastResultService = "public-transport";
+    updateLegend("public-transport", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     if (inputLayer) map.removeLayer(inputLayer);
@@ -1300,6 +1363,7 @@ function renderTransitResults(stats, inputs, geojsonData) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -1343,6 +1407,15 @@ function renderTransitResults(stats, inputs, geojsonData) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -1416,6 +1489,7 @@ async function runVegetationAnalysis() {
     lastVegResult     = geojsonData;
     lastResultBlob    = geojsonData;
     lastResultService = "vegetation";
+    updateLegend("vegetation", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     if (inputLayer) map.removeLayer(inputLayer);
@@ -1549,6 +1623,7 @@ function renderVegetationResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <!-- RAW tab -->
@@ -1602,6 +1677,15 @@ function renderVegetationResults(stats, inputs) {
       <!-- GRID tab -->
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to score cells…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <div style="display:flex;gap:6px;margin-top:12px;">
@@ -1748,6 +1832,7 @@ async function runTrafficAnalysis() {
 
     lastResultBlob    = geojsonData;
     lastResultService = "traffic";
+    updateLegend("traffic", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
     if (inputLayer) map.removeLayer(inputLayer);
     clearMap();
@@ -1910,6 +1995,7 @@ function renderTrafficResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <!-- RAW tab -->
@@ -1982,6 +2068,15 @@ function renderTrafficResults(stats, inputs) {
       <!-- GRID tab — congestion scoring -->
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the congestion cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -2070,6 +2165,7 @@ async function runInformalSettlementAnalysis() {
     lastISPAResult    = geojsonData;
     lastResultBlob    = geojsonData;
     lastResultService = "informal-settlement";
+    updateLegend("informal-settlement", "full");
 
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
     if (inputLayer) map.removeLayer(inputLayer);
@@ -2181,6 +2277,7 @@ function renderInformalSettlementResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <!-- RAW tab -->
@@ -2251,6 +2348,15 @@ function renderInformalSettlementResults(stats, inputs) {
       <!-- GRID tab -->
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to score cells…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <div style="display:flex;gap:6px;margin-top:12px;">
@@ -2550,6 +2656,7 @@ function renderCrimeResults(stats, inputs, geojsonData) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -2589,6 +2696,15 @@ function renderCrimeResults(stats, inputs, geojsonData) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -2691,6 +2807,7 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -2742,6 +2859,15 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -2853,6 +2979,7 @@ function renderNDVIResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -2922,6 +3049,15 @@ function renderNDVIResults(stats, inputs) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -2998,6 +3134,7 @@ function renderHeatIndexResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -3050,6 +3187,15 @@ function renderHeatIndexResults(stats, inputs) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -3114,6 +3260,7 @@ async function runAirQualityAnalysis() {
     const arrayBuffer = await response.arrayBuffer();
     lastResultBlob    = arrayBuffer.slice(0);
     lastResultService = "air-quality";
+    updateLegend("air-quality", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
@@ -3211,6 +3358,7 @@ function renderAirQualityResults(stats, inputs) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -3269,6 +3417,15 @@ function renderAirQualityResults(stats, inputs) {
         <p class="text-muted">Click this tab to generate the cell grid…</p>
       </div>
 
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
+      </div>
+
       <button class="btn btn-ghost btn-block mt-3"
               onclick="renderServicePanel('air-quality')">
         ← Back to inputs
@@ -3283,54 +3440,116 @@ function renderAirQualityResults(stats, inputs) {
 
 /* ---------- Render Facility Accessibility Results ---------- */
 function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
-  const pct5  = stats.pct_5min  !== null ? parseFloat(stats.pct_5min)  : null;
-  const pct10 = stats.pct_10min !== null ? parseFloat(stats.pct_10min) : null;
-  const pct15 = stats.pct_15min !== null ? parseFloat(stats.pct_15min) : null;
-
   const totalFacilities     = parseInt(stats.total_facilities)     || "N/A";
   const facilitiesProcessed = parseInt(stats.facilities_processed) || "N/A";
+  const hasAoi              = stats.has_aoi === true || stats.has_aoi === "true";
+  const coveragePct         = stats.coverage_pct  != null ? parseFloat(stats.coverage_pct)  : null;
+  const uncoveredPct        = stats.uncovered_pct != null ? parseFloat(stats.uncovered_pct) : null;
 
-  // Weighted overall score (5-min access weighted highest)
-  const overallScore = (pct5 !== null || pct10 !== null || pct15 !== null)
-    ? Math.round(
-        (pct5  ?? 0) * 0.5 +
-        (pct10 ?? 0) * 0.3 +
-        (pct15 ?? 0) * 0.2
-      )
-    : null;
+  // zone_pcts: { "5": 100.0, "10": 82.3, ... }  keyed by time as string
+  const zonePcts   = stats.zone_pcts   || {};
+  const resultTimes = (stats.result_times || Object.keys(zonePcts).map(Number).sort((a,b)=>a-b));
+
+  // Overall score: weighted average where shorter zones score higher
+  // Weight decays: first zone gets weight n, last gets 1 (normalised)
+  const n = resultTimes.length;
+  let overallScore = null;
+  if (n > 0) {
+    let weightedSum = 0, totalWeight = 0;
+    resultTimes.forEach((t, i) => {
+      const pct    = parseFloat(zonePcts[t]);
+      const weight = n - i;              // innermost zone = highest weight
+      if (!isNaN(pct)) { weightedSum += pct * weight; totalWeight += weight; }
+    });
+    if (totalWeight > 0) overallScore = Math.round(weightedSum / totalWeight);
+  }
   const cat        = overallScore !== null ? perfCategory(overallScore) : null;
   const scoreColor = overallScore !== null ? qolScoreTextColor(overallScore) : "#888";
 
-  const chartHtml = (pct5 !== null || pct15 !== null) ? miniBarChart(
-    [
-      (pct5  ?? 0).toFixed(1),
-      ((pct10 ?? 0) - (pct5 ?? 0)).toFixed(1),
-      ((pct15 ?? 0) - (pct10 ?? 0)).toFixed(1),
-    ],
-    3,
-    ["#198754", "#ffc107", "#dc3545"],
-    ["≤ 5 min", "5–10 min", "10–15 min"]
-  ) : "";
+  // Per-zone coverage cards and chart data
+  const zoneCardsHtml = resultTimes.map((t, i) => {
+    const pct   = parseFloat(zonePcts[t]);
+    const color = FACILITY_ZONE_COLORS[i] ?? "#888";
+    return isNaN(pct) ? "" : `
+      <div class="insight-card">
+        <div class="label">Within ${t}-min walk</div>
+        <div class="value" style="color:${color}">${pct.toFixed(1)}%</div>
+      </div>`;
+  }).join("");
 
-  const ineq = pct5 !== null && pct15 !== null
-    ? inequalityLabel(calcStdDev([pct5, pct10 ?? 0, pct15]))
+  // Bar chart: each band shows the incremental area gained vs the previous zone
+  const chartVals   = resultTimes.map((t, i) => {
+    const cur  = parseFloat(zonePcts[t])  ?? 0;
+    const prev = i === 0 ? 0 : (parseFloat(zonePcts[resultTimes[i-1]]) ?? 0);
+    return Math.max(0, cur - prev).toFixed(1);
+  });
+  const chartColors = resultTimes.map((t, i) => FACILITY_ZONE_COLORS[i] ?? "#888");
+  const chartLabels = resultTimes.map((t, i) =>
+    i === 0 ? `≤ ${t} min` : `${resultTimes[i-1]}–${t} min`
+  );
+  const chartHtml = resultTimes.length > 0
+    ? miniBarChart(chartVals, resultTimes.length, chartColors, chartLabels)
+    : "";
+
+  // Insight: compare innermost vs outermost coverage
+  const firstT   = resultTimes[0];
+  const lastT    = resultTimes[resultTimes.length - 1];
+  const firstPct = parseFloat(zonePcts[firstT]);
+  const lastPct  = parseFloat(zonePcts[lastT]);
+  const keyInsight = !isNaN(firstPct) && !isNaN(lastPct)
+    ? firstPct > 50
+      ? `More than half the service area is within a ${firstT}-minute walk — excellent accessibility.`
+      : lastPct > 70
+      ? `${lastPct.toFixed(1)}% of the service area is reachable within ${lastT} minutes, but ${firstT}-minute access is limited to ${firstPct.toFixed(1)}%.`
+      : `Facility coverage is limited — only ${lastPct.toFixed(1)}% of the service area is within a ${lastT}-minute walk.`
     : null;
 
-  const keyInsight = pct5 !== null
-    ? pct5 > 50
-      ? `More than half the service area is within a 5-minute walk — excellent accessibility.`
-      : pct15 > 70
-      ? `${pct15.toFixed(1)}% of the service area is reachable within 15 minutes, but 5-minute access is limited to ${pct5.toFixed(1)}%.`
-      : `Facility coverage is limited — only ${(pct15 ?? 0).toFixed(1)}% of the service area is within a 15-minute walk.`
+  const ineq = resultTimes.length >= 2
+    ? inequalityLabel(calcStdDev(resultTimes.map(t => parseFloat(zonePcts[t]) || 0)))
     : null;
 
-  // Raw Data tab: input summary
+  // Legend line for panel description
+  const legendLine = resultTimes.map((t, i) => {
+    const color = FACILITY_ZONE_COLORS[i] ?? "#888";
+    return `<span style="color:${color};font-weight:600;">${t} min</span>`;
+  }).join(" · ");
+
+  // AOI coverage block (shown in Full Area tab when AOI was uploaded)
+  const aoiCoverageHtml = hasAoi && coveragePct !== null ? `
+    <div style="border:1px solid var(--border-color);border-radius:6px;padding:10px 12px;margin-top:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">AOI Coverage</div>
+      <div class="insight-card" style="margin-bottom:4px;">
+        <div class="label">Covered area</div>
+        <div class="value" style="color:#198754">${coveragePct.toFixed(1)}%</div>
+      </div>
+      <div class="insight-card" style="margin-bottom:4px;">
+        <div class="label">Uncovered area</div>
+        <div class="value" style="color:#e74c3c">${(uncoveredPct ?? (100 - coveragePct)).toFixed(1)}%</div>
+      </div>
+      ${miniBarChart(
+        [coveragePct.toFixed(1), (uncoveredPct ?? 100 - coveragePct).toFixed(1)],
+        2,
+        ["#198754", "#e74c3c"],
+        ["Covered", "Uncovered"]
+      )}
+      ${coveragePct < 50 ? `<div style="background:rgba(231,76,60,0.08);border-left:3px solid #e74c3c;border-radius:4px;padding:8px 10px;margin-top:6px;font-size:12px;color:var(--text-primary);">
+        ⚠️ More than half the area of interest is outside walking range of any facility.
+      </div>` : coveragePct >= 80 ? `<div style="background:rgba(25,135,84,0.08);border-left:3px solid #198754;border-radius:4px;padding:8px 10px;margin-top:6px;font-size:12px;color:var(--text-primary);">
+        ✓ Most of the area of interest is within walking range — good facility coverage.
+      </div>` : ""}
+    </div>` : "";
+
+  // Raw Data tab
   const inputsHtml = `
-    <p class="text-muted" style="font-size:11px;">Input data summary. Facility points are shown on the map.</p>
+    <p class="text-muted" style="font-size:11px;">Input data summary. Facility points${hasAoi ? " and AOI boundary" : ""} are shown on the map.</p>
     <div class="insight-card">
       <div class="label">Facilities file</div>
       <div class="value" style="font-size:11px;word-break:break-all;">${inputs.facilitiesFileName}</div>
     </div>
+    ${inputs.aoiFileName ? `<div class="insight-card">
+      <div class="label">Area of interest</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.aoiFileName}</div>
+    </div>` : ""}
     <div class="insight-card">
       <div class="label">Total features</div>
       <div class="value">${totalFacilities}</div>
@@ -3344,19 +3563,20 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
       <div class="value">${inputs.walkingSpeed} km/h</div>
     </div>
     <div class="insight-card">
-      <div class="label">Network download radius</div>
-      <div class="value">${parseInt(inputs.networkDist).toLocaleString()} m</div>
+      <div class="label">Time intervals</div>
+      <div class="value">${inputs.intervals.join(", ")} min</div>
     </div>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Facility Accessibility — Results</h3>
-      <p class="panel-desc">Walkable service areas: Green = 5 min · Yellow = 10 min · Red = 15 min</p>
+      <p class="panel-desc">Walkable service areas: ${legendLine}</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <div class="tab-content" id="tab-raw">
@@ -3380,18 +3600,7 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
           <div class="label">Walking speed</div>
           <div class="value">${inputs.walkingSpeed} km/h</div>
         </div>
-        ${pct5  !== null ? `<div class="insight-card">
-          <div class="label">Within 5-min walk</div>
-          <div class="value" style="color:#198754">${pct5.toFixed(1)}%</div>
-        </div>` : ""}
-        ${pct10 !== null ? `<div class="insight-card">
-          <div class="label">Within 10-min walk</div>
-          <div class="value" style="color:#ffc107">${pct10.toFixed(1)}%</div>
-        </div>` : ""}
-        ${pct15 !== null ? `<div class="insight-card">
-          <div class="label">Within 15-min walk</div>
-          <div class="value" style="color:#dc3545">${pct15.toFixed(1)}%</div>
-        </div>` : ""}
+        ${zoneCardsHtml}
         ${ineq ? `<div class="insight-card">
           <div class="label">Coverage Balance</div>
           <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
@@ -3400,6 +3609,7 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
         ${keyInsight ? `<div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
           💡 ${keyInsight}
         </div>` : ""}
+        ${aoiCoverageHtml}
         <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
           <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
           Download GeoJSON
@@ -3408,6 +3618,15 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -3434,6 +3653,7 @@ function renderResults(service) {
         <div class="tab"        data-tab="raw">Raw Data</div>
         <div class="tab active" data-tab="full">Full Area</div>
         <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
       <!-- Tab contents -->
@@ -3451,6 +3671,15 @@ function renderResults(service) {
 
       <div class="tab-content" id="tab-grid">
         <p class="text-muted">Click this tab to generate the 200 m cell grid…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — results will appear here automatically once the agent is connected.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3"
@@ -3481,6 +3710,8 @@ function wireTabSwitching() {
       analysisPanel.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
       tab.classList.add("active");
       analysisPanel.querySelector("#tab-" + target).classList.add("active");
+
+      updateLegend(lastResultService, target);
 
       if (target === "raw") {
         if (gridLayer && map.hasLayer(gridLayer)) map.removeLayer(gridLayer);
@@ -3871,6 +4102,15 @@ function wireTabSwitching() {
             gridTabContent.innerHTML = `<p class="text-danger">Failed to generate grid: ${err.message}</p>`;
           }
         }
+
+      } else if (target === "ai") {
+        // Hide all map layers — the AI tab is purely textual
+        if (inputLayer  && map.hasLayer(inputLayer))  map.removeLayer(inputLayer);
+        if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+        if (gridLayer   && map.hasLayer(gridLayer))   map.removeLayer(gridLayer);
+        // The #tab-ai placeholder is static for now.
+        // When the AI agent is ready, call a function here (e.g. fetchAIRecommendations())
+        // that populates #tab-ai with the agent's response.
       }
     });
   });
@@ -4410,6 +4650,245 @@ function toggleAnnotate() {
   overlay.addEventListener('mouseup', annotateOnPointerUp);
   overlay.addEventListener('mouseleave', annotateOnPointerUp);
 }
+
+/* ============================================================
+   MAP LEGEND  — global, tab-aware
+   Call updateLegend(service, tab) any time the visible layer changes.
+   service : lastResultService value  e.g. "crime", "traffic" …
+   tab     : "raw" | "full" | "grid"  (or null to hide)
+   ============================================================ */
+
+(function () {
+
+  // ── low-level helpers ───────────────────────────────────────
+  function swatch(color, shape) {
+    // shape: "rect" (default) | "circle" | "line" | "dashed-line"
+    const cls = shape === 'circle'       ? 'legend-swatch circle'
+              : shape === 'line'         ? 'legend-swatch line'
+              : shape === 'dashed-line'  ? 'legend-swatch dashed-line'
+              : 'legend-swatch';
+    if (shape === 'dashed-line') {
+      return `<span class="${cls}" style="border-color:${color};width:18px;"></span>`;
+    }
+    return `<span class="${cls}" style="background:${color};"></span>`;
+  }
+
+  function row(color, label, shape) {
+    return `<div class="legend-row">${swatch(color, shape)}<span>${label}</span></div>`;
+  }
+
+  function divider() { return '<div class="legend-divider"></div>'; }
+
+  function gradientRow(stops, label) {
+    // stops: array of hex/rgba colours forming a gradient left→right
+    const grad = `linear-gradient(to right, ${stops.join(',')})`;
+    return `<div class="legend-row">
+      <span class="legend-swatch" style="background:${grad};width:60px;border-radius:3px;"></span>
+      <span>${label}</span>
+    </div>`;
+  }
+
+  // ── QoL score gradient helper (4-tier: red→orange→yellow-green→green) ──
+  const QOL_GRADIENT = ['#dc1400','#f0a500','#c8d200','#1ea028'];
+  function qolGradientRow() {
+    return `
+      ${gradientRow(QOL_GRADIENT, 'Score 0 → 100')}
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:1px;padding:0 1px;">
+        <span>Bad</span><span>Poor</span><span>Good</span><span>Exc.</span>
+      </div>`;
+  }
+
+  // ── per-service, per-tab legend configs ────────────────────
+  // Each entry returns an HTML string (title already set separately)
+  const LEGENDS = {
+
+    'urban-density': {
+      title: 'Population Density',
+      raw:  () => row('#4cc2ff','Input boundary','rect'),
+      full: () => [
+        row('#add8e6', '≤ 100 pop/km²'),
+        row('#87ceeb', '100 – 500'),
+        row('#4682b4', '500 – 1 000'),
+        row('#4169e1', '1 000 – 2 000'),
+        row('#000080', '> 2 000'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'public-transport': {
+      title: 'Transport Coverage',
+      raw: () => [
+        row('#f0a500', 'Study boundary', 'dashed-line'),
+        row('#1a8fc1', 'Transit stations', 'circle'),
+      ].join(''),
+      full: () => [
+        row('#4cc2ff', 'Covered zones'),
+        row('#e74c3c', 'Uncovered zones'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'facility-accessibility': {
+      title: 'Facility Accessibility',
+      raw: () => [
+        row('#f0a500', 'Study boundary', 'dashed-line'),
+        row('#4cc2ff', 'Facilities', 'circle'),
+      ].join(''),
+      full: () => [
+        row('#198754', '≤ 5 min walk'),
+        row('#ffc107', '≤ 10 min walk'),
+        row('#dc3545', '≤ 15 min walk'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    // alias used in codebase
+    'facility_Accessibility_index': {
+      title: 'Facility Accessibility',
+      raw: () => [
+        row('#f0a500', 'Study boundary', 'dashed-line'),
+        row('#4cc2ff', 'Facilities', 'circle'),
+      ].join(''),
+      full: () => [
+        row('#198754', '≤ 5 min walk'),
+        row('#ffc107', '≤ 10 min walk'),
+        row('#dc3545', '≤ 15 min walk'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'heat-index': {
+      title: 'Heat Index',
+      raw:  () => '',
+      full: () => [
+        row('var(--success)',  '< 27 °C — Comfortable'),
+        row('#8bc34a',        '27 – 32 °C — Caution'),
+        row('var(--warning)', '32 – 38 °C — Extreme caution'),
+        row('var(--danger)',  '≥ 38 °C — Danger'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'vegetation': {
+      title: 'Vegetation Density',
+      raw:  () => gradientRow(['#c82800','#e6a000','#50b400'], 'Low → High cover'),
+      full: () => [
+        gradientRow(['#c82800','#e6a000','#50b400'], 'Vegetation %'),
+        divider(),
+        row('#e6a000','≥ 30% benchmark','dashed-line'),
+      ].join(''),
+      grid: () => [
+        gradientRow(['#c82800','#e6a000','#50b400'], 'Vegetation %'),
+        divider(),
+        row('#e6a000', '30% WHO benchmark', 'dashed-line'),
+      ].join(''),
+    },
+
+    'ndvi': {
+      title: 'NDVI',
+      raw:  () => gradientRow(['#c81400','#b4c800','#009600'], 'Low → High NDVI'),
+      full: () => gradientRow(['#c81400','#b4c800','#009600'], 'Low → High NDVI'),
+      grid: () => qolGradientRow(),
+    },
+
+    'crime': {
+      title: 'Crime Density',
+      raw: () => row('#ff7800', 'Reported incidents', 'circle'),
+      full: () => [
+        row('#2ecc71', '0 – 5 crimes/km²'),
+        row('#f1c40f', '5 – 10'),
+        row('#e67e22', '10 – 15'),
+        row('#e74c3c', '15 – 20'),
+        row('#891508', '> 20'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'traffic': {
+      title: 'Traffic',
+      raw: () => [
+        row('#e67e22', 'Road network', 'line'),
+        row('#f0a500', 'Study boundary', 'dashed-line'),
+      ].join(''),
+      full: () => [
+        row('#e74c3c', 'Primary roads', 'line'),
+        row('#f39c12', 'Secondary roads', 'line'),
+        row('#3498db', 'Local roads', 'line'),
+      ].join(''),
+      grid: () => [
+        row('#2ecc71', 'Low congestion'),
+        row('#f39c12', 'Medium congestion'),
+        row('#e74c3c', 'High congestion'),
+      ].join(''),
+    },
+
+    'informal-settlement': {
+      title: 'Settlement Pattern',
+      raw:  () => gradientRow(['rgba(46,180,50,0.72)','rgba(240,200,0,0.72)','rgba(180,20,0,0.72)'], 'Planned → Informal'),
+      full: () => [
+        gradientRow(['rgba(46,180,50,0.72)','rgba(240,200,0,0.72)','rgba(180,20,0,0.72)'], 'Irregularity score'),
+        divider(),
+        row('#e74c3c', 'Informal hotspots', 'dashed-line'),
+      ].join(''),
+      grid: () => [
+        row('rgba(46,180,50,0.85)',  'Planned (0 – 33)'),
+        row('rgba(230,130,0,0.85)',  'Mixed (34 – 66)'),
+        row('rgba(180,20,0,0.85)',   'Informal (67 – 100)'),
+      ].join(''),
+    },
+
+    'air-quality': {
+      title: 'Air Quality Index',
+      raw:  () => '',
+      full: () => [
+        row('#34d399', 'AQI ≤ 50 — Good'),
+        row('#a3e635', '51 – 100 — Moderate'),
+        row('#fbbf24', '101 – 150 — Sensitive groups'),
+        row('#f97316', '151 – 200 — Unhealthy'),
+        row('#f87171', '201 – 300 — Very unhealthy'),
+        row('#7f1d1d', '> 300 — Hazardous'),
+      ].join(''),
+      grid: () => qolGradientRow(),
+    },
+
+    'expansion': {
+      title: 'Expansion Suitability',
+      raw:  () => '',
+      full: () => qolGradientRow(),
+      grid: () => qolGradientRow(),
+    },
+  };
+
+  // ── public API ──────────────────────────────────────────────
+  window.updateLegend = function (service, tab) {
+    const el      = document.getElementById('mapLegend');
+    const titleEl = document.getElementById('mapLegendTitle');
+    const itemsEl = document.getElementById('mapLegendItems');
+    if (!el) return;
+
+    // Hide legend for the AI tab or when no service is set
+    if (!service || tab === 'ai') { el.style.display = 'none'; return; }
+
+    const cfg = LEGENDS[service];
+    if (!cfg) { el.style.display = 'none'; return; }
+
+    const tabFn = cfg[tab];
+    if (!tabFn) { el.style.display = 'none'; return; }
+
+    const html = tabFn();
+    if (!html || html.trim() === '') { el.style.display = 'none'; return; }
+
+    titleEl.textContent = cfg.title;
+    itemsEl.innerHTML   = html;
+    el.style.display    = 'block';
+  };
+
+  window.hideLegend = function () {
+    const el = document.getElementById('mapLegend');
+    if (el) el.style.display = 'none';
+  };
+
+}());
 
 /* changning basemap*/
 
@@ -5119,6 +5598,30 @@ function attachFileInputListeners() {
             if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
           } catch(e) {}
         } catch(err) { console.warn("Could not parse facilities GeoJSON:", err); }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // Facility AOI file input — previews boundary outline, layered on top of points
+  const facilityAoiInput = document.getElementById("facilityAoiInput");
+  if (facilityAoiInput) {
+    facilityAoiInput.addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          const geojsonData = JSON.parse(event.target.result);
+          // Add as a separate layer so it doesn't replace the facility points
+          const aoiPreviewLayer = L.geoJSON(geojsonData, {
+            style: { color: "#f0a500", weight: 2.5, fill: false, dashArray: "6, 3" },
+          }).addTo(map);
+          try {
+            const b = aoiPreviewLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch(e) {}
+        } catch(err) { console.warn("Could not parse facility AOI GeoJSON:", err); }
       };
       reader.readAsText(file);
     });
