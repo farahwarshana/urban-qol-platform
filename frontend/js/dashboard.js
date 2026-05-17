@@ -124,11 +124,12 @@ const SERVICES = {
   },
   "facility_Accessibility_index": {
     title: "Facility Accessibility Index",
-    desc: "Compute 5, 10, and 15-minute walking service areas for every facility point in your dataset.",
+    desc: "Compute walkable service areas for every facility point in your dataset.",
     inputs: [
       { type: "file",   id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
-      { type: "number", id: "walkingSpeedInput",       label: "Walking speed (km/h)",            value: 4.5  },
-      { type: "tip",    text: "All points in the uploaded file will be analysed. Walking buffers use a tortuosity factor of 0.75 to approximate real street-level reach." },
+      { type: "number", id: "walkingSpeedInput",       label: "Walking speed (km/h)", value: 4.5 },
+      { type: "text",   id: "walkingIntervalsInput",   label: "Walking time intervals (minutes, comma-separated)", placeholder: "e.g. 5, 10, 15" },
+      { type: "tip",    text: "Enter any number of intervals (e.g. 3, 7, 12, 20). All points in the file will be analysed. Buffers use a tortuosity factor of 0.75 to approximate real street-level reach." },
     ],
     action: runFacilityAccessibilityAnalysis
   },
@@ -899,6 +900,24 @@ captureResultFile(response);
   }
 }
 
+// Colour palette for up to 8 walk-time zones, lightest (outermost) to darkest (innermost)
+const FACILITY_ZONE_COLORS = ["#198754","#52b788","#ffc107","#fd7e14","#dc3545","#9b2335","#6f42c1","#343a40"];
+
+function _facilityZoneColor(sortedTimes, t) {
+  const idx = sortedTimes.indexOf(t);
+  return FACILITY_ZONE_COLORS[idx] ?? "#888";
+}
+
+function _parseIntervals(raw) {
+  // Parse a comma-separated string of positive integers; returns sorted array.
+  const vals = (raw || "")
+    .split(",")
+    .map(s => parseInt(s.trim(), 10))
+    .filter(n => Number.isFinite(n) && n >= 1);
+  if (vals.length === 0) return [5, 10, 15];
+  return [...new Set(vals)].sort((a, b) => a - b);
+}
+
 /*---------------------facility accessibility-------------------------*/
 async function runFacilityAccessibilityAnalysis() {
   const facilitiesInput = document.getElementById("facilitiesGeojsonInput");
@@ -909,11 +928,14 @@ async function runFacilityAccessibilityAnalysis() {
   }
 
   const facilitiesFile = facilitiesInput.files[0];
-  const walkingSpeed = parseFloat(document.getElementById("walkingSpeedInput")?.value) || 4.5;
+  const walkingSpeed   = parseFloat(document.getElementById("walkingSpeedInput")?.value) || 4.5;
+  const intervalsRaw   = document.getElementById("walkingIntervalsInput")?.value || "";
+  const intervals      = _parseIntervals(intervalsRaw);
 
   const inputs = {
     facilitiesFileName: facilitiesFile.name,
     walkingSpeed,
+    intervals,
   };
 
   analysisPanel.innerHTML = `
@@ -932,7 +954,7 @@ async function runFacilityAccessibilityAnalysis() {
     const formData = new FormData();
     formData.append("facilities_geojson", facilitiesFile);
 
-    const url = `${API_BASE_URL}/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}`;
+    const url = `${API_BASE_URL}/calculate-facility-accessibility?walking_speed_kmh=${walkingSpeed}&times_minutes=${intervals.join(",")}`;
     const response = await fetch(url, { method: "POST", body: formData });
 
     if (!response.ok) {
@@ -942,10 +964,10 @@ async function runFacilityAccessibilityAnalysis() {
 
     const totalFacilities     = response.headers.get("X-Total-Facilities");
     const facilitiesProcessed = response.headers.get("X-Facilities-Processed");
-    const walkingSpeedHdr = response.headers.get("X-Walking-Speed-Kmh");
-    const pct5min         = response.headers.get("X-Pct-5min");
-    const pct10min            = response.headers.get("X-Pct-10min");
-    const pct15min            = response.headers.get("X-Pct-15min");
+    const walkingSpeedHdr     = response.headers.get("X-Walking-Speed-Kmh");
+    // Zone percentages arrive as a JSON object: {"5": 100.0, "10": 82.3, ...}
+    const zonePctsRaw = response.headers.get("X-Zone-Pcts");
+    const zonePcts    = zonePctsRaw ? JSON.parse(decodeURIComponent(zonePctsRaw)) : {};
 
     const geojsonData = await response.json();
 
@@ -957,19 +979,27 @@ async function runFacilityAccessibilityAnalysis() {
     if (inputLayer)   map.removeLayer(inputLayer);
     clearMap();
 
-    // Result layer: isochrone zones coloured by walk-time band
+    // Collect the sorted time values actually present in the result
+    const resultTimes = [...new Set(
+      geojsonData.features.map(f => f.properties.time_min).filter(t => t != null)
+    )].sort((a, b) => a - b);
+
+    // Result layer: zones coloured from innermost (darkest) to outermost (lightest)
     resultLayer = L.geoJSON(geojsonData, {
       style: function(feature) {
-        const t = feature.properties.time_min;
-        if (t === 5)  return { color: "#198754", fillColor: "#198754", fillOpacity: 0.40, weight: 1.5 };
-        if (t === 10) return { color: "#ffc107", fillColor: "#ffc107", fillOpacity: 0.32, weight: 1.5 };
-        return              { color: "#dc3545", fillColor: "#dc3545", fillOpacity: 0.24, weight: 1.5 };
+        const t     = feature.properties.time_min;
+        const color = _facilityZoneColor(resultTimes, t);
+        // Opacity decreases for outer zones so inner ones stay visible
+        const idx     = resultTimes.indexOf(t);
+        const opacity = Math.max(0.20, 0.45 - idx * 0.05);
+        return { color, fillColor: color, fillOpacity: opacity, weight: 1.5 };
       },
       onEachFeature: function(feature, layer) {
-        const p = feature.properties;
+        const p     = feature.properties;
+        const color = _facilityZoneColor(resultTimes, p.time_min);
         layer.bindPopup(
-          `<strong>${p.category || ("Within " + p.time_min + " min")}</strong><br>` +
-          `Walk time: ${p.time_min} min<br>` +
+          `<strong style="color:${color}">Within ${p.time_min} min walk</strong><br>` +
+          `Radius: ${p.radius_m} m<br>` +
           `Facilities: ${p.facility_count}`
         );
       }
@@ -1002,9 +1032,8 @@ async function runFacilityAccessibilityAnalysis() {
       total_facilities:     totalFacilities,
       facilities_processed: facilitiesProcessed,
       walking_speed_kmh:    walkingSpeedHdr,
-      pct_5min:             pct5min,
-      pct_10min:            pct10min,
-      pct_15min:            pct15min,
+      zone_pcts:            zonePcts,
+      result_times:         resultTimes,
     }, inputs, geojsonData);
 
   } catch (error) {
@@ -3377,48 +3406,78 @@ function renderAirQualityResults(stats, inputs) {
 
 /* ---------- Render Facility Accessibility Results ---------- */
 function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
-  const pct5  = stats.pct_5min  !== null ? parseFloat(stats.pct_5min)  : null;
-  const pct10 = stats.pct_10min !== null ? parseFloat(stats.pct_10min) : null;
-  const pct15 = stats.pct_15min !== null ? parseFloat(stats.pct_15min) : null;
-
   const totalFacilities     = parseInt(stats.total_facilities)     || "N/A";
   const facilitiesProcessed = parseInt(stats.facilities_processed) || "N/A";
 
-  // Weighted overall score (5-min access weighted highest)
-  const overallScore = (pct5 !== null || pct10 !== null || pct15 !== null)
-    ? Math.round(
-        (pct5  ?? 0) * 0.5 +
-        (pct10 ?? 0) * 0.3 +
-        (pct15 ?? 0) * 0.2
-      )
-    : null;
+  // zone_pcts: { "5": 100.0, "10": 82.3, ... }  keyed by time as string
+  const zonePcts   = stats.zone_pcts   || {};
+  const resultTimes = (stats.result_times || Object.keys(zonePcts).map(Number).sort((a,b)=>a-b));
+
+  // Overall score: weighted average where shorter zones score higher
+  // Weight decays: first zone gets weight n, last gets 1 (normalised)
+  const n = resultTimes.length;
+  let overallScore = null;
+  if (n > 0) {
+    let weightedSum = 0, totalWeight = 0;
+    resultTimes.forEach((t, i) => {
+      const pct    = parseFloat(zonePcts[t]);
+      const weight = n - i;              // innermost zone = highest weight
+      if (!isNaN(pct)) { weightedSum += pct * weight; totalWeight += weight; }
+    });
+    if (totalWeight > 0) overallScore = Math.round(weightedSum / totalWeight);
+  }
   const cat        = overallScore !== null ? perfCategory(overallScore) : null;
   const scoreColor = overallScore !== null ? qolScoreTextColor(overallScore) : "#888";
 
-  const chartHtml = (pct5 !== null || pct15 !== null) ? miniBarChart(
-    [
-      (pct5  ?? 0).toFixed(1),
-      ((pct10 ?? 0) - (pct5 ?? 0)).toFixed(1),
-      ((pct15 ?? 0) - (pct10 ?? 0)).toFixed(1),
-    ],
-    3,
-    ["#198754", "#ffc107", "#dc3545"],
-    ["≤ 5 min", "5–10 min", "10–15 min"]
-  ) : "";
+  // Per-zone coverage cards and chart data
+  const zoneCardsHtml = resultTimes.map((t, i) => {
+    const pct   = parseFloat(zonePcts[t]);
+    const color = FACILITY_ZONE_COLORS[i] ?? "#888";
+    return isNaN(pct) ? "" : `
+      <div class="insight-card">
+        <div class="label">Within ${t}-min walk</div>
+        <div class="value" style="color:${color}">${pct.toFixed(1)}%</div>
+      </div>`;
+  }).join("");
 
-  const ineq = pct5 !== null && pct15 !== null
-    ? inequalityLabel(calcStdDev([pct5, pct10 ?? 0, pct15]))
+  // Bar chart: each band shows the incremental area gained vs the previous zone
+  const chartVals   = resultTimes.map((t, i) => {
+    const cur  = parseFloat(zonePcts[t])  ?? 0;
+    const prev = i === 0 ? 0 : (parseFloat(zonePcts[resultTimes[i-1]]) ?? 0);
+    return Math.max(0, cur - prev).toFixed(1);
+  });
+  const chartColors = resultTimes.map((t, i) => FACILITY_ZONE_COLORS[i] ?? "#888");
+  const chartLabels = resultTimes.map((t, i) =>
+    i === 0 ? `≤ ${t} min` : `${resultTimes[i-1]}–${t} min`
+  );
+  const chartHtml = resultTimes.length > 0
+    ? miniBarChart(chartVals, resultTimes.length, chartColors, chartLabels)
+    : "";
+
+  // Insight: compare innermost vs outermost coverage
+  const firstT   = resultTimes[0];
+  const lastT    = resultTimes[resultTimes.length - 1];
+  const firstPct = parseFloat(zonePcts[firstT]);
+  const lastPct  = parseFloat(zonePcts[lastT]);
+  const keyInsight = !isNaN(firstPct) && !isNaN(lastPct)
+    ? firstPct > 50
+      ? `More than half the service area is within a ${firstT}-minute walk — excellent accessibility.`
+      : lastPct > 70
+      ? `${lastPct.toFixed(1)}% of the service area is reachable within ${lastT} minutes, but ${firstT}-minute access is limited to ${firstPct.toFixed(1)}%.`
+      : `Facility coverage is limited — only ${lastPct.toFixed(1)}% of the service area is within a ${lastT}-minute walk.`
     : null;
 
-  const keyInsight = pct5 !== null
-    ? pct5 > 50
-      ? `More than half the service area is within a 5-minute walk — excellent accessibility.`
-      : pct15 > 70
-      ? `${pct15.toFixed(1)}% of the service area is reachable within 15 minutes, but 5-minute access is limited to ${pct5.toFixed(1)}%.`
-      : `Facility coverage is limited — only ${(pct15 ?? 0).toFixed(1)}% of the service area is within a 15-minute walk.`
+  const ineq = resultTimes.length >= 2
+    ? inequalityLabel(calcStdDev(resultTimes.map(t => parseFloat(zonePcts[t]) || 0)))
     : null;
 
-  // Raw Data tab: input summary
+  // Legend line for panel description
+  const legendLine = resultTimes.map((t, i) => {
+    const color = FACILITY_ZONE_COLORS[i] ?? "#888";
+    return `<span style="color:${color};font-weight:600;">${t} min</span>`;
+  }).join(" · ");
+
+  // Raw Data tab
   const inputsHtml = `
     <p class="text-muted" style="font-size:11px;">Input data summary. Facility points are shown on the map.</p>
     <div class="insight-card">
@@ -3436,12 +3495,16 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
     <div class="insight-card">
       <div class="label">Walking speed</div>
       <div class="value">${inputs.walkingSpeed} km/h</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Time intervals</div>
+      <div class="value">${inputs.intervals.join(", ")} min</div>
     </div>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Facility Accessibility — Results</h3>
-      <p class="panel-desc">Walkable service areas: Green = 5 min · Yellow = 10 min · Red = 15 min</p>
+      <p class="panel-desc">Walkable service areas: ${legendLine}</p>
 
       <div class="tabs">
         <div class="tab"        data-tab="raw">Raw Data</div>
@@ -3471,18 +3534,7 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
           <div class="label">Walking speed</div>
           <div class="value">${inputs.walkingSpeed} km/h</div>
         </div>
-        ${pct5  !== null ? `<div class="insight-card">
-          <div class="label">Within 5-min walk</div>
-          <div class="value" style="color:#198754">${pct5.toFixed(1)}%</div>
-        </div>` : ""}
-        ${pct10 !== null ? `<div class="insight-card">
-          <div class="label">Within 10-min walk</div>
-          <div class="value" style="color:#ffc107">${pct10.toFixed(1)}%</div>
-        </div>` : ""}
-        ${pct15 !== null ? `<div class="insight-card">
-          <div class="label">Within 15-min walk</div>
-          <div class="value" style="color:#dc3545">${pct15.toFixed(1)}%</div>
-        </div>` : ""}
+        ${zoneCardsHtml}
         ${ineq ? `<div class="insight-card">
           <div class="label">Coverage Balance</div>
           <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>

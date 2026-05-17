@@ -128,11 +128,13 @@ def calculate_facility_accessibility(
     zones_proj = all_zones.to_crs("EPSG:3857")
     outer_area = zones_proj[zones_proj["time_min"] == times_sorted[-1]].geometry.area.sum()
 
-    def _pct(t):
+    zone_pcts = {}
+    for t in times_sorted:
         rows = zones_proj[zones_proj["time_min"] == t]
         if rows.empty or outer_area == 0:
-            return None
-        return round(rows.geometry.area.sum() / outer_area * 100, 2)
+            zone_pcts[str(t)] = None
+        else:
+            zone_pcts[str(t)] = round(rows.geometry.area.sum() / outer_area * 100, 2)
 
     return {
         "indicator":            "Facility Accessibility Index",
@@ -141,8 +143,6 @@ def calculate_facility_accessibility(
         "walking_speed_kmh":    walking_speed_kmh,
         "tortuosity_factor":    TORTUOSITY,
         "time_zones_minutes":   times_sorted,
-        "pct_5min":             _pct(5),
-        "pct_10min":            _pct(10),
-        "pct_15min":            _pct(15),
+        "zone_pcts":            zone_pcts,   # {"5": 100.0, "10": 82.3, ...}
         "combined_output":      output_path,
     }

@@ -388,13 +388,26 @@ def calculate_heat_index_endpoint(
 def facility_accessibility_endpoint(
     facilities_geojson: UploadFile = File(..., description="GeoJSON point layer of facilities"),
     walking_speed_kmh: float = Query(4.5, description="Walking speed in km/h (default 4.5)"),
+    times_minutes: str = Query("5,10,15", description="Comma-separated walk-time intervals in minutes, e.g. '5,10,15'"),
 ):
     """
-    Compute 5, 10, and 15-minute walkable service areas for every point in the
-    uploaded facilities GeoJSON using Euclidean buffers with a tortuosity correction.
-    Zones for each time band are unioned across all facilities and returned as a
-    single FeatureCollection.
+    Compute walkable service areas for every point in the uploaded facilities GeoJSON
+    using Euclidean buffers with a tortuosity correction.  Pass any number of
+    walk-time intervals via times_minutes (e.g. '3,7,12,20').
     """
+    import urllib.parse
+
+    # Parse and validate times_minutes
+    try:
+        parsed_times = sorted({
+            int(t.strip()) for t in times_minutes.split(",")
+            if t.strip().isdigit() and int(t.strip()) >= 1
+        })
+    except Exception:
+        parsed_times = [5, 10, 15]
+    if not parsed_times:
+        parsed_times = [5, 10, 15]
+
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -408,6 +421,7 @@ def facility_accessibility_endpoint(
             facilities_geojson_path=str(tmp_dir / "input.geojson"),
             output_path=str(output_path),
             walking_speed_kmh=walking_speed_kmh,
+            times_minutes=parsed_times,
         )
 
         with open(str(output_path), "r", encoding="utf-8") as f:
@@ -417,10 +431,9 @@ def facility_accessibility_endpoint(
             "X-Total-Facilities":     str(result["total_facilities"]),
             "X-Facilities-Processed": str(result["facilities_processed"]),
             "X-Walking-Speed-Kmh":    str(result["walking_speed_kmh"]),
+            # All zone percentages in one header: {"5": 100.0, "10": 82.3, ...}
+            "X-Zone-Pcts": urllib.parse.quote(json.dumps(result["zone_pcts"])),
         }
-        if result["pct_5min"]  is not None: headers["X-Pct-5min"]  = str(result["pct_5min"])
-        if result["pct_10min"] is not None: headers["X-Pct-10min"] = str(result["pct_10min"])
-        if result["pct_15min"] is not None: headers["X-Pct-15min"] = str(result["pct_15min"])
 
         return JSONResponse(content=geojson_data, headers=headers)
 
