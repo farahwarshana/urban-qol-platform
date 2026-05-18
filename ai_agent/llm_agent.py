@@ -356,5 +356,220 @@ def chat_with_hadary(messages):
         raise LLMError(f"Unexpected error in chat_with_hadary: {e}") from e
 
 
+def _build_context_prompt(service, service_label, inputs, full_area, grid):
+    """
+    Build a rich, service-specific context string to include in the system prompt.
+    """
+    lines = [f"SERVICE: {service_label} (key: {service})"]
+
+    # ---- Inputs ----
+    if inputs:
+        lines.append("\nINPUT DATA:")
+        for k, v in inputs.items():
+            if v is not None and v != "":
+                lines.append(f"  {k}: {v}")
+
+    # ---- Full-area results ----
+    if full_area:
+        lines.append("\nFULL-AREA ANALYSIS RESULTS:")
+        for k, v in full_area.items():
+            if v is not None and v != "" and not (isinstance(v, float) and v != v):
+                lines.append(f"  {k}: {v}")
+
+    # ---- Grid results ----
+    if grid:
+        lines.append("\nGRID / CELL ANALYSIS RESULTS (200 m cells):")
+        for k, v in grid.items():
+            if v is not None and v != "" and not (isinstance(v, float) and v != v):
+                lines.append(f"  {k}: {v}")
+
+    return "\n".join(lines)
+
+
+_SERVICE_SYSTEM_PROMPTS = {
+    "ndvi": (
+        "You are analysing NDVI (Normalized Difference Vegetation Index) results for an urban area. "
+        "NDVI ranges from -1 to 1: values < 0 are water/built-up, 0–0.2 are bare soil/stress, "
+        "0.2–0.5 moderate vegetation, > 0.5 dense healthy vegetation. "
+        "WHO recommends ≥ 9 m² of green space per person and urban greenery ≥ 30% of area. "
+        "Identify vegetation stress patterns, highlight areas needing green infrastructure, "
+        "and recommend specific interventions (tree planting, green roofs, parks)."
+    ),
+    "heat-index": (
+        "You are analysing urban heat island (LST / heat index) results. "
+        "Comfortable urban temperature is < 27 °C; 27–32 °C is caution; 32–38 °C extreme caution; ≥ 38 °C is danger. "
+        "Urban heat islands raise mortality, energy use, and inequality. "
+        "Recommend cool roofs, tree canopy expansion, permeable paving, and urban water features "
+        "as evidence-based heat mitigation strategies."
+    ),
+    "crime": (
+        "You are analysing crime density patterns for an urban area. "
+        "Higher crime density means lower safety and lower QoL. "
+        "Look for hotspot concentration vs. dispersal, and consider environmental design theory (CPTED): "
+        "lighting, surveillance, mixed-use activation, and community programs to reduce crime."
+    ),
+    "urban-density": (
+        "You are analysing urban population density. "
+        "The recommended healthy urban density target is approximately 5,000 pop/km². "
+        "Very low density (< 500) suggests sprawl; very high density (> 20,000) suggests overcrowding. "
+        "Assess whether the area is under- or over-dense, and recommend infill development, "
+        "rezoning, or infrastructure investment accordingly."
+    ),
+    "facility-accessibility": (
+        "You are analysing pedestrian accessibility to urban facilities (healthcare, education, parks, etc.). "
+        "WHO and urban planning standards typically target ≤ 10-minute walk to essential services. "
+        "Identify coverage gaps, underserved cells, and recommend facility placement or transport links."
+    ),
+    "public-transport": (
+        "You are analysing public transport coverage for an urban area. "
+        "A ≤ 400–500 m walking buffer (approx. 5 min walk) to transit is the standard benchmark. "
+        "Coverage below 70% indicates significant transit deserts. "
+        "Recommend new stops, route extensions, feeder services, or multimodal hubs."
+    ),
+    "vegetation": (
+        "You are analysing vegetation density coverage. "
+        "The global urban greenery benchmark is ≥ 30% vegetation cover. "
+        "Identify how far the area is from the benchmark, which cells fail, "
+        "and recommend targeted greening: parks, street trees, green corridors, bioswales."
+    ),
+    "traffic": (
+        "You are analysing road network quality and traffic congestion. "
+        "Optimal road density is 2–10 km/km²; connectivity index ≥ 3.5 is well-connected. "
+        "High congestion means poor mobility and high emissions. "
+        "Recommend road network improvements, traffic demand management, "
+        "public transport modal shifts, and pedestrian/cycle infrastructure."
+    ),
+    "informal-settlement": (
+        "You are analysing informal settlement patterns using building footprint irregularity. "
+        "Irregularity score: 0–33 = planned, 34–66 = mixed, 67–100 = informal. "
+        "High-irregularity areas often lack services, tenure security, and infrastructure. "
+        "Recommend targeted upgrading programmes, participatory planning, service delivery prioritisation, "
+        "and tenure regularisation where applicable."
+    ),
+    "air-quality": (
+        "You are analysing air quality index (AQI) distribution across an urban area. "
+        "AQI categories: Good (0–50), Moderate (51–100), Unhealthy for sensitive groups (101–150), "
+        "Unhealthy (151–200), Very Unhealthy (201–300), Hazardous (301+). "
+        "Identify pollution hotspots, likely sources, and recommend emission controls, "
+        "green buffer zones, and public health advisories."
+    ),
+}
+
+_GENERIC_SERVICE_PROMPT = (
+    "You are analysing urban quality-of-life metrics for an urban area. "
+    "Identify key patterns, anomalies, and provide actionable urban planning recommendations."
+)
+
+_RESPONSE_FORMAT = """
+Respond ONLY with a valid JSON object (no markdown, no commentary outside JSON) in exactly this structure:
+{
+  "headline": "<one concise sentence summarising the key finding, max 120 chars>",
+  "overall_score": <integer 0-100 representing your assessment of this area, or null>,
+  "score_label": "<short label for the score, e.g. 'Poor' / 'Moderate' / 'Good' / 'Excellent'>",
+  "sections": [
+    {
+      "type": "finding",
+      "title": "Key Findings",
+      "items": ["<finding 1>", "<finding 2>", ...]
+    },
+    {
+      "type": "insight",
+      "title": "Data Insights",
+      "items": ["<insight 1>", "<insight 2>", ...]
+    },
+    {
+      "type": "warning",
+      "title": "Risks & Concerns",
+      "items": ["<risk 1>", ...]
+    },
+    {
+      "type": "recommendation",
+      "title": "Actionable Recommendations",
+      "items": ["<recommendation 1>", "<recommendation 2>", ...]
+    }
+  ]
+}
+Rules:
+- Each section must have 2–5 items.
+- Items must be specific to the data provided, not generic.
+- Reference actual numbers from the data in findings and insights.
+- Recommendations must be concrete, spatially relevant, and feasible.
+- overall_score must reflect the quality/health of what was measured (higher = better).
+- Omit a section if it truly has nothing to say (minimum 2 sections required).
+"""
+
+
+def generate_recommendations(service, service_label, inputs, full_area, grid):
+    """
+    Generate structured AI recommendations for a completed analysis.
+
+    Returns a dict compatible with the RecommendationsResponse schema.
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise LLMError("OPENAI_API_KEY environment variable is not set.")
+
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    client = OpenAI(api_key=api_key)
+
+    service_prompt = _SERVICE_SYSTEM_PROMPTS.get(service, _GENERIC_SERVICE_PROMPT)
+    context_block = _build_context_prompt(service, service_label, inputs, full_area, grid)
+
+    system_prompt = (
+        "You are Hadary, an expert urban quality of life analyst. "
+        + service_prompt
+        + "\n\nYour role: given the analysis results below, produce a structured JSON report "
+        "with key findings, data insights, risks, and concrete actionable recommendations. "
+        "Be specific — cite the actual numbers from the data. "
+        "Think like a senior urban planner advising a city authority."
+        + _RESPONSE_FORMAT
+    )
+
+    user_message = (
+        "Here are the analysis results. Please generate a structured recommendations report:\n\n"
+        + context_block
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.4,
+            max_tokens=1400,
+            top_p=0.95,
+            response_format={"type": "json_object"},
+        )
+    except openai.OpenAIError as e:
+        raise LLMError(f"OpenAI API error: {e}") from e
+
+    raw = response.choices[0].message.content.strip() if response.choices else ""
+    if not raw:
+        raise LLMError("OpenAI returned an empty response.")
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise LLMError(f"LLM returned invalid JSON: {e}\nRaw: {raw[:300]}") from e
+
+    # Normalise / validate lightly
+    sections = []
+    for sec in parsed.get("sections", []):
+        sections.append({
+            "type": sec.get("type", "insight"),
+            "title": sec.get("title", ""),
+            "items": sec.get("items", []),
+        })
+
+    return {
+        "headline": parsed.get("headline", "Analysis complete."),
+        "overall_score": parsed.get("overall_score"),
+        "score_label": parsed.get("score_label", ""),
+        "sections": sections,
+    }
+
+
 if __name__ == "__main__":
     run_llm_agent()

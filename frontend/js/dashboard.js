@@ -1249,6 +1249,20 @@ async function runPublicTransportAnalysis() {
 
 /* ---------- Render Public Transport Results ---------- */
 function renderTransitResults(stats, inputs, geojsonData) {
+  lastAnalysisContext = {
+    service: "public-transport",
+    service_label: "Public Transport Coverage",
+    inputs: { boundary: inputs?.boundaryFile || "uploaded boundary", population: inputs?.populationCount || null },
+    full_area: {
+      coverage_pct:            parseFloat(stats.coverage_pct),
+      station_count:           parseInt(stats.station_count),
+      walking_distance_m:      parseInt(stats.walking_distance_m),
+      avg_station_distance_m:  parseFloat(stats.avg_station_distance_m),
+      station_distribution:    stats.station_distribution,
+    },
+    grid: null,
+  };
+
   const covPct   = stats.coverage_pct !== null ? parseFloat(stats.coverage_pct) : null;
   const uncovPct = covPct !== null ? (100 - covPct).toFixed(1) : null;
 
@@ -1568,6 +1582,20 @@ function vegPctColor(pct) {
 
 /* ---------- Render Vegetation Results ---------- */
 function renderVegetationResults(stats, inputs) {
+  lastAnalysisContext = {
+    service: "vegetation",
+    service_label: "Vegetation Density",
+    inputs: { file: inputs?.fileName || "uploaded raster" },
+    full_area: {
+      vegetation_pct:  parseFloat(stats.vegetation_pct),
+      benchmark_gap:   parseFloat(stats.benchmark_gap),
+      overall_score:   parseFloat(stats.overall_score),
+      valid_pixels:    parseInt(stats.valid_pixels),
+      veg_pixels:      parseInt(stats.veg_pixels),
+    },
+    grid: null,
+  };
+
   const gap       = parseFloat(stats.benchmark_gap);
   const aboveBelow = gap >= 0
     ? `<span style="color:var(--success)">▲ ${gap.toFixed(1)}% above</span>`
@@ -1907,6 +1935,27 @@ async function runTrafficAnalysis() {
 
 /* ---------- Render Traffic Results ---------- */
 function renderTrafficResults(stats, inputs) {
+  lastAnalysisContext = {
+    service: "traffic",
+    service_label: "Traffic & Road Network Analysis",
+    inputs: { boundary: inputs?.boundaryFile || "uploaded boundary" },
+    full_area: {
+      road_length_km:       parseFloat(stats.road_length_km),
+      aoi_area_km2:         parseFloat(stats.aoi_area_km2),
+      road_density:         parseFloat(stats.road_density),
+      density_class:        stats.density_class,
+      high_congestion_pct:  parseFloat(stats.high_congestion_pct),
+      segment_count:        parseInt(stats.segment_count),
+      connectivity_index:   parseFloat(stats.connectivity_index),
+      intersection_density: parseFloat(stats.intersection_density),
+      primary_pct:          parseFloat(stats.primary_pct),
+      secondary_pct:        parseFloat(stats.secondary_pct),
+      local_pct:            parseFloat(stats.local_pct),
+      fragmented_zone_pct:  parseFloat(stats.fragmented_zone_pct),
+    },
+    grid: null,
+  };
+
   const aoiKm2       = parseFloat(stats.aoi_area_km2) || 0;
   const roadLenKm    = parseFloat(stats.road_length_km) || 0;
   const roadDensity  = parseFloat(stats.road_density) || 0;
@@ -2241,6 +2290,22 @@ async function runInformalSettlementAnalysis() {
 
 /* ---------- Render Informal Settlement Results ---------- */
 function renderInformalSettlementResults(stats, inputs) {
+  lastAnalysisContext = {
+    service: "informal-settlement",
+    service_label: "Informal Settlement Pattern Analysis",
+    inputs: { boundary: inputs?.boundaryFile || "uploaded boundary", satellite: inputs?.satellite || "unknown" },
+    full_area: {
+      avg_irregularity:   parseFloat(stats.avg_irregularity),
+      high_pct:           parseFloat(stats.high_pct),
+      medium_pct:         parseFloat(stats.medium_pct),
+      low_pct:            parseFloat(stats.low_pct),
+      overall_qol:        parseFloat(stats.overall_qol),
+      high_zone_count:    parseInt(stats.high_zone_count) || 0,
+      cell_size_m:        parseInt(stats.cell_size_m) || null,
+    },
+    grid: null,
+  };
+
   const scoreColor = qolScoreTextColor(stats.overall_qol);
   const cat = perfCategory(stats.overall_qol);
 
@@ -2480,6 +2545,19 @@ function downloadGridCSV(geojson, service) {
 
 /* ---------- Render Crime Results with stats ---------- */
 function renderCrimeResults(stats, inputs, geojsonData) {
+  lastAnalysisContext = {
+    service: "crime",
+    service_label: "Crime Density Analysis",
+    inputs: { boundary: inputs?.boundaryFile || "uploaded boundary", crime_csv: inputs?.csvFile || "uploaded CSV" },
+    full_area: {
+      crime_count:  parseInt(stats.crime_count),
+      avg_density:  parseFloat(stats.avg_density),
+      max_density:  parseFloat(stats.max_density),
+      hotspot_count: parseInt(stats.hotspot_count) || null,
+    },
+    grid: null,
+  };
+
   const avgDen = parseFloat(stats.avg_density) || 0;
   const maxDen = parseFloat(stats.max_density) || 0;
   const crimeCount = parseInt(stats.crime_count) || 0;
@@ -2721,6 +2799,19 @@ function renderCrimeResults(stats, inputs, geojsonData) {
 
 /* ---------- Render Urban Density Results with stats ---------- */
 function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
+  lastAnalysisContext = {
+    service: "urban-density",
+    service_label: "Urban Density Analysis",
+    inputs: { boundary: inputs?.boundaryFile || "uploaded boundary" },
+    full_area: {
+      avg_density_pop_km2: parseFloat(stats.avg_density),
+      max_density_pop_km2: parseFloat(stats.max_density),
+      area_count:          parseInt(stats.area_count),
+      total_area_km2:      parseFloat(stats.total_area),
+    },
+    grid: null,
+  };
+
   const avgDen    = parseFloat(stats.avg_density) || 0;
   const maxDen    = parseFloat(stats.max_density) || 0;
   const areaCount = parseInt(stats.area_count) || 0;
@@ -2884,6 +2975,24 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
 
 /* ---------- Render NDVI Results with stats ---------- */
 function renderNDVIResults(stats, inputs) {
+  lastAnalysisContext = {
+    service: "ndvi",
+    service_label: "NDVI Vegetation Health",
+    inputs: { file: inputs?.fileName || "uploaded raster", satellite: stats.satellite },
+    full_area: {
+      mean_ndvi:      parseFloat(stats.mean),
+      min_ndvi:       parseFloat(stats.min),
+      max_ndvi:       parseFloat(stats.max),
+      stddev:         parseFloat(stats.stddev),
+      valid_pixels:   parseInt(stats.valid_pixels),
+      pct_no_veg:     parseFloat(stats.pct_no_veg),
+      pct_bare_soil:  parseFloat(stats.pct_bare_soil),
+      pct_moderate:   parseFloat(stats.pct_moderate),
+      pct_dense:      parseFloat(stats.pct_dense),
+    },
+    grid: null,
+  };
+
   const meanNDVI = parseFloat(stats.mean)   || 0;
   const minNDVI  = parseFloat(stats.min)    || 0;
   const maxNDVI  = parseFloat(stats.max)    || 0;
@@ -3074,6 +3183,24 @@ function renderNDVIResults(stats, inputs) {
 
 /* ---------- Render Heat Index Results with stats ---------- */
 function renderHeatIndexResults(stats, inputs) {
+  lastAnalysisContext = {
+    service: "heat-index",
+    service_label: "Urban Heat Index",
+    inputs: { file: inputs?.fileName || "uploaded raster", satellite: stats.satellite },
+    full_area: {
+      mean_temp_c:   parseFloat(stats.mean),
+      min_temp_c:    parseFloat(stats.min),
+      max_temp_c:    parseFloat(stats.max),
+      stddev:        parseFloat(stats.stddev),
+      valid_pixels:  parseInt(stats.valid_pixels),
+      pct_cool:      parseFloat(stats.pct_cool),
+      pct_moderate:  parseFloat(stats.pct_moderate),
+      pct_hot:       parseFloat(stats.pct_hot),
+      pct_extreme:   parseFloat(stats.pct_extreme),
+    },
+    grid: null,
+  };
+
   const meanTemp = parseFloat(stats.mean) || 0;
   const minTemp  = parseFloat(stats.min)  || 0;
   const maxTemp  = parseFloat(stats.max)  || 0;
@@ -3301,6 +3428,22 @@ async function runAirQualityAnalysis() {
 
 /* ---------- Render Air Quality Results ---------- */
 function renderAirQualityResults(stats, inputs) {
+  lastAnalysisContext = {
+    service: "air-quality",
+    service_label: "Air Quality Index",
+    inputs: { file: inputs?.fileName || "uploaded raster" },
+    full_area: {
+      good_pct:          parseFloat(stats.good_pct),
+      moderate_pct:      parseFloat(stats.moderate_pct),
+      sensitive_pct:     parseFloat(stats.sensitive_pct),
+      unhealthy_pct:     parseFloat(stats.unhealthy_pct),
+      very_unhealthy_pct:parseFloat(stats.very_unhealthy_pct),
+      hazardous_pct:     parseFloat(stats.hazardous_pct),
+      mean_aqi:          parseFloat(stats.mean_aqi),
+    },
+    grid: null,
+  };
+
   const goodPct    = parseFloat(stats.good_pct)          || 0;
   const modPct     = parseFloat(stats.moderate_pct)      || 0;
   const sensPct    = parseFloat(stats.sensitive_pct)     || 0;
@@ -3440,6 +3583,23 @@ function renderAirQualityResults(stats, inputs) {
 
 /* ---------- Render Facility Accessibility Results ---------- */
 function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
+  lastAnalysisContext = {
+    service: "facility-accessibility",
+    service_label: "Facility Accessibility",
+    inputs: {
+      facility_type: inputs?.facilityType || stats.facility_type || "unknown",
+      boundary: inputs?.boundaryFile || "uploaded boundary",
+    },
+    full_area: {
+      facilities_processed: parseInt(stats.facilities_processed) || parseInt(stats.total_facilities) || null,
+      coverage_pct:         parseFloat(stats.coverage_pct),
+      uncovered_pct:        parseFloat(stats.uncovered_pct),
+      zone_pcts:            stats.zone_pcts || {},
+      result_times:         stats.result_times || [],
+    },
+    grid: null,
+  };
+
   // Prefer header values; fall back to facility_count embedded in zone features
   let facilitiesProcessed = parseInt(stats.facilities_processed) || parseInt(stats.total_facilities) || null;
   if (!facilitiesProcessed && geojsonData && geojsonData.features) {
@@ -3864,6 +4024,40 @@ function wireTabSwitching() {
             ? `${(cellSizeM / 1000).toFixed(1)} km`
             : `${cellSizeM} m`;
 
+          // Persist grid summary into lastAnalysisContext so the AI tab can use it
+          if (lastAnalysisContext) {
+            // Build per-service extra stats
+            const gridExtra = {};
+            const _gf = geojson.features;
+            if (lastResultService === "ndvi") {
+              let nh = 0, nu = 0;
+              _gf.forEach(f => { const v = f.properties.value; if (v != null) { if (v >= 0.2) nh++; else nu++; } });
+              gridExtra.healthy_cells = nh; gridExtra.unhealthy_cells = nu;
+            } else if (lastResultService === "vegetation") {
+              let vp = 0, vf = 0;
+              _gf.forEach(f => { if (f.properties.passes_30pct) vp++; else vf++; });
+              gridExtra.pass_count = vp; gridExtra.fail_count = vf;
+            } else if (lastResultService === "traffic") {
+              let tl = 0, tm = 0, th = 0;
+              _gf.forEach(f => { const c = f.properties.congestion; if (c === "high") th++; else if (c === "medium") tm++; else tl++; });
+              gridExtra.low_congestion = tl; gridExtra.medium_congestion = tm; gridExtra.high_congestion = th;
+            } else if (lastResultService === "informal-settlement") {
+              let il = 0, im = 0, ih = 0;
+              _gf.forEach(f => { const c = f.properties.classification; if (c === "high") ih++; else if (c === "medium") im++; else il++; });
+              gridExtra.planned_cells = il; gridExtra.mixed_cells = im; gridExtra.informal_cells = ih;
+            } else if (lastResultService === "facility-accessibility") {
+              let na = 0, wts = [];
+              _gf.forEach(f => { if (!f.properties.value) na++; else wts.push(parseFloat(f.properties.value)); });
+              gridExtra.no_access_cells = na;
+              gridExtra.avg_walk_time = wts.length ? parseFloat((wts.reduce((a,b)=>a+b,0)/wts.length).toFixed(1)) : null;
+            }
+            lastAnalysisContext.grid = {
+              cell_count: cellCount, cell_size_m: cellSizeM,
+              avg_qol_score: avg, best_score: best, worst_score: worst,
+              ...gridExtra,
+            };
+          }
+
           if (gridTabContent) {
             const isNDVIGrid       = lastResultService === "ndvi";
             const isVegGrid        = lastResultService === "vegetation";
@@ -4198,9 +4392,7 @@ function wireTabSwitching() {
         if (inputLayer  && map.hasLayer(inputLayer))  map.removeLayer(inputLayer);
         if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
         if (gridLayer   && map.hasLayer(gridLayer))   map.removeLayer(gridLayer);
-        // The #tab-ai placeholder is static for now.
-        // When the AI agent is ready, call a function here (e.g. fetchAIRecommendations())
-        // that populates #tab-ai with the agent's response.
+        fetchAIRecommendations();
       }
     });
   });
@@ -4228,6 +4420,104 @@ function _injectPdfBtn() {
   btn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/pulsar-line/48/FFFFFF/export-pdf.png" alt="export-pdf" style="flex-shrink:0;"/> Download PDF Report`;
   btn.onclick = downloadAnalysisPDF;
   rawTab.appendChild(btn);
+}
+
+
+/* ============================================================
+   4. AI RECOMMENDATIONS TAB
+   ============================================================ */
+
+// Track last context fingerprint to avoid re-fetching when user revisits same tab
+let _lastAIContextKey = null;
+
+async function fetchAIRecommendations() {
+  const tabEl = analysisPanel.querySelector("#tab-ai");
+  if (!tabEl) return;
+
+  if (!lastAnalysisContext) {
+    tabEl.innerHTML = `<div class="ai-tab-placeholder">
+      <div class="ai-tab-icon">✦</div>
+      <div class="ai-tab-title">No Analysis Yet</div>
+      <div class="ai-tab-desc">Run an analysis first, then return here to see AI-generated insights and recommendations tailored to your results.</div>
+    </div>`;
+    return;
+  }
+
+  // Build a simple cache key — if context hasn't changed, don't re-call the API
+  const ctxKey = JSON.stringify({ s: lastAnalysisContext.service, g: !!lastAnalysisContext.grid });
+  if (ctxKey === _lastAIContextKey && !tabEl.querySelector(".ai-tab-placeholder")) return;
+
+  _lastAIContextKey = ctxKey;
+
+  tabEl.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 16px;gap:10px;">
+      <div class="spinner-border text-primary" role="status" style="width:1.8rem;height:1.8rem;"></div>
+      <p style="font-size:12px;color:var(--text-muted);margin:0;">Analysing results with AI…</p>
+    </div>`;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/ai/recommendations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(lastAnalysisContext),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    renderAIRecommendations(tabEl, data);
+  } catch (err) {
+    console.error("AI recommendations error:", err);
+    tabEl.innerHTML = `
+      <div style="padding:16px;">
+        <div style="background:rgba(231,76,60,0.1);border-left:3px solid #e74c3c;border-radius:4px;padding:10px 12px;font-size:12px;color:var(--text-primary);">
+          <strong>Could not load AI recommendations</strong><br>
+          <span style="color:var(--text-muted);">${err.message}</span>
+        </div>
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" onclick="_lastAIContextKey=null; fetchAIRecommendations();">Retry</button>
+      </div>`;
+  }
+}
+
+function renderAIRecommendations(tabEl, data) {
+  const sections = data.sections || [];
+  const headline = data.headline || "AI Analysis";
+  const score    = data.overall_score;
+  const scoreLabel = data.score_label || "";
+
+  let scoreHtml = "";
+  if (score !== null && score !== undefined) {
+    scoreHtml = `<div class="insight-card" style="margin-bottom:10px;">
+      <div class="label">Overall AI Assessment</div>
+      <div class="value" style="color:${qolScoreTextColor(score)};font-size:18px;">${score}/100 <span style="font-size:12px;font-weight:400;">${scoreLabel}</span></div>
+    </div>`;
+  }
+
+  const sectionsHtml = sections.map(sec => {
+    const iconMap = { insight: "💡", warning: "⚠️", recommendation: "✅", data: "📊", finding: "🔍" };
+    const icon = iconMap[sec.type] || "💡";
+    const borderColor = sec.type === "warning" ? "#e74c3c" : sec.type === "recommendation" ? "#27ae60" : "var(--accent)";
+    const itemsHtml = (sec.items || []).map(item =>
+      `<li style="margin-bottom:6px;font-size:12px;color:var(--text-primary);line-height:1.5;">${item}</li>`
+    ).join("");
+    return `
+      <div style="background:rgba(76,194,255,0.05);border-left:3px solid ${borderColor};border-radius:4px;padding:10px 12px;margin-bottom:10px;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:6px;">${icon} ${sec.title}</div>
+        <ul style="margin:0;padding-left:16px;">${itemsHtml}</ul>
+      </div>`;
+  }).join("");
+
+  tabEl.innerHTML = `
+    <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px;line-height:1.4;">${headline}</div>
+    ${scoreHtml}
+    ${sectionsHtml}
+    <div style="margin-top:12px;font-size:10px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:8px;">
+      Generated by Hadary AI · Based on ${lastAnalysisContext?.service_label || "analysis"} results
+      ${lastAnalysisContext?.grid ? " + grid cell data" : ""}
+    </div>`;
 }
 
 
@@ -5155,6 +5445,10 @@ let lastResultService = null;  // e.g. "ndvi", "heat-index", "crime", "urban-den
 
 // Holds per-feature urban density data so the grid tab can build a histogram
 let lastUrbanDensityFeatures = null;  // array of {name, density} from the full-area result
+
+// Structured context snapshot populated whenever an analysis completes.
+// Used by the AI Recommendations tab to build a rich prompt.
+let lastAnalysisContext = null;
 
 /* ---------- QoL score → colour (4-tier: green / yellow-green / orange / red) ---------- */
 function _qolRGB(score) {
