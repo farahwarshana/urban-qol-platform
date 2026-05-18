@@ -193,31 +193,31 @@ def call_llm(prompt):
     """Call the OpenAI API and return the raw model response text."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("ERROR: OPENAI_API_KEY is not set. Please set this environment variable.")
-        sys.exit(1)
+        raise ValueError("OPENAI_API_KEY is not set. Please set this environment variable.")
 
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     try:
         client = OpenAI(api_key=api_key)
-        response = client.responses.create(
+        response = client.chat.completions.create(
             model=model,
-            input=prompt,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
             temperature=0.2,
-            max_output_tokens=800,
+            max_tokens=800,
         )
 
-        response_text = _extract_response_text(response)
+        response_text = response.choices[0].message.content.strip()
         if response_text:
             return response_text
 
-        print("ERROR: OpenAI API returned no text.")
-        print("Full response object:")
-        print(response)
-        sys.exit(1)
+        raise ValueError("OpenAI API returned no text.")
     except Exception as exc:
-        print(f"ERROR: Failed to call OpenAI API: {exc}")
-        sys.exit(1)
+        raise ValueError(f"Failed to call OpenAI API: {exc}") from exc
 
 
 def run_llm_agent():
@@ -276,6 +276,82 @@ def run_llm_agent():
             f"Cell {rec.get('cell_id')}: {rec.get('action')} - {rec.get('reason')} "
             f"(confidence={rec.get('confidence')})"
         )
+
+
+# ── LLM Exception and Chat Functions ──────────────────────────────────────────
+
+class LLMError(Exception):
+    """Custom exception for LLM-related errors."""
+    pass
+
+
+def chat_with_hadary(messages):
+    """
+    Main chat function for the urban QoL assistant "Hadary".
+    
+    Args:
+        messages (list): List of message dicts with 'role' and 'content' keys
+                        (e.g., [{"role": "user", "content": "..."}, ...])
+    
+    Returns:
+        str: The assistant's response text
+    
+    Raises:
+        LLMError: If the API call fails or response is invalid
+    """
+    try:
+        # Build the system prompt for the urban planning assistant
+        system_prompt = (
+            "You are Hadary, an expert urban quality of life assistant. "
+            "You help cities analyze and improve urban sustainability, livability, and equity. "
+            "Provide concise, actionable insights based on urban data and best practices. "
+            "Focus on practical recommendations for: vegetation coverage, heat mitigation, "
+            "public transport accessibility, traffic patterns, air quality, and informal settlement analysis. "
+            "Always cite relevant benchmarks and standards (e.g., 30% urban greenery, 5,000 pop/km² density). "
+            "Be clear about uncertainty and limitations in the data."
+        )
+        
+        # Prepare API request with system prompt
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise LLMError("OPENAI_API_KEY environment variable is not set.")
+        
+        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        
+        client = OpenAI(api_key=api_key)
+        
+        # Convert user message format to OpenAI format if needed
+        api_messages = []
+        for msg in messages:
+            if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                api_messages.append(msg)
+            else:
+                raise LLMError(f"Invalid message format: {msg}")
+        
+        # Call the API
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                *api_messages
+            ],
+            temperature=0.7,
+            max_tokens=1024,
+            top_p=0.95,
+        )
+        
+        # Extract and return response
+        if response.choices and len(response.choices) > 0:
+            reply = response.choices[0].message.content.strip()
+            if reply:
+                return reply
+        
+        raise LLMError("OpenAI API returned empty response.")
+    
+    except openai.OpenAIError as e:
+        raise LLMError(f"OpenAI API error: {e}") from e
+    except Exception as e:
+        raise LLMError(f"Unexpected error in chat_with_hadary: {e}") from e
 
 
 if __name__ == "__main__":

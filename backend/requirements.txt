@@ -18,3 +18,5 @@ sqlalchemy
 python-dotenv
 passlib[bcrypt]
 python-jose
+osmnx
+openai>=1.0.0

@@ -60,12 +60,16 @@ from grid_analysis import (
     grid_from_traffic,
     grid_from_informal_settlement,
 )
+from ai_routes import router as ai_router
 
 app = FastAPI(
     title="Urban QOL API",
     description="Platform analyzes multiple aspects of urban quality of life in order to identify opportunities for enhancement.",
     version="1.0.0",
 )
+
+# ── Register AI chat routes ────────────────────────────────────────────────────
+app.include_router(ai_router)
 # ----------------------api for (online url)-----------------------
 BASE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
