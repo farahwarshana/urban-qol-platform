@@ -316,6 +316,9 @@ function clearMap() {
     }
   });
   disableNdviProbe();
+  aiLayer = null;
+  _lastAIContextKey = null;
+  _lastAIHighlights = [];
 }
 /* ---------- Special panel: Future Expansion Suitability ---------- */
 function renderExpansionPanel(service) {
@@ -3924,7 +3927,8 @@ function wireTabSwitching() {
       updateLegend(lastResultService, target);
 
       if (target === "raw") {
-        if (gridLayer && map.hasLayer(gridLayer)) map.removeLayer(gridLayer);
+        if (gridLayer  && map.hasLayer(gridLayer))  map.removeLayer(gridLayer);
+        if (aiLayer    && map.hasLayer(aiLayer))    map.removeLayer(aiLayer);
         // For crime: show both the boundary result layer and the crime point input layer
         if (lastResultService === "crime") {
           if (resultLayer && !map.hasLayer(resultLayer)) {
@@ -3953,6 +3957,7 @@ function wireTabSwitching() {
       } else if (target === "full") {
         if (inputLayer && map.hasLayer(inputLayer)) map.removeLayer(inputLayer);
         if (gridLayer  && map.hasLayer(gridLayer))  map.removeLayer(gridLayer);
+        if (aiLayer    && map.hasLayer(aiLayer))    map.removeLayer(aiLayer);
         if (resultLayer && !map.hasLayer(resultLayer)) {
           try {
             resultLayer.addTo(map);
@@ -3966,6 +3971,7 @@ function wireTabSwitching() {
       } else if (target === "grid") {
         if (inputLayer  && map.hasLayer(inputLayer))  map.removeLayer(inputLayer);
         if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+        if (aiLayer     && map.hasLayer(aiLayer))     map.removeLayer(aiLayer);
 
         // If grid layer already loaded, just show it
         if (gridLayer) {
@@ -4427,9 +4433,6 @@ function _injectPdfBtn() {
    4. AI RECOMMENDATIONS TAB
    ============================================================ */
 
-// Track last context fingerprint to avoid re-fetching when user revisits same tab
-let _lastAIContextKey = null;
-
 async function fetchAIRecommendations() {
   const tabEl = analysisPanel.querySelector("#tab-ai");
   if (!tabEl) return;
@@ -4443,9 +4446,14 @@ async function fetchAIRecommendations() {
     return;
   }
 
-  // Build a simple cache key — if context hasn't changed, don't re-call the API
+  // Build a simple cache key — if context hasn't changed, skip the API call
+  // but still re-apply the map layer (user may have switched tabs and back)
   const ctxKey = JSON.stringify({ s: lastAnalysisContext.service, g: !!lastAnalysisContext.grid });
-  if (ctxKey === _lastAIContextKey && !tabEl.querySelector(".ai-tab-placeholder")) return;
+  if (ctxKey === _lastAIContextKey && !tabEl.querySelector(".ai-tab-placeholder")) {
+    renderAIMapLayer(_lastAIHighlights);
+    updateLegend(lastResultService, 'ai');
+    return;
+  }
 
   _lastAIContextKey = ctxKey;
 
@@ -4483,10 +4491,13 @@ async function fetchAIRecommendations() {
 }
 
 function renderAIRecommendations(tabEl, data) {
-  const sections = data.sections || [];
-  const headline = data.headline || "AI Analysis";
-  const score    = data.overall_score;
-  const scoreLabel = data.score_label || "";
+  const sections     = data.sections || [];
+  const highlights   = data.map_highlights || [];
+  _lastAIHighlights  = highlights;   // persist for map re-application
+  updateLegend(lastResultService, 'ai');
+  const headline     = data.headline || "AI Analysis";
+  const score        = data.overall_score;
+  const scoreLabel   = data.score_label || "";
 
   let scoreHtml = "";
   if (score !== null && score !== undefined) {
@@ -4494,6 +4505,24 @@ function renderAIRecommendations(tabEl, data) {
       <div class="label">Overall AI Assessment</div>
       <div class="value" style="color:${qolScoreTextColor(score)};font-size:18px;">${score}/100 <span style="font-size:12px;font-weight:400;">${scoreLabel}</span></div>
     </div>`;
+  }
+
+  // Map legend for AI highlights
+  let legendHtml = "";
+  if (highlights.length) {
+    const rows = highlights.map(hl => `
+      <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+        <div style="width:14px;height:14px;background:${hl.color};border-radius:3px;flex-shrink:0;margin-top:1px;opacity:0.85;"></div>
+        <div>
+          <span style="font-size:11px;font-weight:600;color:var(--text-primary);">${hl.label}</span>
+          <span style="font-size:10px;color:var(--text-muted);display:block;line-height:1.4;">${hl.description}</span>
+        </div>
+      </div>`).join("");
+    legendHtml = `
+      <div style="background:rgba(76,194,255,0.06);border:1px solid rgba(76,194,255,0.2);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px;">🗺 Map Highlights</div>
+        ${rows}
+      </div>`;
   }
 
   const sectionsHtml = sections.map(sec => {
@@ -4513,11 +4542,139 @@ function renderAIRecommendations(tabEl, data) {
   tabEl.innerHTML = `
     <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px;line-height:1.4;">${headline}</div>
     ${scoreHtml}
+    ${legendHtml}
     ${sectionsHtml}
     <div style="margin-top:12px;font-size:10px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:8px;">
       Generated by Hadary AI · Based on ${lastAnalysisContext?.service_label || "analysis"} results
       ${lastAnalysisContext?.grid ? " + grid cell data" : ""}
     </div>`;
+
+  // Render the map layer alongside the text
+  renderAIMapLayer(highlights);
+}
+
+
+/* ============================================================
+   AI MAP LAYER
+   Renders the existing result on the map (same visual as Full Area)
+   plus AI-driven highlight overlays on top.
+   ============================================================ */
+
+function _matchHighlightFilter(props, filter) {
+  if (!filter || !filter.property) return false;
+  const raw = props[filter.property];
+  if (raw === undefined || raw === null) return false;
+  const val = filter.value;
+  switch (filter.op) {
+    case "gt":  return parseFloat(raw) >  parseFloat(val);
+    case "gte": return parseFloat(raw) >= parseFloat(val);
+    case "lt":  return parseFloat(raw) <  parseFloat(val);
+    case "lte": return parseFloat(raw) <= parseFloat(val);
+    case "eq":  return String(raw) === String(val);
+    case "in":  return Array.isArray(val) && val.map(String).includes(String(raw));
+    default:    return false;
+  }
+}
+
+async function renderAIMapLayer(highlights) {
+  // Remove any previous AI layer
+  if (aiLayer && map.hasLayer(aiLayer)) map.removeLayer(aiLayer);
+  aiLayer = null;
+
+  const rasterServices = ["ndvi", "heat-index", "air-quality"];
+  const isRaster = rasterServices.includes(lastResultService);
+
+  // Always restore the base result layer (same visuals as Full Area tab)
+  if (resultLayer) {
+    if (!map.hasLayer(resultLayer)) {
+      try { resultLayer.addTo(map); } catch (e) {}
+    }
+    try {
+      const b = resultLayer.getBounds ? resultLayer.getBounds() : null;
+      if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+    } catch (e) {}
+  }
+
+  if (!highlights || !highlights.length) return;
+
+  // Decide the feature source:
+  //  • raster services → need grid cells (qol_score, value per cell)
+  //  • vector services → use lastResultBlob features directly
+  let sourceFeatures = null;
+
+  if (isRaster) {
+    // Ensure grid is loaded — fetch it if not yet available
+    if (!gridLayer && lastResultBlob && lastResultService) {
+      try {
+        await fetchAndRenderGrid(lastResultService, lastResultBlob);
+        // fetchAndRenderGrid adds gridLayer to map; remove it — we'll draw our own overlay
+        if (gridLayer && map.hasLayer(gridLayer)) map.removeLayer(gridLayer);
+      } catch (e) {
+        console.warn("AI map: could not fetch grid for raster highlight:", e);
+      }
+    }
+    if (gridLayer) {
+      try {
+        const gj = gridLayer.toGeoJSON();
+        sourceFeatures = gj.features || [];
+      } catch (e) {}
+    }
+  } else if (lastResultBlob && lastResultBlob.features) {
+    sourceFeatures = lastResultBlob.features;
+  }
+
+  if (!sourceFeatures || !sourceFeatures.length) return;
+
+  // Build one Leaflet sub-layer per highlight, group them under aiLayer
+  const subLayers = [];
+
+  highlights.forEach(hl => {
+    const matched = sourceFeatures.filter(f =>
+      f.geometry && _matchHighlightFilter(f.properties || {}, hl.filter)
+    );
+    if (!matched.length) return;
+
+    const color = hl.color || "#e74c3c";
+    const geomType = matched[0].geometry.type;
+    const isPoint  = geomType === "Point" || geomType === "MultiPoint";
+    const isLine   = geomType === "LineString" || geomType === "MultiLineString";
+
+    const subLayer = L.geoJSON({ type: "FeatureCollection", features: matched }, {
+      style: (isPoint || isLine) ? undefined : function() {
+        return {
+          fillColor:   color,
+          fillOpacity: 0.40,
+          color:       color,
+          weight:      2.5,
+          dashArray:   "5,3",
+        };
+      },
+      pointToLayer: isPoint ? function(feature, latlng) {
+        return L.circleMarker(latlng, {
+          radius: 8, fillColor: color, color: "#fff", weight: 2, fillOpacity: 0.85,
+        });
+      } : undefined,
+      onEachFeature: function(feature, layer) {
+        const p = feature.properties || {};
+        const propKey = hl.filter.property;
+        const raw = p[propKey];
+        const propVal = raw !== undefined && raw !== null
+          ? (typeof raw === "number" ? raw.toFixed(2) : raw)
+          : "—";
+        layer.bindPopup(
+          `<strong style="color:${color}">⚑ ${hl.label}</strong><br>` +
+          `<span style="font-size:11px;">${hl.description}</span><br>` +
+          `<span style="font-size:11px;color:#888;">${propKey}: ${propVal}</span>`
+        );
+      },
+    });
+
+    subLayers.push(subLayer);
+  });
+
+  if (!subLayers.length) return;
+
+  aiLayer = L.layerGroup(subLayers).addTo(map);
 }
 
 
@@ -5273,8 +5430,22 @@ function toggleAnnotate() {
     const itemsEl = document.getElementById('mapLegendItems');
     if (!el) return;
 
-    // Hide legend for the AI tab or when no service is set
-    if (!service || tab === 'ai') { el.style.display = 'none'; return; }
+    // For the AI tab, show the AI highlights legend if available
+    if (tab === 'ai') {
+      if (!_lastAIHighlights || !_lastAIHighlights.length) { el.style.display = 'none'; return; }
+      titleEl.textContent = '✦ AI Highlights';
+      itemsEl.innerHTML = _lastAIHighlights.map(hl =>
+        `<div class="legend-row">
+          <div class="legend-swatch" style="background:${hl.color};border-color:${hl.color};opacity:0.85;"></div>
+          <span>${hl.label}</span>
+        </div>`
+      ).join('');
+      el.style.display = 'block';
+      return;
+    }
+
+    // Hide legend when no service is set
+    if (!service) { el.style.display = 'none'; return; }
 
     const cfg = LEGENDS[service];
     if (!cfg) { el.style.display = 'none'; return; }
@@ -5438,6 +5609,7 @@ async function renderGeoRasterFromArrayBuffer(arrayBuffer, options = {}) {
 let inputLayer  = null;  // pre-analysis layer — shown when Raw Data tab is active
 let resultLayer = null;  // analysis result layer — shown when Full Area tab is active
 let gridLayer   = null;  // 200 m cell QoL layer — shown when Grid/Cell tab is active
+let aiLayer     = null;  // AI highlight overlays — shown when AI Recommendations tab is active
 
 // Holds the last analysis result so the grid endpoint can re-use it
 let lastResultBlob    = null;  // ArrayBuffer (rasters) or object (geojson)
@@ -5449,6 +5621,10 @@ let lastUrbanDensityFeatures = null;  // array of {name, density} from the full-
 // Structured context snapshot populated whenever an analysis completes.
 // Used by the AI Recommendations tab to build a rich prompt.
 let lastAnalysisContext = null;
+
+// AI tab state — fingerprint for cache + stored highlights for map re-application
+let _lastAIContextKey = null;
+let _lastAIHighlights = [];
 
 /* ---------- QoL score → colour (4-tier: green / yellow-green / orange / red) ---------- */
 function _qolRGB(score) {

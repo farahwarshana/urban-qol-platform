@@ -487,15 +487,46 @@ Respond ONLY with a valid JSON object (no markdown, no commentary outside JSON) 
       "title": "Actionable Recommendations",
       "items": ["<recommendation 1>", "<recommendation 2>", ...]
     }
+  ],
+  "map_highlights": [
+    {
+      "id": "<unique short id, e.g. 'hotspot', 'gap', 'critical'>",
+      "label": "<short legend label shown on map, e.g. 'Crime Hotspots', 'Transit Gap'>",
+      "color": "<hex colour for this highlight, e.g. '#e74c3c'>",
+      "description": "<one sentence explaining what is highlighted and why>",
+      "filter": {
+        "property": "<GeoJSON feature property key to filter on>",
+        "op": "<one of: gt, lt, gte, lte, eq, in>",
+        "value": <threshold number or string or array for 'in'>
+      }
+    }
   ]
 }
-Rules:
+
+Rules for sections:
 - Each section must have 2–5 items.
 - Items must be specific to the data provided, not generic.
 - Reference actual numbers from the data in findings and insights.
 - Recommendations must be concrete, spatially relevant, and feasible.
 - overall_score must reflect the quality/health of what was measured (higher = better).
 - Omit a section if it truly has nothing to say (minimum 2 sections required).
+
+Rules for map_highlights:
+- Provide 1–4 highlights that correspond to spatially interesting patterns in the data.
+- Each highlight targets features from the GeoJSON data by filtering on a single property.
+- Choose the property key from what you know about this service's GeoJSON schema:
+  * crime: property="crime_density", use op="gt" with a meaningful threshold
+  * urban-density: property="urban_density", use op="gt" or op="lt"
+  * vegetation: property="vegetation_pct", use op="lt" with threshold=30 for below-benchmark zones
+  * traffic (grid cells): property="congestion", op="eq", value="high"
+  * traffic (network): property="hierarchy", op="eq", value="primary"
+  * informal-settlement: property="irregularity_score", op="gt" with a meaningful threshold
+  * facility-accessibility: property="type", op="eq", value="uncovered"
+  * public-transport: property="type", op="eq", value="uncovered"
+  * ndvi / heat-index / air-quality: use grid cell property="qol_score", op="lt" with threshold
+- Use distinct, contrasting colours per highlight (red for danger/hotspot, amber for caution, blue for gaps, green for good zones).
+- Only include highlights that are genuinely meaningful given the data values provided.
+- Omit map_highlights entirely (empty array []) if the data does not support spatial filtering.
 """
 
 
@@ -538,7 +569,7 @@ def generate_recommendations(service, service_label, inputs, full_area, grid):
                 {"role": "user", "content": user_message},
             ],
             temperature=0.4,
-            max_tokens=1400,
+            max_tokens=1800,
             top_p=0.95,
             response_format={"type": "json_object"},
         )
@@ -554,7 +585,7 @@ def generate_recommendations(service, service_label, inputs, full_area, grid):
     except json.JSONDecodeError as e:
         raise LLMError(f"LLM returned invalid JSON: {e}\nRaw: {raw[:300]}") from e
 
-    # Normalise / validate lightly
+    # Normalise sections
     sections = []
     for sec in parsed.get("sections", []):
         sections.append({
@@ -563,11 +594,30 @@ def generate_recommendations(service, service_label, inputs, full_area, grid):
             "items": sec.get("items", []),
         })
 
+    # Normalise map_highlights — validate required keys, drop malformed entries
+    map_highlights = []
+    for hl in parsed.get("map_highlights", []):
+        f = hl.get("filter", {})
+        if not f.get("property") or not f.get("op"):
+            continue
+        map_highlights.append({
+            "id":          hl.get("id", "highlight"),
+            "label":       hl.get("label", "AI Highlight"),
+            "color":       hl.get("color", "#e74c3c"),
+            "description": hl.get("description", ""),
+            "filter": {
+                "property": f["property"],
+                "op":       f["op"],
+                "value":    f.get("value"),
+            },
+        })
+
     return {
-        "headline": parsed.get("headline", "Analysis complete."),
-        "overall_score": parsed.get("overall_score"),
-        "score_label": parsed.get("score_label", ""),
-        "sections": sections,
+        "headline":       parsed.get("headline", "Analysis complete."),
+        "overall_score":  parsed.get("overall_score"),
+        "score_label":    parsed.get("score_label", ""),
+        "sections":       sections,
+        "map_highlights": map_highlights,
     }
 
 
