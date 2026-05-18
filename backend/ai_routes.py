@@ -1,9 +1,9 @@
-﻿from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
-from ai_agent.llm_agent import chat_with_hadary, LLMError
+from ai_agent.llm_agent import chat_with_hadary, generate_recommendations, LLMError
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -20,6 +20,27 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+class RecommendationsRequest(BaseModel):
+    service: str
+    service_label: str
+    inputs: Optional[Dict[str, Any]] = None
+    full_area: Optional[Dict[str, Any]] = None
+    grid: Optional[Dict[str, Any]] = None
+
+
+class RecommendationSection(BaseModel):
+    type: str   # "insight" | "warning" | "recommendation" | "data" | "finding"
+    title: str
+    items: List[str]
+
+
+class RecommendationsResponse(BaseModel):
+    headline: str
+    overall_score: Optional[int] = None
+    score_label: Optional[str] = None
+    sections: List[RecommendationSection]
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -42,3 +63,24 @@ def chat_endpoint(body: ChatRequest = Body(...)):
     except Exception as exc:
         print(f"[AI ROUTE] Exception: {exc}")
         raise HTTPException(status_code=500, detail=f"Chat backend failed: {exc}")
+
+
+@router.post("/recommendations", response_model=RecommendationsResponse)
+def recommendations_endpoint(body: RecommendationsRequest = Body(...)):
+    try:
+        print(f"[AI ROUTE] Recommendations request for service: {body.service}")
+        result = generate_recommendations(
+            service=body.service,
+            service_label=body.service_label,
+            inputs=body.inputs or {},
+            full_area=body.full_area or {},
+            grid=body.grid,
+        )
+        print(f"[AI ROUTE] Recommendations ready")
+        return result
+    except LLMError as exc:
+        print(f"[AI ROUTE] LLMError: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        print(f"[AI ROUTE] Exception: {exc}")
+        raise HTTPException(status_code=500, detail=f"Recommendations backend failed: {exc}")
