@@ -102,95 +102,104 @@ def recommendations_endpoint(body: RecommendationsRequest = Body(...)):
         raise HTTPException(status_code=500, detail=f"Recommendations backend failed: {exc}")
 
 
-# ── Data-driven filter helpers ────────────────────────────────────────────────
+# ── Pure data-driven feature selection ────────────────────────────────────────
 
-def _collect_numeric_values(features: list, prop: str) -> List[float]:
-    """Collect all non-null numeric values for a property across features."""
-    vals = []
+def _numeric_vals(features: list, prop: str) -> List[float]:
+    out = []
     for f in features:
         raw = (f.get("properties") or {}).get(prop)
-        if raw is None:
-            continue
         try:
-            vals.append(float(raw))
+            out.append(float(raw))
         except (TypeError, ValueError):
             pass
-    return vals
+    return out
 
 
-def _resolve_filter(features: list, hl: MapHighlight) -> list:
+def _select_features(features: list, hl: MapHighlight) -> list:
     """
-    Apply the LLM-specified filter. If it matches fewer than 2 features,
-    fall back to a data-driven percentile threshold using the same property and
-    operator direction, so annotations always reflect the real data distribution.
+    Select features based on annotation_type + filter.property,
+    using real data percentiles — never trusting the LLM's threshold value.
+
+    annotation_type drives the selection intent:
+      cluster_hull / gap_zone  → features in the bottom or top quartile
+                                  (op direction decides which quartile)
+      worst_cells              → bottom top_n by property value
+      best_cells               → top top_n by property value
+      centroid_label           → all features that match the string op (eq/in),
+                                  or top half by value for numeric ops
+
+    For string ops (eq, in) we always try an exact match first.
     """
-    prop = hl.filter.property
-    op   = hl.filter.op
+    prop  = hl.filter.property
+    op    = hl.filter.op
+    atype = hl.annotation_type
+    n     = max(1, hl.top_n)
 
-    # First try the LLM's exact filter
-    matched = [f for f in features if _passes_filter(f.get("properties") or {}, hl.filter)]
-
-    # If it matched a reasonable number, use it as-is
-    min_features = max(2, len(features) // 20)  # at least 5% of features
-    if len(matched) >= min_features:
-        return matched
-
-    # Fall back: compute a percentile-based threshold from the actual values
-    vals = _collect_numeric_values(features, prop)
-    if not vals:
-        return matched  # can't improve — return whatever we got
-
-    arr = np.array(vals)
-    # Determine which percentile to use based on operator direction
-    if op in ("gt", "gte"):
-        # Caller wants high values → use 75th percentile as threshold
-        threshold = float(np.percentile(arr, 75))
-        fallback_filter = HighlightFilter(property=prop, op="gte", value=threshold)
-    elif op in ("lt", "lte"):
-        # Caller wants low values → use 25th percentile as threshold
-        threshold = float(np.percentile(arr, 25))
-        fallback_filter = HighlightFilter(property=prop, op="lte", value=threshold)
-    elif op == "eq":
-        # String equality — can't compute a percentile; return most frequent value
-        str_vals = [(f.get("properties") or {}).get(prop) for f in features]
-        str_vals = [v for v in str_vals if v is not None]
-        if not str_vals:
-            return matched
+    # ── String / categorical ops — try exact match, no percentile needed ──────
+    if op in ("eq", "in"):
+        val = hl.filter.value
+        candidates = []
+        for f in features:
+            raw = (f.get("properties") or {}).get(prop)
+            if raw is None:
+                continue
+            if op == "eq" and str(raw) == str(val):
+                candidates.append(f)
+            elif op == "in" and isinstance(val, list) and str(raw) in [str(v) for v in val]:
+                candidates.append(f)
+        if candidates:
+            return candidates
+        # Fallback: most common value for that property
         from collections import Counter
-        most_common = Counter(str_vals).most_common(1)[0][0]
-        fallback_filter = HighlightFilter(property=prop, op="eq", value=most_common)
-        threshold = most_common
-    else:
-        return matched
+        all_vals = [(f.get("properties") or {}).get(prop) for f in features]
+        all_vals = [v for v in all_vals if v is not None]
+        if all_vals:
+            most_common = Counter(all_vals).most_common(1)[0][0]
+            return [f for f in features if (f.get("properties") or {}).get(prop) == most_common]
+        return []
 
-    fallback_matched = [f for f in features if _passes_filter(f.get("properties") or {}, fallback_filter)]
-    print(f"[AI ANNOTATE]   filter fallback: '{prop}' {op} {hl.filter.value} → {op} {threshold:.3g} "
-          f"({len(matched)} → {len(fallback_matched)} features)")
-    return fallback_matched if len(fallback_matched) >= min_features else matched
+    # ── Numeric ops — ignore LLM threshold, use real percentiles ─────────────
+    vals = _numeric_vals(features, prop)
+    if not vals:
+        return []
+
+    arr   = np.array(vals)
+    total = len(features)
+
+    # For worst/best: sort and take top-n directly
+    if atype == "worst_cells":
+        paired = sorted(
+            [(float((f.get("properties") or {}).get(prop, np.nan)), f)
+             for f in features if (f.get("properties") or {}).get(prop) is not None],
+            key=lambda x: x[0]
+        )
+        return [f for _, f in paired[:n]]
+
+    if atype == "best_cells":
+        paired = sorted(
+            [(float((f.get("properties") or {}).get(prop, np.nan)), f)
+             for f in features if (f.get("properties") or {}).get(prop) is not None],
+            key=lambda x: x[0], reverse=True
+        )
+        return [f for _, f in paired[:n]]
+
+    # For hull/bbox/centroid: use quartile splits based on op direction
+    # High values (gt/gte) → top quartile; Low values (lt/lte) → bottom quartile
+    if op in ("gt", "gte"):
+        threshold = float(np.percentile(arr, 75))
+        return [f for f in features
+                if (f.get("properties") or {}).get(prop) is not None
+                and float((f.get("properties") or {}).get(prop)) >= threshold]
+    else:  # lt / lte
+        threshold = float(np.percentile(arr, 25))
+        return [f for f in features
+                if (f.get("properties") or {}).get(prop) is not None
+                and float((f.get("properties") or {}).get(prop)) <= threshold]
 
 
-def _passes_filter(props: dict, f: HighlightFilter) -> bool:
-    raw = props.get(f.property)
-    if raw is None:
-        return False
-    val = f.value
-    try:
-        op = f.op
-        if op == "gt":  return float(raw) >  float(val)
-        if op == "gte": return float(raw) >= float(val)
-        if op == "lt":  return float(raw) <  float(val)
-        if op == "lte": return float(raw) <= float(val)
-        if op == "eq":  return str(raw) == str(val)
-        if op == "in":
-            return isinstance(val, list) and str(raw) in [str(v) for v in val]
-    except (TypeError, ValueError):
-        pass
-    return False
+# ── Geometry builders ─────────────────────────────────────────────────────────
 
-
-# ── Geometry helpers ──────────────────────────────────────────────────────────
-
-def _geom_from_feature(feat: dict):
+def _geom(feat: dict):
     try:
         from shapely.geometry import shape
         g = feat.get("geometry")
@@ -199,92 +208,79 @@ def _geom_from_feature(feat: dict):
         return None
 
 
-def _centroid_coords(geom) -> tuple:
-    c = geom.centroid
-    return (round(c.x, 6), round(c.y, 6))
+def _make_point(coords, props: dict) -> dict:
+    return {"type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [round(coords[0], 6), round(coords[1], 6)]},
+            "properties": props}
 
 
-def _make_point_feature(coords, props: dict) -> dict:
-    return {"type": "Feature", "geometry": {"type": "Point", "coordinates": list(coords)}, "properties": props}
-
-
-def _make_polygon_feature(geom, props: dict) -> dict:
+def _make_poly(geom, props: dict) -> dict:
     from shapely.geometry import mapping
     return {"type": "Feature", "geometry": mapping(geom), "properties": props}
 
 
-def _hull_feature(geoms, hl: MapHighlight) -> Optional[dict]:
+def _base_props(hl: MapHighlight) -> dict:
+    return {"ai_label": hl.label, "ai_color": hl.color,
+            "ai_description": hl.description, "ai_group": hl.id}
+
+
+def _hull(geoms, hl: MapHighlight) -> Optional[dict]:
     from shapely.ops import unary_union
     try:
         hull = unary_union(geoms).convex_hull
         if hull.is_empty or hull.geom_type == "Point":
             return None
-        return _make_polygon_feature(hull.buffer(0.0002), {
-            "ai_type": "cluster_hull", "ai_label": hl.label,
-            "ai_color": hl.color, "ai_description": hl.description, "ai_group": hl.id,
-        })
+        return _make_poly(hull.buffer(0.0002), {**_base_props(hl), "ai_type": "cluster_hull"})
     except Exception:
         return None
 
 
-def _bbox_feature(geoms, hl: MapHighlight) -> Optional[dict]:
+def _bbox(geoms, hl: MapHighlight) -> Optional[dict]:
     from shapely.geometry import box
     from shapely.ops import unary_union
     try:
         minx, miny, maxx, maxy = unary_union(geoms).bounds
-        return _make_polygon_feature(box(minx, miny, maxx, maxy).buffer(0.0004), {
-            "ai_type": "gap_zone", "ai_label": hl.label,
-            "ai_color": hl.color, "ai_description": hl.description, "ai_group": hl.id,
-        })
+        return _make_poly(box(minx, miny, maxx, maxy).buffer(0.0004),
+                          {**_base_props(hl), "ai_type": "gap_zone"})
     except Exception:
         return None
 
 
-def _centroid_marker(geoms, hl: MapHighlight, extra_props: dict = None) -> Optional[dict]:
+def _centroid(geoms, hl: MapHighlight) -> Optional[dict]:
     from shapely.ops import unary_union
     try:
         c = unary_union(geoms).centroid
-        props = {"ai_type": "centroid_label", "ai_label": hl.label,
-                 "ai_color": hl.color, "ai_description": hl.description, "ai_group": hl.id}
-        if extra_props:
-            props.update(extra_props)
-        return _make_point_feature((round(c.x, 6), round(c.y, 6)), props)
+        return _make_point((c.x, c.y), {**_base_props(hl), "ai_type": "centroid_label"})
     except Exception:
         return None
 
 
-def _top_n_markers(features, geoms, hl: MapHighlight, sort_prop: str,
-                   descending: bool, n: int) -> List[dict]:
-    try:
-        paired = []
-        for feat, geom in zip(features, geoms):
-            raw = (feat.get("properties") or {}).get(sort_prop)
-            if raw is None:
-                continue
+def _ranked_markers(sel_feats, sel_geoms, hl: MapHighlight, descending: bool) -> List[dict]:
+    prop = hl.filter.property
+    results = []
+    for rank, (feat, geom) in enumerate(zip(sel_feats, sel_geoms), 1):
+        try:
+            c = geom.centroid
+        except Exception:
+            continue
+        p      = feat.get("properties") or {}
+        raw    = p.get(prop)
+        # Carry area name if present
+        name_k = next((k for k in p if k.lower() in
+                       ("name","nbhd_name","admin_name","district","governorate",
+                        "region","area_name","neighbourhood","city")), None)
+        props = {**_base_props(hl),
+                 "ai_type":  "best_cells" if descending else "worst_cells",
+                 "ai_rank":  rank}
+        if name_k and p.get(name_k):
+            props["area_name"] = str(p[name_k])
+        if raw is not None:
             try:
-                paired.append((float(raw), feat, geom))
+                props[prop] = round(float(raw), 3)
             except (TypeError, ValueError):
-                pass
-        paired.sort(key=lambda x: x[0], reverse=descending)
-        result = []
-        for rank, (val, feat, geom) in enumerate(paired[:n], 1):
-            cx, cy = _centroid_coords(geom)
-            # Carry the area name forward if it exists
-            feat_props = feat.get("properties") or {}
-            name_key   = next((k for k in feat_props if k.lower() in
-                               ("name","nbhd_name","admin_name","district","governorate","region","area_name")), None)
-            extra = {sort_prop: round(val, 3)}
-            if name_key and feat_props.get(name_key):
-                extra["area_name"] = str(feat_props[name_key])
-            result.append(_make_point_feature((cx, cy), {
-                "ai_type": "worst_cells" if not descending else "best_cells",
-                "ai_label": hl.label, "ai_color": hl.color,
-                "ai_description": hl.description, "ai_group": hl.id,
-                "ai_rank": rank, **extra,
-            }))
-        return result
-    except Exception:
-        return []
+                props[prop] = raw
+        results.append(_make_point((round(c.x, 6), round(c.y, 6)), props))
+    return results
 
 
 # ── Main annotate endpoint ────────────────────────────────────────────────────
@@ -292,9 +288,9 @@ def _top_n_markers(features, geoms, hl: MapHighlight, sort_prop: str,
 @router.post("/annotate")
 def annotate_endpoint(body: AnnotateRequest = Body(...)):
     """
-    Derives NEW annotation geometries grounded in the actual data distribution.
-    Filters are auto-corrected to percentile thresholds when the LLM's guess
-    matches too few features, so annotations always reflect real spatial patterns.
+    Produces NEW annotation geometries (hulls, boxes, ranked markers) derived
+    entirely from the actual data distribution — LLM threshold guesses are ignored
+    and replaced by real percentile-based splits.
     """
     try:
         features = body.geojson.get("features", [])
@@ -304,58 +300,57 @@ def annotate_endpoint(body: AnnotateRequest = Body(...)):
         print(f"[AI ANNOTATE] {len(features)} features, "
               f"{len(body.highlights)} highlights, service={body.service}")
 
-        annotation_features = []
+        annotation_features: List[dict] = []
 
         for hl in body.highlights:
-            # Use data-driven filter resolution — falls back to percentile if needed
-            matched_feats = _resolve_filter(features, hl)
-            matched_geoms = [g for f in matched_feats if (g := _geom_from_feature(f)) is not None]
+            sel = _select_features(features, hl)
+            geoms = [g for f in sel if (g := _geom(f)) is not None]
 
             atype = hl.annotation_type
-            print(f"[AI ANNOTATE]   '{hl.label}' ({atype}): {len(matched_feats)} features")
+            print(f"[AI ANNOTATE]   '{hl.label}' ({atype}): {len(sel)} selected / "
+                  f"{len(geoms)} with geometry")
 
-            if not matched_geoms:
+            if not geoms:
                 continue
 
             if atype == "cluster_hull":
-                feat = _hull_feature(matched_geoms, hl)
+                feat = _hull(geoms, hl)
                 if feat:
                     annotation_features.append(feat)
 
             elif atype == "gap_zone":
-                feat = _bbox_feature(matched_geoms, hl)
+                feat = _bbox(geoms, hl)
                 if feat:
                     annotation_features.append(feat)
 
             elif atype == "worst_cells":
-                markers = _top_n_markers(matched_feats, matched_geoms, hl,
-                                         sort_prop=hl.filter.property,
-                                         descending=False, n=hl.top_n)
-                annotation_features.extend(markers)
+                annotation_features.extend(_ranked_markers(sel, geoms, hl, descending=False))
 
             elif atype == "best_cells":
-                markers = _top_n_markers(matched_feats, matched_geoms, hl,
-                                         sort_prop=hl.filter.property,
-                                         descending=True, n=hl.top_n)
-                annotation_features.extend(markers)
+                annotation_features.extend(_ranked_markers(sel, geoms, hl, descending=True))
 
             elif atype == "centroid_label":
-                marker = _centroid_marker(matched_geoms, hl)
-                if marker:
-                    annotation_features.append(marker)
-
-            else:
-                feat = _hull_feature(matched_geoms, hl)
+                feat = _centroid(geoms, hl)
                 if feat:
                     annotation_features.append(feat)
 
-        print(f"[AI ANNOTATE] → {len(annotation_features)} annotation features produced")
+            else:
+                # Unknown type — default to hull for polygon data, markers for points
+                first_geom_type = geoms[0].geom_type if geoms else ""
+                if "Point" in first_geom_type:
+                    annotation_features.extend(_ranked_markers(sel, geoms, hl, descending=False))
+                else:
+                    feat = _hull(geoms, hl)
+                    if feat:
+                        annotation_features.append(feat)
+
+        print(f"[AI ANNOTATE] → {len(annotation_features)} annotations produced")
 
         return JSONResponse(content={
-            "type":                  "FeatureCollection",
-            "features":              annotation_features,
-            "ai_service":            body.service,
-            "ai_annotation_count":   len(annotation_features),
+            "type":                "FeatureCollection",
+            "features":            annotation_features,
+            "ai_service":          body.service,
+            "ai_annotation_count": len(annotation_features),
         })
 
     except HTTPException:

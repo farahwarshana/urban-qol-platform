@@ -2553,12 +2553,31 @@ function renderCrimeResults(stats, inputs, geojsonData) {
     service: "crime",
     service_label: "Crime Density Analysis",
     inputs: { boundary: inputs?.boundaryFile || "uploaded boundary", crime_csv: inputs?.csvFile || "uploaded CSV" },
-    full_area: {
-      crime_count:  parseInt(stats.crime_count),
-      avg_density:  parseFloat(stats.avg_density),
-      max_density:  parseFloat(stats.max_density),
-      hotspot_count: parseInt(stats.hotspot_count) || null,
-    },
+    full_area: (() => {
+      const base = {
+        crime_count:   parseInt(stats.crime_count),
+        avg_density:   parseFloat(stats.avg_density),
+        max_density:   parseFloat(stats.max_density),
+        hotspot_count: parseInt(stats.hotspot_count) || null,
+      };
+      if (geojsonData && geojsonData.features) {
+        const vals = geojsonData.features
+          .map(f => parseFloat(f.properties?.crime_density))
+          .filter(v => !isNaN(v))
+          .sort((a, b) => a - b);
+        if (vals.length) {
+          base.min_density  = +vals[0].toFixed(3);
+          base.p75_density  = +vals[Math.floor(vals.length * 0.75)].toFixed(3);
+          base.p90_density  = +vals[Math.floor(vals.length * 0.90)].toFixed(3);
+          const sorted = geojsonData.features
+            .map(f => ({ name: f.properties?.NBHD_NAME || f.properties?.name || "?", val: parseFloat(f.properties?.crime_density) }))
+            .filter(x => !isNaN(x.val)).sort((a, b) => b.val - a.val);
+          base.top3_hotspots = sorted.slice(0, 3).map(x => `${x.name} (${x.val.toFixed(2)})`).join(", ");
+          base.top3_safest   = sorted.slice(-3).reverse().map(x => `${x.name} (${x.val.toFixed(2)})`).join(", ");
+        }
+      }
+      return base;
+    })(),
     grid: null,
   };
 
@@ -2807,12 +2826,35 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
     service: "urban-density",
     service_label: "Urban Density Analysis",
     inputs: { boundary: inputs?.boundaryFile || "uploaded boundary" },
-    full_area: {
-      avg_density_pop_km2: parseFloat(stats.avg_density),
-      max_density_pop_km2: parseFloat(stats.max_density),
-      area_count:          parseInt(stats.area_count),
-      total_area_km2:      parseFloat(stats.total_area),
-    },
+    full_area: (() => {
+      const base = {
+        avg_density_pop_km2: parseFloat(stats.avg_density),
+        max_density_pop_km2: parseFloat(stats.max_density),
+        area_count:          parseInt(stats.area_count),
+        total_area_km2:      parseFloat(stats.total_area),
+      };
+      // Compute real distribution stats from the actual features
+      if (geojsonData && geojsonData.features) {
+        const vals = geojsonData.features
+          .map(f => parseFloat(f.properties?.urban_density))
+          .filter(v => !isNaN(v))
+          .sort((a, b) => a - b);
+        if (vals.length) {
+          base.min_density_pop_km2  = Math.round(vals[0]);
+          base.p25_density_pop_km2  = Math.round(vals[Math.floor(vals.length * 0.25)]);
+          base.median_density_pop_km2 = Math.round(vals[Math.floor(vals.length * 0.5)]);
+          base.p75_density_pop_km2  = Math.round(vals[Math.floor(vals.length * 0.75)]);
+          // Top 3 densest areas
+          const sorted = geojsonData.features
+            .map(f => ({ name: f.properties?.NAME || f.properties?.name || "?", val: parseFloat(f.properties?.urban_density) }))
+            .filter(x => !isNaN(x.val))
+            .sort((a, b) => b.val - a.val);
+          base.top3_densest  = sorted.slice(0, 3).map(x => `${x.name} (${Math.round(x.val)} pop/km²)`).join(", ");
+          base.top3_sparsest = sorted.slice(-3).reverse().map(x => `${x.name} (${Math.round(x.val)} pop/km²)`).join(", ");
+        }
+      }
+      return base;
+    })(),
     grid: null,
   };
 
@@ -4601,26 +4643,46 @@ async function renderAIMapLayer(highlights) {
   }
   if (!sourceGeoJSON) return;
 
+  // Slim the payload: keep geometry + only the properties the highlights actually filter/sort on
+  const neededProps = new Set();
+  highlights.forEach(hl => { if (hl.filter?.property) neededProps.add(hl.filter.property); });
+  // Also keep common name fields for popup labels
+  const nameCandidates = ["name","nbhd_name","admin_name","district","governorate","region",
+                           "area_name","neighbourhood","city","NAME","NBHD_NAME","GOVERNORATE"];
+  const slimmedFeatures = sourceGeoJSON.features.map(f => {
+    const p = f.properties || {};
+    const slim = {};
+    neededProps.forEach(k => { if (p[k] !== undefined) slim[k] = p[k]; });
+    nameCandidates.forEach(k => { if (p[k] !== undefined) slim[k] = p[k]; });
+    return { type: "Feature", geometry: f.geometry, properties: slim };
+  });
+  const slimGeoJSON = { type: "FeatureCollection", features: slimmedFeatures };
+
   // Ask backend to derive new annotation geometries from the real data
   let annotated;
   try {
     const res = await fetch(`${API_BASE_URL}/ai/annotate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ geojson: sourceGeoJSON, highlights, service: lastResultService }),
+      body: JSON.stringify({ geojson: slimGeoJSON, highlights, service: lastResultService }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      console.warn("AI annotate failed:", err.detail || res.status);
+      console.error("AI annotate failed:", res.status, err.detail || err);
       return;
     }
     annotated = await res.json();
   } catch (e) {
-    console.warn("AI annotate error:", e);
+    console.error("AI annotate network error:", e);
     return;
   }
 
-  if (!annotated?.features?.length) return;
+  if (!annotated?.features?.length) {
+    console.warn("AI annotate returned 0 features. Highlights:", JSON.stringify(highlights));
+    return;
+  }
+
+  console.log(`AI annotate: ${annotated.features.length} annotation features produced`);
 
   _lastAIAnnotatedGeoJSON = annotated;
   _wireAIDownloadBtn();

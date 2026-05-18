@@ -515,28 +515,31 @@ Rules for sections:
 
 Rules for map_highlights — IMPORTANT: these produce NEW annotation shapes drawn on top of the analysis:
 - annotation_type meanings:
-  * cluster_hull   — draws a convex hull polygon enclosing all features that pass the filter. Use for hotspots, dense clusters, risk zones.
-  * gap_zone       — draws a bounding-box polygon around features that pass the filter. Use for coverage gaps, underserved areas, low-score zones.
-  * worst_cells    — places circle markers at the centroids of the top_n lowest-scoring cells (use with qol_score or value). Use to pinpoint the most critical locations.
-  * best_cells     — places circle markers at the centroids of the top_n highest-scoring cells.
-  * centroid_label — places a single point marker at the centroid of all filtered features, labelled with the group name.
-- Choose annotation_type to best communicate the spatial insight:
-  * A zone of danger/concentration → cluster_hull (red/orange)
-  * An underserved/missing coverage area → gap_zone (blue/purple)
-  * Individual worst or best locations → worst_cells / best_cells (markers)
-  * A summary anchor point for a group → centroid_label
-- Property keys by service (use these exactly):
+  * cluster_hull   — convex hull polygon enclosing the top-quartile (high-value) features. Use for hotspots, risk zones, high-concentration areas.
+  * gap_zone       — bounding-box rectangle around the bottom-quartile (low-value) features. Use for underserved, sparse, or low-score areas.
+  * worst_cells    — numbered circle markers at the top_n lowest-value feature centroids. Pinpoints individual problem locations.
+  * best_cells     — numbered circle markers at the top_n highest-value feature centroids. Highlights best performers.
+  * centroid_label — single point marker at the centroid of all filtered features.
+- The system ignores filter.value and computes real thresholds from the actual data percentiles.
+  Your filter.value only sets the direction — set it to the p75 value (for gt) or p25 value (for lt)
+  from the data stats provided above. For eq/in provide the exact string.
+- Choose annotation_type:
+  * High-value concentration → cluster_hull, op="gt"
+  * Low-value / sparse area → gap_zone, op="lt"
+  * Individual worst locations → worst_cells, op="lt", top_n=5
+  * Individual best locations → best_cells, op="gt", top_n=5
+- Property keys — use EXACTLY these names:
   * crime: "crime_density"
   * urban-density: "urban_density"
   * vegetation: "vegetation_pct"
-  * traffic grid cells: "congestion" (values: "low","medium","high") or "value" (road density km/km²)
-  * traffic network: "hierarchy" (values: "primary","secondary","local")
-  * informal-settlement: "irregularity_score" or "classification" (values: "low","medium","high")
-  * facility-accessibility: "type" (values: "uncovered") or "value" (walk time minutes)
-  * public-transport: "type" (values: "uncovered","covered") or "value" (distance km)
-  * ndvi / heat-index / air-quality: "qol_score" (0–100) or "value" (raw metric)
-- Provide 2–4 highlights covering distinct spatial patterns (e.g. worst zone + best zone + gap).
+  * traffic: "congestion" (op="eq", value="high") or "local_density"
+  * informal-settlement: "irregularity_score" or "classification" (op="eq", value="high")
+  * facility-accessibility: "time_min" or "type" (op="eq", value="uncovered")
+  * public-transport: "type" (op="eq", value="uncovered")
+  * ndvi / heat-index / air-quality: "qol_score"
+- Provide 2–4 highlights covering distinct spatial patterns (e.g. hotspot hull + worst markers + best markers).
 - Use distinct contrasting colours: red=#e74c3c, orange=#e67e22, amber=#f39c12, green=#27ae60, blue=#3498db, purple=#9b59b6.
+- label and description MUST reference actual numbers from the data stats provided (e.g. real min/max/percentile values).
 - Omit map_highlights (empty array) only if data truly has no spatial patterns worth annotating.
 """
 
