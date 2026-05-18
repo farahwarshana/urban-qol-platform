@@ -21,6 +21,13 @@ from rasterio.transform import rowcol, xy
 from shapely.geometry import box, mapping
 
 
+from pyproj import datadir
+
+proj_path = datadir.get_data_dir()
+os.environ["PROJ_LIB"]  = proj_path
+os.environ["PROJ_DATA"] = proj_path
+
+
 BENCHMARK_PCT = 30.0   # WHO healthy urban greenery standard (%)
 VEG_THRESHOLD = 0.2    # NDVI >= this → vegetated pixel
 

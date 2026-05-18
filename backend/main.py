@@ -10,11 +10,8 @@ load_dotenv()
 
 proj_path = datadir.get_data_dir()
 
-# os.environ["PROJ_LIB"] = proj_path
-# os.environ["PROJ_DATA"] = proj_path
-
-os.environ.pop("PROJ_LIB", None)
-os.environ.pop("PROJ_DATA", None)
+os.environ["PROJ_LIB"] = proj_path
+os.environ["PROJ_DATA"] = proj_path
 
 import shutil
 import uuid
