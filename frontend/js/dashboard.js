@@ -2553,12 +2553,31 @@ function renderCrimeResults(stats, inputs, geojsonData) {
     service: "crime",
     service_label: "Crime Density Analysis",
     inputs: { boundary: inputs?.boundaryFile || "uploaded boundary", crime_csv: inputs?.csvFile || "uploaded CSV" },
-    full_area: {
-      crime_count:  parseInt(stats.crime_count),
-      avg_density:  parseFloat(stats.avg_density),
-      max_density:  parseFloat(stats.max_density),
-      hotspot_count: parseInt(stats.hotspot_count) || null,
-    },
+    full_area: (() => {
+      const base = {
+        crime_count:   parseInt(stats.crime_count),
+        avg_density:   parseFloat(stats.avg_density),
+        max_density:   parseFloat(stats.max_density),
+        hotspot_count: parseInt(stats.hotspot_count) || null,
+      };
+      if (geojsonData && geojsonData.features) {
+        const vals = geojsonData.features
+          .map(f => parseFloat(f.properties?.crime_density))
+          .filter(v => !isNaN(v))
+          .sort((a, b) => a - b);
+        if (vals.length) {
+          base.min_density  = +vals[0].toFixed(3);
+          base.p75_density  = +vals[Math.floor(vals.length * 0.75)].toFixed(3);
+          base.p90_density  = +vals[Math.floor(vals.length * 0.90)].toFixed(3);
+          const sorted = geojsonData.features
+            .map(f => ({ name: f.properties?.NBHD_NAME || f.properties?.name || "?", val: parseFloat(f.properties?.crime_density) }))
+            .filter(x => !isNaN(x.val)).sort((a, b) => b.val - a.val);
+          base.top3_hotspots = sorted.slice(0, 3).map(x => `${x.name} (${x.val.toFixed(2)})`).join(", ");
+          base.top3_safest   = sorted.slice(-3).reverse().map(x => `${x.name} (${x.val.toFixed(2)})`).join(", ");
+        }
+      }
+      return base;
+    })(),
     grid: null,
   };
 
@@ -2807,12 +2826,35 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
     service: "urban-density",
     service_label: "Urban Density Analysis",
     inputs: { boundary: inputs?.boundaryFile || "uploaded boundary" },
-    full_area: {
-      avg_density_pop_km2: parseFloat(stats.avg_density),
-      max_density_pop_km2: parseFloat(stats.max_density),
-      area_count:          parseInt(stats.area_count),
-      total_area_km2:      parseFloat(stats.total_area),
-    },
+    full_area: (() => {
+      const base = {
+        avg_density_pop_km2: parseFloat(stats.avg_density),
+        max_density_pop_km2: parseFloat(stats.max_density),
+        area_count:          parseInt(stats.area_count),
+        total_area_km2:      parseFloat(stats.total_area),
+      };
+      // Compute real distribution stats from the actual features
+      if (geojsonData && geojsonData.features) {
+        const vals = geojsonData.features
+          .map(f => parseFloat(f.properties?.urban_density))
+          .filter(v => !isNaN(v))
+          .sort((a, b) => a - b);
+        if (vals.length) {
+          base.min_density_pop_km2  = Math.round(vals[0]);
+          base.p25_density_pop_km2  = Math.round(vals[Math.floor(vals.length * 0.25)]);
+          base.median_density_pop_km2 = Math.round(vals[Math.floor(vals.length * 0.5)]);
+          base.p75_density_pop_km2  = Math.round(vals[Math.floor(vals.length * 0.75)]);
+          // Top 3 densest areas
+          const sorted = geojsonData.features
+            .map(f => ({ name: f.properties?.NAME || f.properties?.name || "?", val: parseFloat(f.properties?.urban_density) }))
+            .filter(x => !isNaN(x.val))
+            .sort((a, b) => b.val - a.val);
+          base.top3_densest  = sorted.slice(0, 3).map(x => `${x.name} (${Math.round(x.val)} pop/km²)`).join(", ");
+          base.top3_sparsest = sorted.slice(-3).reverse().map(x => `${x.name} (${Math.round(x.val)} pop/km²)`).join(", ");
+        }
+      }
+      return base;
+    })(),
     grid: null,
   };
 
@@ -4491,6 +4533,195 @@ async function fetchAIRecommendations() {
   }
 }
 
+/* Build inline bar/gauge charts from lastAnalysisContext.full_area for the AI tab */
+function renderAICharts(ctx) {
+  if (!ctx || !ctx.full_area) return "";
+  const fa = ctx.full_area;
+  const service = ctx.service;
+
+  // shared helpers
+  const bar = (pct, color, label, showPct = true) => {
+    const w = Math.max(2, Math.min(100, pct || 0));
+    return `<div style="margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-bottom:2px;">
+        <span>${label}</span>${showPct ? `<span style="color:var(--text-primary);font-weight:600;">${(+pct).toFixed(1)}%</span>` : ""}
+      </div>
+      <div style="height:7px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;">
+        <div style="width:${w}%;height:100%;background:${color};border-radius:4px;transition:width 0.4s;"></div>
+      </div>
+    </div>`;
+  };
+
+  const scoreGauge = (val, max, color, label) => {
+    const w = Math.max(2, Math.min(100, (val / max) * 100));
+    return `<div style="margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-bottom:2px;">
+        <span>${label}</span><span style="color:var(--text-primary);font-weight:600;">${(+val).toFixed(1)}</span>
+      </div>
+      <div style="height:7px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;">
+        <div style="width:${w}%;height:100%;background:${color};border-radius:4px;"></div>
+      </div>
+    </div>`;
+  };
+
+  const sectionWrap = (title, body) => `
+    <div style="background:rgba(76,194,255,0.05);border:1px solid rgba(76,194,255,0.12);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px;">📊 ${title}</div>
+      ${body}
+    </div>`;
+
+  if (service === "public-transport") {
+    const cov = fa.coverage_pct || 0;
+    return sectionWrap("Coverage Breakdown",
+      bar(cov, "#4cc2ff", "Population Covered") +
+      bar(100 - cov, "#e74c3c", "Not Covered")
+    );
+  }
+
+  if (service === "vegetation") {
+    const veg = fa.vegetation_pct || 0;
+    return sectionWrap("Land Cover",
+      bar(veg, "#27ae60", "Vegetated Area") +
+      bar(100 - veg, "#e67e22", "Bare / Built-up")
+    );
+  }
+
+  if (service === "ndvi") {
+    const noVeg = fa.pct_no_veg || 0;
+    const bare  = fa.pct_bare_soil || 0;
+    const mod   = fa.pct_moderate || 0;
+    const dense = fa.pct_dense || 0;
+    const histo = [noVeg, bare, mod, dense];
+    const colors = ["#c0392b","#e67e22","#f1c40f","#27ae60"];
+    const lbls   = ["No Veg","Bare Soil","Moderate","Dense"];
+    const maxH = Math.max(...histo, 1);
+    const bars = histo.map((v, i) => {
+      const h = Math.max(4, Math.round((v / maxH) * 44));
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <span style="font-size:9px;color:var(--text-muted);">${v.toFixed(0)}%</span>
+        <div style="width:100%;height:${h}px;background:${colors[i]};border-radius:2px 2px 0 0;"></div>
+        <span style="font-size:9px;color:var(--text-muted);text-align:center;line-height:1.2;">${lbls[i]}</span>
+      </div>`;
+    }).join("");
+    return sectionWrap("NDVI Class Distribution",
+      `<div style="display:flex;align-items:flex-end;gap:4px;height:68px;padding-bottom:18px;">${bars}</div>`
+    );
+  }
+
+  if (service === "heat-index") {
+    const cool = fa.pct_cool || 0;
+    const mod  = fa.pct_moderate || 0;
+    const hot  = fa.pct_hot || 0;
+    const ext  = fa.pct_extreme || 0;
+    const vals = [cool, mod, hot, ext];
+    const colors = ["#3498db","#f1c40f","#e67e22","#c0392b"];
+    const lbls   = ["Cool","Moderate","Hot","Extreme"];
+    const maxH = Math.max(...vals, 1);
+    const bars = vals.map((v, i) => {
+      const h = Math.max(4, Math.round((v / maxH) * 44));
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <span style="font-size:9px;color:var(--text-muted);">${v.toFixed(0)}%</span>
+        <div style="width:100%;height:${h}px;background:${colors[i]};border-radius:2px 2px 0 0;"></div>
+        <span style="font-size:9px;color:var(--text-muted);text-align:center;line-height:1.2;">${lbls[i]}</span>
+      </div>`;
+    }).join("");
+    return sectionWrap("Thermal Zone Distribution",
+      `<div style="display:flex;align-items:flex-end;gap:4px;height:68px;padding-bottom:18px;">${bars}</div>`
+    );
+  }
+
+  if (service === "air-quality") {
+    const vals   = [fa.good_pct||0, fa.moderate_pct||0, fa.sensitive_pct||0, fa.unhealthy_pct||0, fa.very_unhealthy_pct||0, fa.hazardous_pct||0];
+    const colors = ["#27ae60","#f1c40f","#e67e22","#e74c3c","#8e44ad","#6d2a2a"];
+    const lbls   = ["Good","Mod","Sens","Unhlthy","V.Unhlt","Hazrd"];
+    const maxH = Math.max(...vals, 1);
+    const bars = vals.map((v, i) => {
+      const h = Math.max(4, Math.round((v / maxH) * 44));
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <span style="font-size:9px;color:var(--text-muted);">${v.toFixed(0)}%</span>
+        <div style="width:100%;height:${h}px;background:${colors[i]};border-radius:2px 2px 0 0;"></div>
+        <span style="font-size:9px;color:var(--text-muted);text-align:center;line-height:1.2;">${lbls[i]}</span>
+      </div>`;
+    }).join("");
+    return sectionWrap("Air Quality Index Distribution",
+      `<div style="display:flex;align-items:flex-end;gap:4px;height:68px;padding-bottom:18px;">${bars}</div>`
+    );
+  }
+
+  if (service === "traffic") {
+    const primary   = fa.primary_pct   || 0;
+    const secondary = fa.secondary_pct || 0;
+    const local     = fa.local_pct     || 0;
+    const highCong  = fa.high_congestion_pct || 0;
+    return sectionWrap("Road Network Composition",
+      bar(primary,   "#4cc2ff", "Primary Roads") +
+      bar(secondary, "#f1c40f", "Secondary Roads") +
+      bar(local,     "#27ae60", "Local Roads") +
+      `<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.07);">` +
+      bar(highCong,  "#e74c3c", "High Congestion Segments") +
+      `</div>`
+    );
+  }
+
+  if (service === "informal-settlement") {
+    const high = fa.high_pct   || 0;
+    const med  = fa.medium_pct || 0;
+    const low  = fa.low_pct    || 0;
+    return sectionWrap("Irregularity Zones",
+      bar(high, "#e74c3c", "High Irregularity") +
+      bar(med,  "#e67e22", "Medium Irregularity") +
+      bar(low,  "#27ae60", "Low Irregularity")
+    );
+  }
+
+  if (service === "urban-density") {
+    const avg = fa.avg_density_pop_km2 || 0;
+    const max = fa.max_density_pop_km2 || avg * 2 || 1;
+    const target = 3750; // midpoint of 2500-5000 optimal band
+    const bins = [500, 2500, 5000, 10000, Infinity];
+    const lbls = ["<500","500–2.5k","2.5–5k ★","5–10k",">10k"];
+    const colors = ["#3498db","#27ae60","#2ecc71","#e67e22","#e74c3c"];
+    // approximate distribution from median/avg
+    const median = fa.median_density_pop_km2 || avg;
+    const q25 = fa.p25_density_pop_km2 || avg * 0.5;
+    const q75 = fa.p75_density_pop_km2 || avg * 1.5;
+    // just show scalar gauge bars for the available stats
+    const targPct = Math.min(100, (target / (max || 1)) * 100);
+    return sectionWrap("Density Distribution",
+      scoreGauge(avg, max || 1, "#4cc2ff", "Avg Density (pop/km²)") +
+      scoreGauge(median, max || 1, "#27ae60", "Median Density (pop/km²)") +
+      `<div style="font-size:9px;color:var(--text-muted);margin-top:4px;">Optimal target band: 2,500 – 5,000 pop/km²</div>`
+    );
+  }
+
+  if (service === "facility-accessibility") {
+    const cov   = fa.coverage_pct   || 0;
+    const uncov = fa.uncovered_pct  || (100 - cov);
+    const zones = fa.zone_pcts || {};
+    let zonesHtml = "";
+    const zColors = { "0-5 min": "#27ae60", "5-10 min": "#2ecc71", "10-15 min": "#f1c40f", "15-20 min": "#e67e22", ">20 min": "#e74c3c" };
+    Object.entries(zones).forEach(([k, v]) => {
+      zonesHtml += bar(parseFloat(v) || 0, zColors[k] || "#4cc2ff", k);
+    });
+    return sectionWrap("Accessibility Coverage",
+      bar(cov,   "#27ae60", "Accessible Population") +
+      bar(uncov, "#e74c3c", "Not Accessible") +
+      (zonesHtml ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.07);">${zonesHtml}</div>` : "")
+    );
+  }
+
+  if (service === "crime") {
+    const avg = fa.avg_density || 0;
+    const max = fa.max_density || avg * 2 || 1;
+    return sectionWrap("Crime Density Profile",
+      scoreGauge(avg, max, "#e74c3c", "Avg Crime Density") +
+      scoreGauge(max, max, "#8e44ad", "Peak Crime Density")
+    );
+  }
+
+  return "";
+}
+
 function renderAIRecommendations(tabEl, data) {
   const sections     = data.sections || [];
   const highlights   = data.map_highlights || [];
@@ -4507,6 +4738,8 @@ function renderAIRecommendations(tabEl, data) {
       <div class="value" style="color:${qolScoreTextColor(score)};font-size:18px;">${score}/100 <span style="font-size:12px;font-weight:400;">${scoreLabel}</span></div>
     </div>`;
   }
+
+  const chartsHtml = renderAICharts(lastAnalysisContext);
 
   // Map legend for AI highlights
   let legendHtml = "";
@@ -4543,6 +4776,7 @@ function renderAIRecommendations(tabEl, data) {
   tabEl.innerHTML = `
     <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px;line-height:1.4;">${headline}</div>
     ${scoreHtml}
+    ${chartsHtml}
     ${legendHtml}
     ${sectionsHtml}
     <div style="margin-top:12px;font-size:10px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:8px;">
@@ -4601,26 +4835,46 @@ async function renderAIMapLayer(highlights) {
   }
   if (!sourceGeoJSON) return;
 
+  // Slim the payload: keep geometry + only the properties the highlights actually filter/sort on
+  const neededProps = new Set();
+  highlights.forEach(hl => { if (hl.filter?.property) neededProps.add(hl.filter.property); });
+  // Also keep common name fields for popup labels
+  const nameCandidates = ["name","nbhd_name","admin_name","district","governorate","region",
+                           "area_name","neighbourhood","city","NAME","NBHD_NAME","GOVERNORATE"];
+  const slimmedFeatures = sourceGeoJSON.features.map(f => {
+    const p = f.properties || {};
+    const slim = {};
+    neededProps.forEach(k => { if (p[k] !== undefined) slim[k] = p[k]; });
+    nameCandidates.forEach(k => { if (p[k] !== undefined) slim[k] = p[k]; });
+    return { type: "Feature", geometry: f.geometry, properties: slim };
+  });
+  const slimGeoJSON = { type: "FeatureCollection", features: slimmedFeatures };
+
   // Ask backend to derive new annotation geometries from the real data
   let annotated;
   try {
     const res = await fetch(`${API_BASE_URL}/ai/annotate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ geojson: sourceGeoJSON, highlights, service: lastResultService }),
+      body: JSON.stringify({ geojson: slimGeoJSON, highlights, service: lastResultService }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      console.warn("AI annotate failed:", err.detail || res.status);
+      console.error("AI annotate failed:", res.status, err.detail || err);
       return;
     }
     annotated = await res.json();
   } catch (e) {
-    console.warn("AI annotate error:", e);
+    console.error("AI annotate network error:", e);
     return;
   }
 
-  if (!annotated?.features?.length) return;
+  if (!annotated?.features?.length) {
+    console.warn("AI annotate returned 0 features. Highlights:", JSON.stringify(highlights));
+    return;
+  }
+
+  console.log(`AI annotate: ${annotated.features.length} annotation features produced`);
 
   _lastAIAnnotatedGeoJSON = annotated;
   _wireAIDownloadBtn();
