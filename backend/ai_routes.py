@@ -18,6 +18,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: Optional[str] = None
     messages: Optional[List[ChatMessage]] = None
+    analysis_context: Optional[Dict[str, Any]] = None
 
 
 class ChatResponse(BaseModel):
@@ -77,7 +78,7 @@ def chat_endpoint(body: ChatRequest = Body(...)):
     else:
         raise HTTPException(status_code=422, detail="Request must include 'message' or 'messages'.")
     try:
-        reply = chat_with_hadary(messages)
+        reply = chat_with_hadary(messages, analysis_context=body.analysis_context)
         return ChatResponse(reply=reply)
     except LLMError as exc:
         raise HTTPException(status_code=500, detail=str(exc))

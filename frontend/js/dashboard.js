@@ -4975,10 +4975,44 @@ function _wireAIDownloadBtn() {
 
 
 /* ============================================================
-   4. AI CHATBOT (placeholder)
+   4. AI CHATBOT
    ============================================================ */
+
+// In-session conversation history sent to the backend for multi-turn context
+let chatHistory = [];
+// Tracks which analysis the current chat session is about — reset history on change
+let _chatAnalysisKey = null;
+
+function _analysisKey() {
+  if (!lastAnalysisContext) return null;
+  return `${lastAnalysisContext.service}:${JSON.stringify(lastAnalysisContext.inputs || {})}`;
+}
+
 function toggleChatbot() {
-  document.getElementById("chatbot").classList.toggle("open");
+  const chatbot = document.getElementById("chatbot");
+  chatbot.classList.toggle("open");
+
+  if (!chatbot.classList.contains("open")) return;
+
+  const key = _analysisKey();
+  if (key && key !== _chatAnalysisKey) {
+    // New analysis — reset chat so the bot starts fresh with updated context
+    chatHistory = [];
+    const messages = document.getElementById("chatMessages");
+    if (messages) messages.innerHTML = "";
+    _chatAnalysisKey = key;
+    _injectAnalysisGreeting();
+  } else if (chatHistory.length === 0 && lastAnalysisContext) {
+    _injectAnalysisGreeting();
+  }
+}
+
+function _injectAnalysisGreeting() {
+  const label = lastAnalysisContext.service_label || lastAnalysisContext.service || "analysis";
+  addBotMessage(
+    `Hi! I can see you've run a ${label} analysis. Ask me anything about the results — ` +
+    `the statistics, what they mean, or what actions to take.`
+  );
 }
 
 function sendChatMessage() {
@@ -4986,41 +5020,52 @@ function sendChatMessage() {
   const text = input.value.trim();
   if (!text) return;
 
-  const messages = document.getElementById("chatMessages");
+  const messagesEl = document.getElementById("chatMessages");
 
   const userMsg = document.createElement("div");
   userMsg.className = "chat-msg user";
   userMsg.textContent = text;
-  messages.appendChild(userMsg);
+  messagesEl.appendChild(userMsg);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  // Append to history before sending so the backend sees the full turn
+  chatHistory.push({ role: "user", content: text });
 
   input.value = "";
   input.disabled = true;
 
-  const placeholder = addBotMessage("🤖 Thinking...", true);
+  const placeholder = addBotMessage("Thinking...", true);
+
+  const requestBody = {
+    messages: chatHistory.slice(),  // full conversation history
+  };
+
+  // Attach the current analysis context if one exists
+  if (lastAnalysisContext) {
+    requestBody.analysis_context = lastAnalysisContext;
+  }
 
   fetch(`${API_BASE_URL}/ai/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: text }),
+    body: JSON.stringify(requestBody),
   })
     .then((res) => {
-      if (!res.ok) {
-        throw new Error(`Chat request failed (${res.status})`);
-      }
+      if (!res.ok) throw new Error(`Chat request failed (${res.status})`);
       return res.json();
     })
     .then((data) => {
-      if (placeholder && placeholder.parentNode) {
-        placeholder.remove();
-      }
+      if (placeholder && placeholder.parentNode) placeholder.remove();
       addBotMessage(data.reply);
+      // Record assistant reply so next turn has full history
+      chatHistory.push({ role: "assistant", content: data.reply });
     })
     .catch((error) => {
       console.error("Chat request failed:", error);
-      if (placeholder && placeholder.parentNode) {
-        placeholder.remove();
-      }
-      addBotMessage("🤖 Sorry, the chat service is unavailable right now.");
+      if (placeholder && placeholder.parentNode) placeholder.remove();
+      addBotMessage("Sorry, the chat service is unavailable right now.");
+      // Remove the failed user message from history so history stays consistent
+      chatHistory.pop();
     })
     .finally(() => {
       input.disabled = false;
@@ -5040,6 +5085,14 @@ function addBotMessage(text, isTemporary = false) {
   if (isTemporary) {
     return botMsg;
   }
+}
+
+function clearChatHistory() {
+  chatHistory = [];
+  const messages = document.getElementById("chatMessages");
+  if (messages) messages.innerHTML = "";
+  // Re-greet if analysis is active
+  if (lastAnalysisContext) _injectAnalysisGreeting();
 }
 
 // Send chat with Enter key
