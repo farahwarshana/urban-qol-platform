@@ -4240,46 +4240,73 @@ function toggleChatbot() {
 
 function sendChatMessage() {
   const input = document.getElementById("chatInput");
-  const text  = input.value.trim();
+  const text = input.value.trim();
   if (!text) return;
 
   const messages = document.getElementById("chatMessages");
 
-  // Append user message
   const userMsg = document.createElement("div");
   userMsg.className = "chat-msg user";
   userMsg.textContent = text;
   messages.appendChild(userMsg);
 
   input.value = "";
+  input.disabled = true;
 
-  // TODO: connect to AI backend
-  // Example:
-  //   fetch("http://localhost:8000/api/chat", {
-  //     method: "POST",
-  //     headers: { "Content-Type": "application/json" },
-  //     body: JSON.stringify({ message: text })
-  //   })
-  //     .then(r => r.json())
-  //     .then(data => addBotMessage(data.reply));
+  const placeholder = addBotMessage("🤖 Thinking...", true);
 
-  // Fake bot reply for now
-  setTimeout(function () {
-    const botMsg = document.createElement("div");
-    botMsg.className = "chat-msg bot";
-    botMsg.textContent = "🤖 (placeholder) I'll answer once the AI backend is connected.";
-    messages.appendChild(botMsg);
-    messages.scrollTop = messages.scrollHeight;
-  }, 400);
+  fetch(`${API_BASE_URL}/ai/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: text }),
+  })
+    .then((res) => {
+      if (!res.ok) {
+        throw new Error(`Chat request failed (${res.status})`);
+      }
+      return res.json();
+    })
+    .then((data) => {
+      if (placeholder && placeholder.parentNode) {
+        placeholder.remove();
+      }
+      addBotMessage(data.reply);
+    })
+    .catch((error) => {
+      console.error("Chat request failed:", error);
+      if (placeholder && placeholder.parentNode) {
+        placeholder.remove();
+      }
+      addBotMessage("🤖 Sorry, the chat service is unavailable right now.");
+    })
+    .finally(() => {
+      input.disabled = false;
+      input.focus();
+    });
+}
 
+function addBotMessage(text, isTemporary = false) {
+  const messages = document.getElementById("chatMessages");
+  const botMsg = document.createElement("div");
+  botMsg.className = "chat-msg bot";
+  botMsg.textContent = text;
+  botMsg.dataset.temporary = isTemporary ? "true" : "false";
+  messages.appendChild(botMsg);
   messages.scrollTop = messages.scrollHeight;
+
+  if (isTemporary) {
+    return botMsg;
+  }
 }
 
 // Send chat with Enter key
 const chatInputEl = document.getElementById("chatInput");
 if (chatInputEl) {
   chatInputEl.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") sendChatMessage();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      sendChatMessage();
+    }
   });
 }
 
