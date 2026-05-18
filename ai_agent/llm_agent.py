@@ -285,31 +285,85 @@ class LLMError(Exception):
     pass
 
 
-def chat_with_hadary(messages):
+def _build_chat_context_block(analysis_context: dict) -> str:
+    """Format analysis context into a readable block for the system prompt."""
+    ctx = analysis_context
+    service = ctx.get("service", "unknown")
+    service_label = ctx.get("service_label", service)
+
+    service_guidance = _SERVICE_SYSTEM_PROMPTS.get(service, _GENERIC_SERVICE_PROMPT)
+
+    lines = [
+        "CURRENT ANALYSIS CONTEXT",
+        "=" * 40,
+        f"Service: {service_label}",
+    ]
+
+    inputs = ctx.get("inputs") or {}
+    if inputs:
+        lines.append("\nUser Inputs:")
+        for k, v in inputs.items():
+            if v is not None and v != "":
+                lines.append(f"  {k}: {v}")
+
+    full_area = ctx.get("full_area") or {}
+    if full_area:
+        lines.append("\nFull-Area Analysis Results:")
+        for k, v in full_area.items():
+            if v is not None and v != "" and not (isinstance(v, float) and v != v):
+                lines.append(f"  {k}: {v}")
+
+    grid = ctx.get("grid") or {}
+    if grid:
+        lines.append("\nGrid / Cell Analysis Results (200 m cells):")
+        for k, v in grid.items():
+            if v is not None and v != "" and not (isinstance(v, float) and v != v):
+                lines.append(f"  {k}: {v}")
+
+    lines.append("=" * 40)
+    lines.append(
+        "\nYou are having a conversation grounded in the analysis data above. "
+        "Answer questions specifically about this analysis — use the actual numbers, "
+        "compare them against known benchmarks, and give targeted advice. "
+        "Do not give generic urban planning advice unrelated to the data shown."
+    )
+    lines.append(f"\nDomain context: {service_guidance}")
+
+    return "\n".join(lines)
+
+
+def chat_with_hadary(messages, analysis_context: dict = None):
     """
     Main chat function for the urban QoL assistant "Hadary".
-    
+
     Args:
         messages (list): List of message dicts with 'role' and 'content' keys
-                        (e.g., [{"role": "user", "content": "..."}, ...])
-    
+        analysis_context (dict, optional): Current analysis context from the dashboard
+
     Returns:
         str: The assistant's response text
-    
+
     Raises:
         LLMError: If the API call fails or response is invalid
     """
     try:
-        # Build the system prompt for the urban planning assistant
-        system_prompt = (
+        base_prompt = (
             "You are Hadary, an expert urban quality of life assistant. "
             "You help cities analyze and improve urban sustainability, livability, and equity. "
             "Provide concise, actionable insights based on urban data and best practices. "
-            "Focus on practical recommendations for: vegetation coverage, heat mitigation, "
-            "public transport accessibility, traffic patterns, air quality, and informal settlement analysis. "
             "Always cite relevant benchmarks and standards (e.g., 30% urban greenery, 5,000 pop/km² density). "
             "Be clear about uncertainty and limitations in the data."
         )
+
+        if analysis_context:
+            context_block = _build_chat_context_block(analysis_context)
+            system_prompt = f"{base_prompt}\n\n{context_block}"
+        else:
+            system_prompt = (
+                f"{base_prompt} "
+                "Focus on practical recommendations for: vegetation coverage, heat mitigation, "
+                "public transport accessibility, traffic patterns, air quality, and informal settlement analysis."
+            )
         
         # Prepare API request with system prompt
         api_key = os.getenv("OPENAI_API_KEY")
