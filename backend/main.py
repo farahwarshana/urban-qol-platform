@@ -2,6 +2,12 @@
 # Hello Farohaa ❤️
 from ast import Index
 import os
+import sys
+from pathlib import Path as _Path
+
+# Allow imports from the project root (e.g. ai_agent package)
+sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 from pyproj import datadir
 
 from dotenv import load_dotenv
