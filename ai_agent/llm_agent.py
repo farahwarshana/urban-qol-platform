@@ -325,6 +325,8 @@ def chat_with_hadary(messages):
         for msg in messages:
             if isinstance(msg, dict) and "role" in msg and "content" in msg:
                 api_messages.append(msg)
+            elif hasattr(msg, "role") and hasattr(msg, "content"):
+                api_messages.append({"role": msg.role, "content": msg.content})
             else:
                 raise LLMError(f"Invalid message format: {msg}")
         
