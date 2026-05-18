@@ -127,12 +127,19 @@ def _ensure_wgs84(src_path, dst_path):
         if src.crs is None:
             # No CRS — assume WGS84 and use as-is
             return src_path
+        # try:
+        #     epsg = src.crs.to_epsg()
+        # except Exception:س
+        #     epsg = None
+        # if epsg == 4326:
+        #     return src_path
+
         try:
-            epsg = src.crs.to_epsg()
+            crs_str = src.crs.to_string().upper()
+            if "EPSG:4326" in crs_str or "WGS84" in crs_str or "WGS 84" in crs_str:
+                return src_path
         except Exception:
-            epsg = None
-        if epsg == 4326:
-            return src_path
+            pass
 
         transform, width, height = calculate_default_transform(
             src.crs, "EPSG:4326", src.width, src.height, *src.bounds
