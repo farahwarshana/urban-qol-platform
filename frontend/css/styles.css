@@ -441,6 +441,35 @@ input:focus, select:focus, textarea:focus {
   margin-top: 1px;
 }
 
+/* AI annotation polygon labels */
+.ai-annotation-label {
+  background: rgba(10, 14, 20, 0.82);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 7px;
+  box-shadow: none;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ai-annotation-label::before { display: none; }
+
+/* Rank number inside worst/best cell markers */
+.ai-rank-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  padding: 0;
+  pointer-events: none;
+}
+.ai-rank-label::before { display: none; }
+
 .legend-divider {
   height: 1px;
   background: rgba(255,255,255,0.08);

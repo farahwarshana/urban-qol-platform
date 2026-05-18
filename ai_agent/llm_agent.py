@@ -490,15 +490,17 @@ Respond ONLY with a valid JSON object (no markdown, no commentary outside JSON) 
   ],
   "map_highlights": [
     {
-      "id": "<unique short id, e.g. 'hotspot', 'gap', 'critical'>",
-      "label": "<short legend label shown on map, e.g. 'Crime Hotspots', 'Transit Gap'>",
-      "color": "<hex colour for this highlight, e.g. '#e74c3c'>",
-      "description": "<one sentence explaining what is highlighted and why>",
+      "id": "<unique short id, e.g. 'hotspot_hull', 'gap_zone', 'worst_cell'>",
+      "label": "<short map legend label, e.g. 'High-Crime Zone', 'Transit Desert', 'Worst Cell'>",
+      "color": "<hex colour, e.g. '#e74c3c'>",
+      "description": "<one sentence shown in map popup explaining what this shape represents>",
+      "annotation_type": "<one of: cluster_hull | gap_zone | worst_cells | best_cells | centroid_label>",
       "filter": {
-        "property": "<GeoJSON feature property key to filter on>",
-        "op": "<one of: gt, lt, gte, lte, eq, in>",
-        "value": <threshold number or string or array for 'in'>
-      }
+        "property": "<property key to select source features>",
+        "op": "<one of: gt | lt | gte | lte | eq | in>",
+        "value": <threshold number, string, or array>
+      },
+      "top_n": <optional integer — for worst_cells/best_cells, how many cells to mark (default 5)>
     }
   ]
 }
@@ -511,22 +513,31 @@ Rules for sections:
 - overall_score must reflect the quality/health of what was measured (higher = better).
 - Omit a section if it truly has nothing to say (minimum 2 sections required).
 
-Rules for map_highlights:
-- Provide 1–4 highlights that correspond to spatially interesting patterns in the data.
-- Each highlight targets features from the GeoJSON data by filtering on a single property.
-- Choose the property key from what you know about this service's GeoJSON schema:
-  * crime: property="crime_density", use op="gt" with a meaningful threshold
-  * urban-density: property="urban_density", use op="gt" or op="lt"
-  * vegetation: property="vegetation_pct", use op="lt" with threshold=30 for below-benchmark zones
-  * traffic (grid cells): property="congestion", op="eq", value="high"
-  * traffic (network): property="hierarchy", op="eq", value="primary"
-  * informal-settlement: property="irregularity_score", op="gt" with a meaningful threshold
-  * facility-accessibility: property="type", op="eq", value="uncovered"
-  * public-transport: property="type", op="eq", value="uncovered"
-  * ndvi / heat-index / air-quality: use grid cell property="qol_score", op="lt" with threshold
-- Use distinct, contrasting colours per highlight (red for danger/hotspot, amber for caution, blue for gaps, green for good zones).
-- Only include highlights that are genuinely meaningful given the data values provided.
-- Omit map_highlights entirely (empty array []) if the data does not support spatial filtering.
+Rules for map_highlights — IMPORTANT: these produce NEW annotation shapes drawn on top of the analysis:
+- annotation_type meanings:
+  * cluster_hull   — draws a convex hull polygon enclosing all features that pass the filter. Use for hotspots, dense clusters, risk zones.
+  * gap_zone       — draws a bounding-box polygon around features that pass the filter. Use for coverage gaps, underserved areas, low-score zones.
+  * worst_cells    — places circle markers at the centroids of the top_n lowest-scoring cells (use with qol_score or value). Use to pinpoint the most critical locations.
+  * best_cells     — places circle markers at the centroids of the top_n highest-scoring cells.
+  * centroid_label — places a single point marker at the centroid of all filtered features, labelled with the group name.
+- Choose annotation_type to best communicate the spatial insight:
+  * A zone of danger/concentration → cluster_hull (red/orange)
+  * An underserved/missing coverage area → gap_zone (blue/purple)
+  * Individual worst or best locations → worst_cells / best_cells (markers)
+  * A summary anchor point for a group → centroid_label
+- Property keys by service (use these exactly):
+  * crime: "crime_density"
+  * urban-density: "urban_density"
+  * vegetation: "vegetation_pct"
+  * traffic grid cells: "congestion" (values: "low","medium","high") or "value" (road density km/km²)
+  * traffic network: "hierarchy" (values: "primary","secondary","local")
+  * informal-settlement: "irregularity_score" or "classification" (values: "low","medium","high")
+  * facility-accessibility: "type" (values: "uncovered") or "value" (walk time minutes)
+  * public-transport: "type" (values: "uncovered","covered") or "value" (distance km)
+  * ndvi / heat-index / air-quality: "qol_score" (0–100) or "value" (raw metric)
+- Provide 2–4 highlights covering distinct spatial patterns (e.g. worst zone + best zone + gap).
+- Use distinct contrasting colours: red=#e74c3c, orange=#e67e22, amber=#f39c12, green=#27ae60, blue=#3498db, purple=#9b59b6.
+- Omit map_highlights (empty array) only if data truly has no spatial patterns worth annotating.
 """
 
 
@@ -601,10 +612,12 @@ def generate_recommendations(service, service_label, inputs, full_area, grid):
         if not f.get("property") or not f.get("op"):
             continue
         map_highlights.append({
-            "id":          hl.get("id", "highlight"),
-            "label":       hl.get("label", "AI Highlight"),
-            "color":       hl.get("color", "#e74c3c"),
-            "description": hl.get("description", ""),
+            "id":              hl.get("id", "highlight"),
+            "label":           hl.get("label", "AI Highlight"),
+            "color":           hl.get("color", "#e74c3c"),
+            "description":     hl.get("description", ""),
+            "annotation_type": hl.get("annotation_type", "cluster_hull"),
+            "top_n":           hl.get("top_n", 5),
             "filter": {
                 "property": f["property"],
                 "op":       f["op"],

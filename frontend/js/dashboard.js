@@ -319,6 +319,7 @@ function clearMap() {
   aiLayer = null;
   _lastAIContextKey = null;
   _lastAIHighlights = [];
+  _lastAIAnnotatedGeoJSON = null;
 }
 /* ---------- Special panel: Future Expansion Suitability ---------- */
 function renderExpansionPanel(service) {
@@ -4560,31 +4561,25 @@ function renderAIRecommendations(tabEl, data) {
    plus AI-driven highlight overlays on top.
    ============================================================ */
 
-function _matchHighlightFilter(props, filter) {
-  if (!filter || !filter.property) return false;
-  const raw = props[filter.property];
-  if (raw === undefined || raw === null) return false;
-  const val = filter.value;
-  switch (filter.op) {
-    case "gt":  return parseFloat(raw) >  parseFloat(val);
-    case "gte": return parseFloat(raw) >= parseFloat(val);
-    case "lt":  return parseFloat(raw) <  parseFloat(val);
-    case "lte": return parseFloat(raw) <= parseFloat(val);
-    case "eq":  return String(raw) === String(val);
-    case "in":  return Array.isArray(val) && val.map(String).includes(String(raw));
-    default:    return false;
-  }
-}
-
 async function renderAIMapLayer(highlights) {
-  // Remove any previous AI layer
   if (aiLayer && map.hasLayer(aiLayer)) map.removeLayer(aiLayer);
   aiLayer = null;
+  _lastAIAnnotatedGeoJSON = null;
 
   const rasterServices = ["ndvi", "heat-index", "air-quality"];
   const isRaster = rasterServices.includes(lastResultService);
 
-  // Always restore the base result layer (same visuals as Full Area tab)
+  // Raster services: need grid cells as the source for annotation
+  if (isRaster && !gridLayer && lastResultBlob && lastResultService) {
+    try {
+      await fetchAndRenderGrid(lastResultService, lastResultBlob);
+      if (gridLayer && map.hasLayer(gridLayer)) map.removeLayer(gridLayer);
+    } catch (e) {
+      console.warn("AI map: grid fetch failed:", e);
+    }
+  }
+
+  // Always show the base result layer (same as Full Area — don't replace it)
   if (resultLayer) {
     if (!map.hasLayer(resultLayer)) {
       try { resultLayer.addTo(map); } catch (e) {}
@@ -4597,84 +4592,128 @@ async function renderAIMapLayer(highlights) {
 
   if (!highlights || !highlights.length) return;
 
-  // Decide the feature source:
-  //  • raster services → need grid cells (qol_score, value per cell)
-  //  • vector services → use lastResultBlob features directly
-  let sourceFeatures = null;
-
+  // Determine source GeoJSON for annotation
+  let sourceGeoJSON = null;
   if (isRaster) {
-    // Ensure grid is loaded — fetch it if not yet available
-    if (!gridLayer && lastResultBlob && lastResultService) {
-      try {
-        await fetchAndRenderGrid(lastResultService, lastResultBlob);
-        // fetchAndRenderGrid adds gridLayer to map; remove it — we'll draw our own overlay
-        if (gridLayer && map.hasLayer(gridLayer)) map.removeLayer(gridLayer);
-      } catch (e) {
-        console.warn("AI map: could not fetch grid for raster highlight:", e);
-      }
-    }
-    if (gridLayer) {
-      try {
-        const gj = gridLayer.toGeoJSON();
-        sourceFeatures = gj.features || [];
-      } catch (e) {}
-    }
+    if (gridLayer) { try { sourceGeoJSON = gridLayer.toGeoJSON(); } catch (e) {} }
   } else if (lastResultBlob && lastResultBlob.features) {
-    sourceFeatures = lastResultBlob.features;
+    sourceGeoJSON = lastResultBlob;
+  }
+  if (!sourceGeoJSON) return;
+
+  // Ask backend to derive new annotation geometries from the real data
+  let annotated;
+  try {
+    const res = await fetch(`${API_BASE_URL}/ai/annotate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ geojson: sourceGeoJSON, highlights, service: lastResultService }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.warn("AI annotate failed:", err.detail || res.status);
+      return;
+    }
+    annotated = await res.json();
+  } catch (e) {
+    console.warn("AI annotate error:", e);
+    return;
   }
 
-  if (!sourceFeatures || !sourceFeatures.length) return;
+  if (!annotated?.features?.length) return;
 
-  // Build one Leaflet sub-layer per highlight, group them under aiLayer
-  const subLayers = [];
+  _lastAIAnnotatedGeoJSON = annotated;
+  _wireAIDownloadBtn();
 
-  highlights.forEach(hl => {
-    const matched = sourceFeatures.filter(f =>
-      f.geometry && _matchHighlightFilter(f.properties || {}, hl.filter)
-    );
-    if (!matched.length) return;
-
-    const color = hl.color || "#e74c3c";
-    const geomType = matched[0].geometry.type;
-    const isPoint  = geomType === "Point" || geomType === "MultiPoint";
-    const isLine   = geomType === "LineString" || geomType === "MultiLineString";
-
-    const subLayer = L.geoJSON({ type: "FeatureCollection", features: matched }, {
-      style: (isPoint || isLine) ? undefined : function() {
-        return {
-          fillColor:   color,
-          fillOpacity: 0.40,
-          color:       color,
-          weight:      2.5,
-          dashArray:   "5,3",
-        };
-      },
-      pointToLayer: isPoint ? function(feature, latlng) {
-        return L.circleMarker(latlng, {
-          radius: 8, fillColor: color, color: "#fff", weight: 2, fillOpacity: 0.85,
+  // Render ONLY the new annotation shapes on top of the existing result layer
+  aiLayer = L.geoJSON(annotated, {
+    style: function(feature) {
+      const p    = feature.properties;
+      const c    = p.ai_color || "#e74c3c";
+      const type = p.ai_type  || "cluster_hull";
+      if (type === "cluster_hull") {
+        return { fillColor: c, fillOpacity: 0.15, color: c, weight: 3, dashArray: "10,6" };
+      }
+      if (type === "gap_zone") {
+        return { fillColor: c, fillOpacity: 0.10, color: c, weight: 2.5, dashArray: "5,5" };
+      }
+      return { fillColor: c, fillOpacity: 0.18, color: c, weight: 2.5, dashArray: "7,4" };
+    },
+    pointToLayer: function(feature, latlng) {
+      const p    = feature.properties;
+      const c    = p.ai_color || "#e74c3c";
+      const type = p.ai_type  || "centroid_label";
+      const isRanked = type === "worst_cells" || type === "best_cells";
+      const marker = L.circleMarker(latlng, {
+        radius: isRanked ? 11 : 8,
+        fillColor: c, color: "#fff", weight: 2.5, fillOpacity: 0.92,
+      });
+      // Rank badge as permanent tooltip for worst/best markers
+      if (isRanked && p.ai_rank) {
+        marker.bindTooltip(`${p.ai_rank}`, {
+          permanent: true, direction: "center",
+          className: "ai-rank-label",
         });
-      } : undefined,
-      onEachFeature: function(feature, layer) {
-        const p = feature.properties || {};
-        const propKey = hl.filter.property;
-        const raw = p[propKey];
-        const propVal = raw !== undefined && raw !== null
-          ? (typeof raw === "number" ? raw.toFixed(2) : raw)
-          : "—";
-        layer.bindPopup(
-          `<strong style="color:${color}">⚑ ${hl.label}</strong><br>` +
-          `<span style="font-size:11px;">${hl.description}</span><br>` +
-          `<span style="font-size:11px;color:#888;">${propKey}: ${propVal}</span>`
-        );
-      },
-    });
+      }
+      return marker;
+    },
+    onEachFeature: function(feature, layer) {
+      const p    = feature.properties;
+      const c    = p.ai_color || "#e74c3c";
+      const isPoint = feature.geometry.type === "Point";
 
-    subLayers.push(subLayer);
-  });
+      // Build a rich popup
+      const rankHtml = p.ai_rank
+        ? `<span style="font-size:10px;background:${c};color:#fff;padding:1px 5px;border-radius:3px;">Rank #${p.ai_rank}</span> ` : "";
+      const nameHtml = p.area_name
+        ? `<strong style="font-size:12px;">${p.area_name}</strong><br>` : "";
+      // Show the key metric value (first non-ai_ number property)
+      const metricKey = Object.keys(p).find(k =>
+        !k.startsWith("ai_") && k !== "area_name" && typeof p[k] === "number"
+      );
+      const metricHtml = metricKey
+        ? `<span style="font-size:11px;color:#aaa;">${metricKey.replace(/_/g," ")}: <strong>${
+            typeof p[metricKey] === "number" ? p[metricKey].toFixed(2) : p[metricKey]
+          }</strong></span>` : "";
 
-  if (!subLayers.length) return;
+      layer.bindPopup(
+        `<div style="min-width:160px;">` +
+        `${rankHtml}<span style="font-size:11px;font-weight:700;color:${c}">⚑ ${p.ai_label || "AI Annotation"}</span><br>` +
+        nameHtml +
+        `<span style="font-size:11px;color:#ccc;">${p.ai_description || ""}</span><br>` +
+        metricHtml +
+        `</div>`
+      );
 
-  aiLayer = L.layerGroup(subLayers).addTo(map);
+      // Permanent label on polygon shapes only (not on point markers)
+      if (!isPoint && layer.bindTooltip) {
+        layer.bindTooltip(p.ai_label || "", {
+          permanent: true, direction: "center",
+          className: "ai-annotation-label",
+        });
+      }
+    },
+  }).addTo(map);
+}
+
+
+function _wireAIDownloadBtn() {
+  const tabEl = analysisPanel.querySelector("#tab-ai");
+  if (!tabEl || tabEl.querySelector("[data-ai-dl]")) return;
+
+  const btn = document.createElement("button");
+  btn.className = "btn btn-ghost btn-block";
+  btn.setAttribute("data-ai-dl", "true");
+  btn.style.cssText = "margin-top:12px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;";
+  btn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="flex-shrink:0;"/> Download AI Annotation GeoJSON`;
+  btn.onclick = function() {
+    if (_lastAIAnnotatedGeoJSON) {
+      downloadGeoJSON(_lastAIAnnotatedGeoJSON, `${lastResultService}_ai_annotation.geojson`);
+    }
+  };
+
+  // Append after the footer line at the bottom of the tab
+  tabEl.appendChild(btn);
 }
 
 
@@ -5623,8 +5662,9 @@ let lastUrbanDensityFeatures = null;  // array of {name, density} from the full-
 let lastAnalysisContext = null;
 
 // AI tab state — fingerprint for cache + stored highlights for map re-application
-let _lastAIContextKey = null;
-let _lastAIHighlights = [];
+let _lastAIContextKey       = null;
+let _lastAIHighlights       = [];
+let _lastAIAnnotatedGeoJSON = null;  // annotated GeoJSON from /ai/annotate — used for download
 
 /* ---------- QoL score → colour (4-tier: green / yellow-green / orange / red) ---------- */
 function _qolRGB(score) {
