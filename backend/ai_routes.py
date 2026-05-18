@@ -36,11 +36,26 @@ class RecommendationSection(BaseModel):
     items: List[str]
 
 
+class HighlightFilter(BaseModel):
+    property: str
+    op: str          # "gt" | "lt" | "gte" | "lte" | "eq" | "in"
+    value: Any = None
+
+
+class MapHighlight(BaseModel):
+    id: str
+    label: str
+    color: str
+    description: str
+    filter: HighlightFilter
+
+
 class RecommendationsResponse(BaseModel):
     headline: str
     overall_score: Optional[int] = None
     score_label: Optional[str] = None
     sections: List[RecommendationSection]
+    map_highlights: List[MapHighlight] = []
 
 
 @router.post("/chat", response_model=ChatResponse)
