@@ -10,6 +10,7 @@ geopandas==0.14.4
 shapely==2.0.3
 pyproj==3.6.0
 fiona==1.9.6
+pandas==2.2.2
 
 osmnx==1.9.3
 
