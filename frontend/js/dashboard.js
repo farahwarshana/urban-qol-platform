@@ -24,28 +24,14 @@ var API_BASE_URL =
 
 // --------------------------------
 
-    let lastResultFile = "";
+let lastResultFile = "";
 
 let lastPreviewImage =
   "images/opening-bg.png";
 
-function captureResultFile(response){
-
-  console.log(
-    "HEADER VALUE:",
-    response.headers.get("X-Result-File")
-  );
-
-  lastResultFile =
-    response.headers.get("X-Result-File") || "";
-
-  console.log(
-    "Captured result file:",
-    lastResultFile
-  );
-
+function captureResultFile(response) {
+  lastResultFile = response.headers.get("X-Result-File") || "";
 }
-
 
 
 // ------------------saveAnalysisToProfile--------------------
@@ -102,9 +88,53 @@ result_file:
   }).catch(e => console.warn('Could not save analysis:', e));
 }
 // ---------------------------------------------------------------
+let currentLang =
+  localStorage.getItem("lang") || "en";
+
+function toggleLang() {
+
+  currentLang =
+    currentLang === "en"
+      ? "ar"
+      : "en";
+
+  localStorage.setItem(
+    "lang",
+    currentLang
+  );
+
+  location.reload();
+}
+
+function applyLang() {
+
+  const isAr =
+    currentLang === "ar";
+
+  document.documentElement.dir =
+    isAr ? "rtl" : "ltr";
+
+  document.getElementById("langBtn").textContent =
+    isAr
+      ? "🌐 English"
+      : "🌐 العربية";
+}
+const TXT = {
+  en: {
+    ndvi: "NDVI Analysis",
+    heat: "Heat Index",
+    uploadRaster: "Upload raster (GeoTIFF)",
+  },
+
+  ar: {
+    ndvi: "تحليل الغطاء النباتي",
+    heat: "مؤشر الحرارة",
+    uploadRaster: "رفع ملف الراستر",
+  }
+};
 const SERVICES = {
   "urban-density": {
-    title: "Urban Density",
+    title: TXT[currentLang].urban,
     desc: "Estimate population density across an area.",
     inputs: [
       { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" },
@@ -112,7 +142,7 @@ const SERVICES = {
     ],
   },
   "public-transport": {
-    title: "Public Transport Coverage",
+    title: TXT[currentLang].transport,
     desc: "Analyze walking coverage of transit stations within an area of interest.",
     inputs: [
       { type: "file",   id: "stationsInput",    label: "Upload transit stations (GeoJSON points)" },
@@ -123,7 +153,7 @@ const SERVICES = {
     ],
   },
   "facility_Accessibility_index": {
-    title: "Facility Accessibility Index",
+    title: TXT[currentLang].facility,
     desc: "Compute walkable service areas for every facility point in your dataset.",
     inputs: [
       { type: "file",   id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
@@ -136,14 +166,14 @@ const SERVICES = {
   },
 
   "heat-index": {
-    title: "Heat Index",
+    title: TXT[currentLang].heat,
     desc: "Surface heat analysis from raster data.",
     inputs: [
       { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "vegetation": {
-    title: "Vegetation Density",
+    title: TXT[currentLang].vegetation,
     desc: "Analyse how much of your area meets the 30% urban greenery standard.",
     inputs: [
       { type: "file",   id: "tiffInput",    label: "Upload satellite raster (GeoTIFF)" },
@@ -151,14 +181,14 @@ const SERVICES = {
     ],
   },
   "ndvi": {
-    title: "NDVI",
+    title: TXT[currentLang].ndvi,
     desc: "Normalized Difference Vegetation Index from raster.",
     inputs: [
       { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
     ],
   },
   "crime": {
-    title: "Safety / Crime Density",
+    title: TXT[currentLang].crime,
     desc: "Hotspot analysis from incident points.",
     inputs: [
       { type: "file", id: "csvInput", label: "Upload crime data (CSV)" },
@@ -169,7 +199,7 @@ const SERVICES = {
     ],
   },
   "traffic": {
-    title: "Traffic Analysis",
+    title: TXT[currentLang].traffic,
     desc: "Analyse road density and congestion hotspots within an area of interest.",
     inputs: [
       { type: "file",   id: "roadsInput",  label: "Upload road network (GeoJSON LineStrings)" },
@@ -178,14 +208,14 @@ const SERVICES = {
     ],
   },
   "informal-settlement": {
-    title: "Informal Settlement Pattern Analysis",
+    title: TXT[currentLang].informal,
     desc: "Detect informal settlement patterns from satellite/aerial imagery using texture, edge density, and built-up crowding analysis.",
     inputs: [
       { type: "file", id: "tiffInput", label: "Upload satellite/aerial imagery (GeoTIFF)" },
     ],
   },
   "air-quality": {
-    title: "Air Quality Index",
+    title: TXT[currentLang].air,
     desc: "Classify PM2.5, PM10, NO2, or AQI raster into 6 AQI categories and map air quality.",
     inputs: [
       { type: "file", id: "tiffInput", label: "Upload pollutant raster (GeoTIFF — PM2.5, PM10, NO2, or AQI)" },
@@ -460,17 +490,19 @@ async function runNDVIAnalysis() {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-    }
+  const errorData = await response.json();
+  throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+}
 
-    // Get NDVI stats from response headers
-    const ndviMin = response.headers.get("X-NDVI-Min");
+captureResultFile(response);
+
+// Get NDVI stats from response headers
+const ndviMin = response.headers.get("X-NDVI-Min");
     const ndviMax = response.headers.get("X-NDVI-Max");
     const ndviMean = response.headers.get("X-NDVI-Mean");
     const validPixels = response.headers.get("X-Valid-Pixels");
     const redBand      = response.headers.get("X-Red-Band");
-    const nirBand      = response.headers.get("X-NIR-Band");
+    const nirBand      = response.headers.get("X-NIR-Band"); 
     const satellite    = response.headers.get("X-Satellite");
     const ndviStddev   = response.headers.get("X-NDVI-Stddev");
     const imgWidth     = response.headers.get("X-Img-Width");
@@ -566,7 +598,128 @@ async function runNDVIAnalysis() {
     `;
   }
 }
+/* ---------- Heat Index Analysis - calls backend API ---------- */
+async function runHeatIndexAnalysis() {
+  const tiffInput = document.getElementById("tiffInput");
 
+  if (!tiffInput || !tiffInput.files[0]) {
+    alert("Please upload a GeoTIFF file first.");
+    return;
+  }
+
+  const file = tiffInput.files[0];
+  const inputs = { fileName: file.name };
+
+  const formData = new FormData();
+  formData.append("lst_geotiff", file);
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Heat Index — Processing</h3>
+      <p class="panel-desc">Calculating heat index from uploaded raster...</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/calculate-heat-index`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+  const errorData = await response.json().catch(() => ({}));
+  console.log("HEAT ERROR:", errorData);
+
+  throw new Error(
+    typeof errorData.detail === "string"
+      ? errorData.detail
+      : JSON.stringify(errorData.detail || errorData)
+  );
+}
+
+    captureResultFile(response);
+
+    const min = response.headers.get("X-HeatIndex-Min");
+    const max = response.headers.get("X-HeatIndex-Max");
+    const mean = response.headers.get("X-HeatIndex-Mean");
+    const validPixels = response.headers.get("X-Valid-Pixels");
+
+    const pctCool = response.headers.get("X-Pct-Cool");
+    const pctModerate = response.headers.get("X-Pct-Moderate");
+    const pctHot = response.headers.get("X-Pct-Hot");
+    const pctExtreme = response.headers.get("X-Pct-Extreme");
+
+    const arrayBuffer = await response.arrayBuffer();
+
+    lastResultBlob = arrayBuffer.slice(0);
+    lastResultService = "heat-index";
+
+    updateLegend("heat-index", "full");
+
+    if (gridLayer) {
+      map.removeLayer(gridLayer);
+      gridLayer = null;
+    }
+
+    if (inputLayer) {
+      map.removeLayer(inputLayer);
+      inputLayer = null;
+    }
+
+    clearMap();
+
+    resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+  opacity: 0.85,
+  resolution: 128,
+  colorFn: (values) => {
+    const v = values[0];
+
+    if (v === undefined || v === null || isNaN(v) || v === -9999) {
+      return null;
+    }
+
+    if (v === 0) return "rgba(76,194,255,0.85)";
+    if (v === 1) return "rgba(139,195,74,0.85)";
+    if (v === 2) return "rgba(240,165,0,0.85)";
+    if (v === 3) return "rgba(231,76,60,0.85)";
+
+    return "rgba(180,180,180,0.65)";س
+  },
+});
+    
+    const stddev = 0;
+    renderHeatIndexResults({
+      min,
+      max,
+      mean,
+      stddev,
+      valid_pixels: validPixels,
+      pct_cool: pctCool,
+      pct_moderate: pctModerate,
+      pct_hot: pctHot,
+      pct_extreme: pctExtreme,
+    }, inputs);
+
+  } catch (error) {
+    console.error("Heat Index calculation error:", error);
+
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">Failed to calculate Heat Index: ${error.message}</p>
+        <button class="btn btn-ghost btn-block mt-3"
+                onclick="renderServicePanel('heat-index')">
+          ← Back to inputs
+        </button>
+      </div>
+    `;
+  }
+}
 
 /* ---------- Crime Analysis - calls backend API ---------- */
 async function runCrimeAnalysis() {
@@ -8589,3 +8742,5 @@ async function downloadAIReportPDF() {
   doc.save(filename);
   if (typeof showToast === "function") showToast(`PDF saved: ${filename}`, "success");
 }
+
+applyLang();

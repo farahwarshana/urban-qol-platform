@@ -74,7 +74,8 @@
 #     heat_index[(lst >= 32) & (lst < 38)] = 2
 #     heat_index[lst >= 38] = 3
  
-#     heat_index[np.isnan(lst)] = -9999
+    # heat_index[np.isnan(lst)] = -9999
+    
  
 #     # ── Reproject to EPSG:4326 ─────────────────
 #     dst_crs = rasterio.crs.CRS.from_epsg(4326)
@@ -267,7 +268,6 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
     Calculate Heat Index from a single LST GeoTIFF
     and export result as GeoTIFF in EPSG:4326.
     """
-    print(pyproj.show_versions())
 
     if not os.path.exists(geotiff_path):
         raise FileNotFoundError(f"File not found: {geotiff_path}")
@@ -326,35 +326,40 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
     heat_index[lst >= 38] = 3
 
     heat_index[np.isnan(lst)] = -9999
+    heat_4326 = heat_index
+    transform_4326 = src_transform
+    width_4326 = meta["width"]
+    height_4326 = meta["height"]
+    dst_crs = meta["crs"]
 
     # ── Reproject to EPSG:4326 ─────────────────
-    dst_crs = "EPSG:4326"
+    # dst_crs = "EPSG:4326"
 
-    transform_4326, width_4326, height_4326 = calculate_default_transform(
-        src_crs,
-        dst_crs,
-        meta["width"],
-        meta["height"],
-        *src_bounds
-    )
+    # transform_4326, width_4326, height_4326 = calculate_default_transform(
+    #     src_crs,
+    #     dst_crs,
+    #     meta["width"],
+    #     meta["height"],
+    #     *src_bounds
+    # )
 
-    heat_4326 = np.full(
-        (height_4326, width_4326),
-        -9999,
-        dtype="int16"
-    )
+    # heat_4326 = np.full(
+    #     (height_4326, width_4326),
+    #     -9999,
+    #     dtype="int16"
+    # )
 
-    reproject(
-        source=heat_index,
-        destination=heat_4326,
-        src_transform=src_transform,
-        src_crs=src_crs,
-        dst_transform=transform_4326,
-        dst_crs=dst_crs,
-        resampling=Resampling.nearest,
-        src_nodata=-9999,
-        dst_nodata=-9999
-    )
+    # reproject(
+    #     source=heat_index,
+    #     destination=heat_4326,
+    #     src_transform=src_transform,
+    #     src_crs=src_crs,
+    #     dst_transform=transform_4326,
+    #     dst_crs=dst_crs,
+    #     resampling=Resampling.nearest,
+    #     src_nodata=-9999,
+    #     dst_nodata=-9999
+    # )
 
     # ── Save output ────────────────────────────
     output_dir = os.path.dirname(output_heat_path)

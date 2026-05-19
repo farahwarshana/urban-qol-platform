@@ -3,6 +3,7 @@ import numpy as np
 import rasterio
 import geopandas as gpd
 from rasterio.mask import mask
+from rasterio.warp import calculate_default_transform, reproject, Resampling
 
 def _detect_bands(src):
     """
@@ -139,7 +140,9 @@ def calculate_ndvi_from_bands(geotiff_path, output_ndvi_path):
         red = src.read(red_band_index).astype("float32")
         nir = src.read(nir_band_index).astype("float32")
         meta = src.meta.copy()
-
+        src_bounds = src.bounds
+        if meta.get("crs") is None or str(meta.get("crs")) == "LOCAL_CS":
+           meta["crs"] = "EPSG:4326"    
     # Treat zero pixels as NoData
     red[red == 0] = np.nan
     nir[nir == 0] = np.nan

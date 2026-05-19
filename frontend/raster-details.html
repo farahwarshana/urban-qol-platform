@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Raster Analysis Details</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <link rel="stylesheet" href="css/theme.css">
+
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    body {
+      background:var(--bg);
+      color:var(--text);
+      font-family:'Space Grotesk',sans-serif;
+      min-height:100vh;
+      padding:40px;
+    }
+
+    .container { max-width:1800px; margin:auto; }
+
+    .topbar {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:24px;
+    }
+
+    .back-btn {
+      background:var(--surface2);
+      border:1px solid var(--border);
+      color:var(--text);
+      padding:10px 18px;
+      border-radius:10px;
+      cursor:pointer;
+      transition:.2s;
+      font-family:inherit;
+    }
+
+    .back-btn:hover {
+      border-color:var(--accent);
+      color:var(--accent);
+    }
+
+    .analysis-title {
+      font-size:34px;
+      font-weight:700;
+      margin-bottom:10px;
+    }
+
+    .analysis-sub {
+      color:var(--muted);
+      margin-bottom:30px;
+      font-size:15px;
+    }
+
+    .card {
+      background:rgba(26,29,39,.88);
+      border:1px solid var(--border);
+      border-radius:20px;
+      padding:22px;
+      backdrop-filter:blur(14px);
+      transition:transform .25s ease, border-color .25s ease, box-shadow .25s ease;
+    }
+
+    .card:hover {
+      transform:translateY(-4px);
+      border-color:rgba(0,212,170,.28);
+      box-shadow:0 10px 30px rgba(0,212,170,.08);
+    }
+
+    .section-title {
+      font-size:18px;
+      margin-bottom:18px;
+      font-weight:600;
+    }
+
+    .two-col {
+      display:grid;
+      grid-template-columns:1.3fr .7fr;
+      gap:24px;
+      margin-bottom:24px;
+    }
+
+    .two-col-equal {
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:24px;
+      margin-bottom:24px;
+    }
+
+    #analysisPreview {
+      width:100%;
+      height:500px;
+      border-radius:16px;
+      overflow:hidden;
+      background:#1f2635;
+    }
+
+    .legend-list {
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+
+    .legend-item {
+      display:flex;
+      align-items:center;
+      gap:14px;
+      padding:12px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:12px;
+    }
+
+    .legend-color {
+      width:36px;
+      height:36px;
+      border-radius:10px;
+      flex-shrink:0;
+    }
+
+    .legend-label {
+      font-size:14px;
+      color:#d8fffa;
+      font-weight:500;
+    }
+
+    .legend-range {
+      font-size:12px;
+      color:#94a3b8;
+      margin-top:2px;
+    }
+
+    .class-item {
+      display:flex;
+      align-items:center;
+      gap:16px;
+      padding:14px;
+      margin-bottom:12px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:14px;
+    }
+
+    .class-rank {
+      width:42px;
+      height:42px;
+      border-radius:12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:700;
+      flex-shrink:0;
+    }
+
+    .class-name {
+      font-weight:600;
+      margin-bottom:4px;
+    }
+
+    .class-range {
+      color:#94a3b8;
+      font-size:13px;
+    }
+
+    .meta-list {
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+
+    .meta-row {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:30px;
+      padding-bottom:12px;
+      border-bottom:1px solid rgba(255,255,255,.05);
+    }
+
+    .meta-row span {
+      color:var(--muted);
+      font-size:17px;
+      min-width:160px;
+    }
+
+    .meta-row strong {
+      color:#d8fffa;
+      font-size:17px;
+      text-align:right;
+      max-width:260px;
+      word-break:break-word;
+    }
+
+    .stats {
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:16px;
+    }
+
+    .stat-box {
+      background:var(--surface2);
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:20px;
+    }
+
+    .stat-label {
+      color:var(--muted);
+      font-size:13px;
+      margin-bottom:8px;
+    }
+
+    .stat-value {
+      font-size:28px;
+      font-weight:700;
+      color:var(--accent);
+    }
+
+    .recommendation {
+      padding:14px;
+      background:rgba(0,212,170,.08);
+      border:1px solid rgba(0,212,170,.18);
+      border-radius:12px;
+      margin-bottom:12px;
+      color:#d8fffa;
+      font-size:14px;
+      line-height:1.5;
+    }
+
+    .export-btn {
+      margin-top:18px;
+      width:100%;
+      border:none;
+      background:var(--accent);
+      color:#08110f;
+      font-weight:700;
+      padding:14px;
+      border-radius:12px;
+      cursor:pointer;
+      transition:.2s;
+      font-family:inherit;
+    }
+
+    .export-btn:hover {
+      transform:translateY(-2px);
+    }
+
+    @media(max-width:950px) {
+      body { padding:20px; }
+      .two-col, .two-col-equal { grid-template-columns:1fr; }
+      #analysisPreview { height:320px; }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="topbar">
+    <button class="back-btn" onclick="window.location.href='profile_1.html'">← Back</button>
+  </div>
+
+  <div class="analysis-title" id="analysisTitle">Loading...</div>
+  <div class="analysis-sub" id="analysisMeta">Loading raster analysis info...</div>
+
+  <!-- ROW 1: Map + Legend -->
+  <div class="two-col">
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div id="analysisPreview"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Raster Legend</div>
+      <div class="legend-list" id="legendList"></div>
+    </div>
+  </div>
+
+  <!-- ROW 2: Classes + Metadata -->
+  <div class="two-col-equal">
+    <div class="card">
+      <div class="section-title" id="classSummaryTitle">Classification Summary</div>
+      <div id="classSummaryList"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Raster Metadata</div>
+      <div class="meta-list">
+        <div class="meta-row">
+          <span>Analysis Type</span>
+          <strong id="metaType">--</strong>
+        </div>
+        <div class="meta-row">
+          <span>Generated At</span>
+          <strong id="metaDate">--</strong>
+        </div>
+        <div class="meta-row">
+          <span>Data Format</span>
+          <strong id="metaFormat">GeoTIFF</strong>
+        </div>
+        <div class="meta-row">
+          <span>Raster Size</span>
+          <strong id="metaRasterSize">--</strong>
+        </div>
+        <div class="meta-row">
+          <span>Pixel Size</span>
+          <strong id="metaPixelSize">--</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 3: Stats + Recommendations -->
+  <div class="two-col-equal">
+    <div class="card">
+      <div class="section-title">Pixel Statistics</div>
+      <div class="stats" id="statsGrid"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Recommendations</div>
+      <div id="recommendationsList"></div>
+      <button class="export-btn" onclick="exportCurrentAnalysis()">Export Raster Report</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="js/config.js"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/georaster"></script>
+
+<script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
+
+<script>
+const API_BASE_URL =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+    ? "http://localhost:8000"
+    : "";
+
+const params = new URLSearchParams(window.location.search);
+const analysisId = params.get("id");
+
+const RASTER_CONFIG = {
+  "ndvi": {
+    title: "NDVI Analysis",
+    dataFormat: "GeoTIFF",
+    classTitle: "Vegetation Classes",
+    legend: [
+      { color:"#1a9641", label:"Dense Vegetation", range:"NDVI > 0.6" },
+      { color:"#a6d96a", label:"Moderate Vegetation", range:"NDVI 0.4 – 0.6" },
+      { color:"#ffffbf", label:"Sparse Vegetation", range:"NDVI 0.2 – 0.4" },
+      { color:"#d9a85a", label:"Bare Soil", range:"NDVI 0 – 0.2" },
+      { color:"#4575b4", label:"Water / No Vegetation", range:"NDVI < 0" }
+    ],
+    colorFn(v) {
+      if (v === null || v === undefined || isNaN(v)) return null;
+      if (v < 0) return "rgba(69,117,180,0.8)";
+      if (v < 0.2) return "rgba(217,168,90,0.8)";
+      if (v < 0.4) return "rgba(255,255,191,0.8)";
+      if (v < 0.6) return "rgba(166,217,106,0.8)";
+      return "rgba(26,150,65,0.8)";
+    },
+    buildInsight(stats) {
+      const mean = stats.mean;
+      if (mean === null) return "NDVI analysis completed. Review spatial vegetation distribution on the map.";
+      if (mean >= 0.6) return "Healthy vegetation condition detected. Dense vegetation dominates the raster.";
+      if (mean >= 0.4) return "Moderate vegetation condition detected. Green coverage exists but may be uneven.";
+      if (mean >= 0.2) return "Sparse vegetation detected. The area may need more green infrastructure.";
+      return "Low vegetation signal detected. Bare soil, built-up surfaces, or water may dominate the area.";
+    },
+    recommendations(stats) {
+      const mean = stats.mean;
+      if (mean === null) {
+        return [
+          "Review raster classes visually to identify weak vegetation zones.",
+          "Compare this result with heat or land surface temperature analysis.",
+          "Use grid analysis later to locate local vegetation gaps."
+        ];
+      }
+
+      if (mean >= 0.5) {
+        return [
+          "Maintain existing high-vegetation zones and protect them from urban pressure.",
+          "Use this raster as a green baseline for future comparison.",
+          "Compare NDVI with heat index to measure cooling benefits."
+        ];
+      }
+
+      if (mean >= 0.25) {
+        return [
+          "Improve medium and sparse vegetation zones with targeted green infrastructure.",
+          "Prioritize streets and blocks with low NDVI values.",
+          "Compare with population density to identify high-need greening areas."
+        ];
+      }
+
+      return [
+        "Prioritize large-scale greening intervention in low-NDVI zones.",
+        "Check whether the raster includes water, bare land, or built-up surfaces.",
+        "Use grid analysis to identify the worst local cells for vegetation shortage."
+      ];
+    }
+  },
+
+  "heat-index": {
+    title: "Heat Index Analysis",
+    dataFormat: "GeoTIFF",
+    classTitle: "Heat Classes",
+    legend: [
+      { color:"#2c7bb6", label:"Low Heat", range:"Cooler pixels" },
+      { color:"#abd9e9", label:"Moderate-Low", range:"Mild heat" },
+      { color:"#ffffbf", label:"Moderate", range:"Average heat" },
+      { color:"#fdae61", label:"High Heat", range:"Hot pixels" },
+      { color:"#d7191c", label:"Very High Heat", range:"Extreme heat" }
+    ],
+    colorFn(v, min, max) {
+      if (v === null || v === undefined || isNaN(v)) return null;
+      const t = normalize(v, min, max);
+      if (t < 0.2) return "rgba(44,123,182,0.8)";
+      if (t < 0.4) return "rgba(171,217,233,0.8)";
+      if (t < 0.6) return "rgba(255,255,191,0.8)";
+      if (t < 0.8) return "rgba(253,174,97,0.8)";
+      return "rgba(215,25,28,0.8)";
+    },
+    buildInsight(stats) {
+      return "Heat raster loaded successfully. Higher values indicate stronger surface heat stress.";
+    },
+    recommendations() {
+      return [
+        "Prioritize cooling interventions in the hottest raster zones.",
+        "Compare heat hotspots with vegetation and density results.",
+        "Use trees, shading, reflective surfaces, and water-sensitive design in high-heat areas."
+      ];
+    }
+  },
+
+  "vegetation": {
+    title: "Vegetation Density Analysis",
+    dataFormat: "GeoTIFF / Raster-derived Grid",
+    classTitle: "Vegetation Coverage Classes",
+    legend: [
+      { color:"#1a9850", label:"High Vegetation", range:"> 50%" },
+      { color:"#91cf60", label:"Good Vegetation", range:"30% – 50%" },
+      { color:"#fee08b", label:"Below Standard", range:"15% – 30%" },
+      { color:"#fc8d59", label:"Low Vegetation", range:"5% – 15%" },
+      { color:"#d73027", label:"Very Low", range:"< 5%" }
+    ],
+    colorFn(v, min, max) {
+      if (v === null || v === undefined || isNaN(v)) return null;
+      const t = normalize(v, min, max);
+      if (t < 0.2) return "rgba(215,48,39,0.8)";
+      if (t < 0.4) return "rgba(252,141,89,0.8)";
+      if (t < 0.6) return "rgba(254,224,139,0.8)";
+      if (t < 0.8) return "rgba(145,207,96,0.8)";
+      return "rgba(26,152,80,0.8)";
+    },
+    buildInsight(stats) {
+      return "Vegetation density raster loaded. Use the map to identify areas below greenery standards.";
+    },
+    recommendations() {
+      return [
+        "Increase greenery in low-coverage zones.",
+        "Compare vegetation density with NDVI to validate vegetation quality.",
+        "Prioritize areas below the 30% greenery benchmark."
+      ];
+    }
+  },
+
+  "air-quality": {
+    title: "Air Quality Analysis",
+    dataFormat: "GeoTIFF",
+    classTitle: "Air Quality Classes",
+    legend: [
+      { color:"#00e400", label:"Good", range:"Low pollution" },
+      { color:"#ffff00", label:"Moderate", range:"Acceptable" },
+      { color:"#ff7e00", label:"Unhealthy for Sensitive Groups", range:"Elevated pollution" },
+      { color:"#ff0000", label:"Unhealthy", range:"High pollution" },
+      { color:"#8f3f97", label:"Very Unhealthy", range:"Very high pollution" }
+    ],
+    colorFn(v, min, max) {
+      if (v === null || v === undefined || isNaN(v)) return null;
+      const t = normalize(v, min, max);
+      if (t < 0.2) return "rgba(0,228,0,0.8)";
+      if (t < 0.4) return "rgba(255,255,0,0.8)";
+      if (t < 0.6) return "rgba(255,126,0,0.8)";
+      if (t < 0.8) return "rgba(255,0,0,0.8)";
+      return "rgba(143,63,151,0.8)";
+    },
+    buildInsight(stats) {
+      return "Air quality raster loaded. Higher values indicate worse air quality conditions.";
+    },
+    recommendations() {
+      return [
+        "Identify high-pollution zones and compare them with traffic density.",
+        "Prioritize monitoring and mitigation in the worst air quality zones.",
+        "Use vegetation and mobility interventions to reduce exposure."
+      ];
+    }
+  }
+};
+
+function normalize(v, min, max) {
+  const range = max - min || 1;
+  return Math.max(0, Math.min(1, (v - min) / range));
+}
+
+async function loadAnalysisDetails() {
+  const username = localStorage.getItem("username") || "default";
+  const res = await fetch(`${API_BASE_URL}/analyses?username=${username}`);
+  const data = await res.json();
+
+  const analysis = data.find(a => String(a.id) === String(analysisId));
+
+  if (!analysis) {
+    document.getElementById("analysisTitle").textContent = "Analysis not found";
+    document.getElementById("analysisMeta").textContent = "";
+    return;
+  }
+
+  const config = RASTER_CONFIG[analysis.type];
+
+  if (!config) {
+    document.getElementById("analysisTitle").textContent = "Unsupported raster analysis";
+    document.getElementById("analysisMeta").textContent =
+      `This page supports raster analyses only. Current type: ${analysis.type}`;
+    return;
+  }
+
+  document.getElementById("analysisTitle").textContent = analysis.title || config.title;
+  document.getElementById("analysisMeta").textContent =
+    `${analysis.area || "Raster analysis"} • ${new Date(analysis.created_at).toLocaleString()}`;
+
+  document.getElementById("metaType").textContent = config.title;
+  document.getElementById("metaDate").textContent = new Date(analysis.created_at).toLocaleString();
+  document.getElementById("metaFormat").textContent = config.dataFormat;
+  document.getElementById("classSummaryTitle").textContent = config.classTitle;
+
+  renderRasterLegend(config);
+  renderClassSummary(config);
+
+  if (!analysis.result_file) {
+    document.getElementById("analysisPreview").style.background =
+      `linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url(${analysis.preview_image || "images/opening-bg.png"}) center/cover`;
+    renderEmptyStats();
+    renderRecommendations([
+      "No raster result file was found for this analysis.",
+      "Run the analysis again and make sure result_file is saved correctly.",
+      "Check autoSaveCurrentAnalysis() and backend response headers."
+    ]);
+    return;
+  }
+
+  const map = L.map("analysisPreview").setView([30.0444, 31.2357], 10);
+
+ L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  {
+    attribution: "Tiles © Esri"
+  }
+).addTo(map);
+
+  await loadRasterAnalysis(analysis, map, config);
+}
+
+async function loadRasterAnalysis(analysis, map, config) {
+  try {
+    const tiffUrl = `${API_BASE_URL}/${analysis.result_file}`;
+
+console.log("Analysis object:", analysis);
+console.log("Result file:", analysis.result_file);
+console.log("TIFF URL:", tiffUrl);
+
+const response = await fetch(tiffUrl);
+
+console.log("Response status:", response.status);
+console.log("Content-Type:", response.headers.get("content-type"));
+
+    if (!response.ok) {
+      throw new Error(`Could not load raster file: HTTP ${response.status}`);
+    }
+
+const arrayBuffer = await response.arrayBuffer();
+
+console.log("ArrayBuffer size:", arrayBuffer.byteLength);
+
+const georaster = await parseGeoraster(arrayBuffer);
+
+// Fix unknown GeoTIFF projection from backend
+if (!georaster.projection || georaster.projection === 32767) {
+  georaster.projection = 4326;
+}
+
+console.log("Projection:", georaster.projection);
+
+console.log("GeoRaster loaded:", georaster);
+
+
+
+    const min = safeNumber(georaster.mins?.[0]);
+    const max = safeNumber(georaster.maxs?.[0]);
+    const mean = calculateRasterMean(georaster);
+
+    const stats = { min, max, mean };
+
+    renderRasterStats(stats);
+    renderRasterMetadata(georaster);
+    renderRecommendations(config.recommendations(stats));
+    renderMainInsight(config.buildInsight(stats));
+
+    const layer = new GeoRasterLayer({
+      georaster,
+      opacity: 0.8,
+      resolution: 256,
+      debugLevel: 0,
+      pixelValuesToColorFn: values => {
+        const v = values[0];
+        return config.colorFn(v, min, max);
+      }
+    });
+
+    layer.addTo(map);
+    map.fitBounds(layer.getBounds());
+    setTimeout(() => map.invalidateSize(), 300);
+
+  } catch (error) {
+    console.error("Raster loading error:", error);
+    document.getElementById("analysisPreview").innerHTML = `
+      <div style="padding:30px;color:#e74c3c;">
+        Failed to load raster: ${error.message}
+      </div>
+    `;
+    renderEmptyStats();
+    renderRecommendations([
+      "Check that the saved result_file points to a valid GeoTIFF.",
+      "Make sure the backend returns a raster file for this analysis.",
+      "Open DevTools Network tab and verify the raster URL is loading."
+    ]);
+  }
+}
+
+function renderRasterLegend(config) {
+  document.getElementById("legendList").innerHTML = config.legend.map(item => `
+    <div class="legend-item">
+      <div class="legend-color" style="background:${item.color};"></div>
+      <div>
+        <div class="legend-label">${item.label}</div>
+        <div class="legend-range">${item.range}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderClassSummary(config) {
+  document.getElementById("classSummaryList").innerHTML = config.legend.map((item, i) => `
+    <div class="class-item">
+      <div class="class-rank" style="background:${hexToSoftBg(item.color)};color:${item.color};">
+        ${i + 1}
+      </div>
+      <div>
+        <div class="class-name">${item.label}</div>
+        <div class="class-range">${item.range}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderRasterStats(stats) {
+  document.getElementById("statsGrid").innerHTML = `
+    <div class="stat-box">
+      <div class="stat-label">Minimum Value</div>
+      <div class="stat-value">${formatNumber(stats.min, 3)}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Maximum Value</div>
+      <div class="stat-value">${formatNumber(stats.max, 3)}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Mean Value</div>
+      <div class="stat-value">${formatNumber(stats.mean, 3)}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Value Range</div>
+      <div class="stat-value">${formatNumber(stats.max - stats.min, 3)}</div>
+    </div>
+  `;
+}
+
+function renderEmptyStats() {
+  document.getElementById("statsGrid").innerHTML = `
+    <div class="stat-box">
+      <div class="stat-label">Minimum Value</div>
+      <div class="stat-value">--</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Maximum Value</div>
+      <div class="stat-value">--</div>
+    </div>
+  `;
+}
+
+function renderRasterMetadata(georaster) {
+  const width = georaster.width || "--";
+  const height = georaster.height || "--";
+
+  document.getElementById("metaRasterSize").textContent =
+    `${width} × ${height} pixels`;
+
+  const pixelWidth = georaster.pixelWidth ? formatNumber(georaster.pixelWidth, 4) : "--";
+  const pixelHeight = georaster.pixelHeight ? formatNumber(georaster.pixelHeight, 4) : "--";
+
+  document.getElementById("metaPixelSize").textContent =
+    `${pixelWidth} × ${pixelHeight}`;
+}
+
+function renderRecommendations(items) {
+  document.getElementById("recommendationsList").innerHTML = items.map(text => `
+    <div class="recommendation">${text}</div>
+  `).join("");
+}
+
+function renderMainInsight(text) {
+  const list = document.getElementById("recommendationsList");
+  list.insertAdjacentHTML("afterbegin", `
+    <div class="recommendation" style="background:rgba(240,165,0,.08);border-color:rgba(240,165,0,.22);">
+      ${text}
+    </div>
+  `);
+}
+
+function calculateRasterMean(georaster) {
+  try {
+    const values = georaster.values?.[0];
+
+    if (!values) return null;
+
+    let sum = 0;
+    let count = 0;
+
+    for (let y = 0; y < values.length; y++) {
+      for (let x = 0; x < values[y].length; x++) {
+        const v = values[y][x];
+
+        if (
+          v !== null &&
+          v !== undefined &&
+          !isNaN(v) &&
+          isFinite(v) &&
+          v > -9999
+        ) {
+          sum += v;
+          count++;
+        }
+      }
+    }
+
+    return count ? sum / count : null;
+  } catch (e) {
+    console.warn("Could not calculate raster mean:", e);
+    return null;
+  }
+}
+
+function safeNumber(v) {
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+function formatNumber(v, digits = 2) {
+  if (v === null || v === undefined || isNaN(v)) return "--";
+  return Number(v).toFixed(digits);
+}
+
+function hexToSoftBg(hex) {
+  if (!hex || !hex.startsWith("#")) return "rgba(0,212,170,.12)";
+
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+
+  return `rgba(${r},${g},${b},.15)`;
+}
+
+function exportCurrentAnalysis() {
+  const title = document.getElementById("analysisTitle").textContent;
+  const type = document.getElementById("metaType").textContent;
+  const date = document.getElementById("metaDate").textContent;
+  const size = document.getElementById("metaRasterSize").textContent;
+  const pixel = document.getElementById("metaPixelSize").textContent;
+
+  const content =
+`MALAZ RASTER ANALYSIS REPORT
+============================
+
+Title: ${title}
+Type: ${type}
+Generated At: ${date}
+Raster Size: ${size}
+Pixel Size: ${pixel}
+
+Generated from MALAZ Platform.
+`;
+
+  const blob = new Blob([content], { type:"text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "raster-analysis-report.txt";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+loadAnalysisDetails();
+</script>
+
+</body>
+</html>

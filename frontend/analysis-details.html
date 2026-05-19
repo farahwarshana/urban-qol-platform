@@ -355,24 +355,17 @@ async function loadAnalysisDetails() {
   const res      = await fetch(`${API_BASE_URL}/analyses?username=${username}`);
   const data     = await res.json();
   const analysis = data.find(a => String(a.id) === String(analysisId));
+  console.log("Analysis type:", analysis?.type);
 
-  const analysisLabel =
-  ANALYSIS_LABELS[analysis.type]?.en
-  || analysis.title
-  || analysis.type;
+if (!analysis) {
+  document.getElementById("analysisTitle").textContent = "Analysis not found";
+  return;
+}
 
-  if (!analysis) {
-    document.getElementById("analysisTitle").textContent = "Analysis not found";
-    return;
-  }
-
-  document.getElementById("analysisTitle").textContent =
-  analysisLabel;
-  document.getElementById("analysisMeta").textContent  =
-    `${analysis.area} • ${new Date(analysis.created_at).toLocaleString()}`;
-  document.getElementById("metaType").textContent =
-  analysisLabel;
-  document.getElementById("metaDate").textContent = new Date(analysis.created_at).toLocaleString();
+document.getElementById("analysisTitle").textContent = analysis.title;
+document.getElementById("analysisMeta").textContent  = `${analysis.area} • ${new Date(analysis.created_at).toLocaleString()}`;
+document.getElementById("metaType").textContent = analysis.title || analysis.type || "Unknown";
+document.getElementById("metaDate").textContent = new Date(analysis.created_at).toLocaleString();
 
   if (analysis.result_file) {
 
@@ -475,11 +468,82 @@ function exportCurrentAnalysis() {
 
 async function loadNdviMap(analysis, map) {
 
+  // ── Legend ──
+  document.querySelector(".legend-list").innerHTML = `
+    <div class="legend-item">
+      <div class="legend-color" style="background:#1a9641;"></div>
+      <div><div class="legend-label">Dense Vegetation</div><div class="legend-range">NDVI &gt; 0.6</div></div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background:#a6d96a;"></div>
+      <div><div class="legend-label">Moderate Vegetation</div><div class="legend-range">NDVI 0.4 – 0.6</div></div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background:#ffffbf;"></div>
+      <div><div class="legend-label">Sparse Vegetation</div><div class="legend-range">NDVI 0.2 – 0.4</div></div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background:#d9a85a;"></div>
+      <div><div class="legend-label">Bare Soil</div><div class="legend-range">NDVI 0 – 0.2</div></div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background:#4575b4;"></div>
+      <div><div class="legend-label">Water / No Vegetation</div><div class="legend-range">NDVI &lt; 0</div></div>
+    </div>
+  `;
+
+  // ── Top List ──
+  document.querySelector(".section-title:nth-of-type(3)").textContent = "Vegetation Zones";
+  document.getElementById("topAreasList").innerHTML = `
+    <div class="top-area-item">
+      <div class="top-area-rank" style="background:rgba(26,150,65,.15);color:#1a9641;">1</div>
+      <div class="top-area-info"><div class="top-area-name">Dense Vegetation</div><div class="top-area-density">NDVI &gt; 0.6</div></div>
+    </div>
+    <div class="top-area-item">
+      <div class="top-area-rank" style="background:rgba(166,217,106,.15);color:#a6d96a;">2</div>
+      <div class="top-area-info"><div class="top-area-name">Moderate Vegetation</div><div class="top-area-density">NDVI 0.4 – 0.6</div></div>
+    </div>
+    <div class="top-area-item">
+      <div class="top-area-rank" style="background:rgba(255,255,191,.15);color:#ccc;">3</div>
+      <div class="top-area-info"><div class="top-area-name">Sparse Vegetation</div><div class="top-area-density">NDVI 0.2 – 0.4</div></div>
+    </div>
+    <div class="top-area-item">
+      <div class="top-area-rank" style="background:rgba(217,168,90,.15);color:#d9a85a;">4</div>
+      <div class="top-area-info"><div class="top-area-name">Bare Soil</div><div class="top-area-density">NDVI 0 – 0.2</div></div>
+    </div>
+    <div class="top-area-item">
+      <div class="top-area-rank" style="background:rgba(69,117,180,.15);color:#4575b4;">5</div>
+      <div class="top-area-info"><div class="top-area-name">Water / No Vegetation</div><div class="top-area-density">NDVI &lt; 0</div></div>
+    </div>
+  `;
+
+  // ── Stats ──
+  document.querySelector(".stats").innerHTML = `
+    <div class="stat-box">
+      <div class="stat-label">Min NDVI</div>
+      <div class="stat-value" id="ndviMin">--</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Max NDVI</div>
+      <div class="stat-value" id="ndviMax">--</div>
+    </div>
+  `;
+
+  // ── Insight ──
+  document.getElementById("densityInsight").textContent =
+    "NDVI analysis completed. Review the map for spatial vegetation distribution.";
+
+  // ── تحميل الـ GeoTIFF ──
   const tiffUrl     = `${API_BASE_URL}/${analysis.result_file}`;
   const response    = await fetch(tiffUrl);
   const arrayBuffer = await response.arrayBuffer();
   const georaster   = await parseGeoraster(arrayBuffer);
 
+  // ── Stats من الـ georaster ──
+  document.getElementById("ndviMin").textContent = georaster.mins?.[0]?.toFixed(3) || "--";
+  document.getElementById("ndviMax").textContent = georaster.maxs?.[0]?.toFixed(3) || "--";
+
+  // ── Map Layer ──
   const layer = new GeoRasterLayer({
     georaster,
     opacity: 0.8,
@@ -499,7 +563,6 @@ async function loadNdviMap(analysis, map) {
   map.fitBounds(layer.getBounds());
   setTimeout(() => map.invalidateSize(), 300);
 }
-
 loadAnalysisDetails();
 
 </script>

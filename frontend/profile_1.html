@@ -879,7 +879,7 @@ list.innerHTML = filtered.map(a => {
 
   return `
 
-    <div class="analysis-item" onclick="openAnalysisDetails(${a.id})">
+    <div class="analysis-item" onclick="openAnalysisDetails(${a.id}, '${a.type}')">
       <div class="analysis-icon ${a.type}">${icon}</div>
       <div class="analysis-meta">
         <h4>${translatedTitle}</h4>
@@ -1012,10 +1012,21 @@ async function loadProfile() {
   document.getElementById('phoneInput').value = data.phone || '';
 }
 
-function openAnalysisDetails(id) {
-  window.location.href = `analysis-details.html?id=${id}`;
-}
+function openAnalysisDetails(id, type) {
 
+  const rasterTypes = [
+    "ndvi",
+    "heat-index",
+    "vegetation",
+    "air-quality"
+  ];
+
+  const detailsPage = rasterTypes.includes(type)
+    ? "raster-details.html"
+    : "analysis-details.html";
+
+  window.location.href = `${detailsPage}?id=${id}`;
+}
 
 const translations = {
   en: {

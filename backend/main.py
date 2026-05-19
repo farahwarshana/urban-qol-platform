@@ -190,6 +190,7 @@ def calculate_ndvi_endpoint(
             media_type="image/tiff",
             filename=f"ndvi_{job_id}.tif",
             headers={
+                "X-Result-File": result_file_header(output_path),
                 "X-NDVI-Min":     str(stats.get("min", "")),
                 "X-NDVI-Max":     str(stats.get("max", "")),
                 "X-NDVI-Mean":    str(stats.get("mean", "")),
@@ -382,10 +383,11 @@ def calculate_heat_index_endpoint(
             media_type="image/tiff",
             filename=f"heat_index_{job_id}.tif",
             headers={
-                "X-HeatIndex-Min":     str(stats.get("min_lst_c", "")),
-                "X-HeatIndex-Max":     str(stats.get("max_lst_c", "")),
-                "X-HeatIndex-Mean":    str(stats.get("mean_lst_c", "")),
-                "X-Valid-Pixels":      str(stats.get("valid_pixels", "")),
+                "X-Result-File": result_file_header(output_path),
+                "X-HeatIndex-Min": str(stats.get("min_lst_c", "")),
+                "X-HeatIndex-Max": str(stats.get("max_lst_c", "")),
+                "X-HeatIndex-Mean": str(stats.get("mean_lst_c", "")),
+                "X-Valid-Pixels": str(stats.get("valid_pixels", "")),
             },
         )
 
