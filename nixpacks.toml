@@ -1,25 +1,21 @@
-[phases.setup]
-nixPkgs = [
-  "python311",
-  "python311Packages.pip",
-  "gcc",
-  "pkg-config",
-  "expat",
-  "zlib",
-  "libjpeg",
-  "libpng",
-  "geos",
-  "proj",
-  "gdal",
-  "sqlite",
-  "postgresql"
-]
+FROM python:3.11-slim
 
-[phases.install]
-cmds = [
-  "cd backend && python3 -m pip install --upgrade pip setuptools wheel",
-  "cd backend && python3 -m pip install -r requirements.txt"
-]
+RUN apt-get update && apt-get install -y \
+    libexpat1 \
+    gdal-bin \
+    libgdal-dev \
+    libproj-dev \
+    libgeos-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-[start]
-cmd = "cd backend && python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT"
+WORKDIR /app
+
+COPY backend/requirements.txt .
+
+RUN pip install --upgrade pip setuptools wheel
+RUN pip install -r requirements.txt
+
+COPY backend/ .
+
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}
