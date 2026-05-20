@@ -1003,6 +1003,12 @@ async function loadProfile() {
   document.getElementById('displayCity').textContent = data.city;
   document.getElementById('displayOrg').textContent = data.organization;
   document.getElementById('avatarInitials').textContent = data.initials;
+  const memberYear = data.created_at
+  ? new Date(data.created_at).getFullYear()
+  : new Date().getFullYear();
+document.querySelectorAll('.stat-num')[3].textContent = memberYear;
+
+
 
   document.getElementById('firstName').value = data.full_name.split(' ')[0] || '';
   document.getElementById('lastName').value = data.full_name.split(' ')[1] || '';
