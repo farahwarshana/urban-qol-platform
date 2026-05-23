@@ -3584,15 +3584,32 @@ async function runAirQualityAnalysis() {
     const hazardousPct    = response.headers.get("X-Hazardous-Pct");
 
     const arrayBuffer = await response.arrayBuffer();
+    
     lastResultBlob    = arrayBuffer.slice(0);
     lastResultService = "air-quality";
+    lastResultFile = "air_quality_result.tif";
+
     updateLegend("air-quality", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
 
     resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
-      opacity: 0.9,
-      resolution: 256,
-    });
+  opacity: 0.9,
+  resolution: 128,
+   colorFn: values => {
+  const v = Math.round(values[0]);
+
+  if (v === -9999 || isNaN(v)) return null;
+
+  if (v === 0) return "rgba(0,228,0,0.8)";
+  if (v === 1) return "rgba(255,255,0,0.8)";
+  if (v === 2) return "rgba(255,126,0,0.8)";
+  if (v === 3) return "rgba(255,0,0,0.8)";
+  if (v === 4) return "rgba(143,63,151,0.8)";
+  if (v === 5) return "rgba(126,0,35,0.8)";
+
+  return null;
+}
+});
 
     renderAirQualityResults({
       pollutant,
@@ -5904,18 +5921,18 @@ function toggleAnnotate() {
     },
 
     'air-quality': {
-      title: 'Air Quality Index',
-      raw:  () => '',
-      full: () => [
-        row('#34d399', 'AQI ≤ 50 — Good'),
-        row('#a3e635', '51 – 100 — Moderate'),
-        row('#fbbf24', '101 – 150 — Sensitive groups'),
-        row('#f97316', '151 – 200 — Unhealthy'),
-        row('#f87171', '201 – 300 — Very unhealthy'),
-        row('#7f1d1d', '> 300 — Hazardous'),
-      ].join(''),
-      grid: () => qolGradientRow(),
-    },
+  title: 'Air Quality Index',
+  raw:  () => '',
+  full: () => [
+    row('#00e400', 'AQI ≤ 50 — Good'),
+    row('#ffff00', '51 – 100 — Moderate'),
+    row('#ff7e00', '101 – 150 — Sensitive groups'),
+    row('#ff0000', '151 – 200 — Unhealthy'),
+    row('#8f3f97', '201 – 300 — Very unhealthy'),
+    row('#7e0023', '> 300 — Hazardous'),
+  ].join(''),
+  grid: () => qolGradientRow(),
+},
 
     'expansion': {
       title: 'Expansion Suitability',

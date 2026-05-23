@@ -1,3 +1,4 @@
+# from curses import meta
 import os
 import numpy as np
 import rasterio
@@ -35,12 +36,12 @@ def classify_aqi(data, pollutant):
         aqi[(data > 354) & (data <= 424)] = 4
         aqi[data > 424]  = 5
     elif pollutant == "NO2":
-        aqi[data <= 53]   = 0
-        aqi[(data > 53)   & (data <= 100)]  = 1
-        aqi[(data > 100)  & (data <= 360)]  = 2
-        aqi[(data > 360)  & (data <= 649)]  = 3
-        aqi[(data > 649)  & (data <= 1249)] = 4
-        aqi[data > 1249]  = 5
+        aqi[data <= 0.00005] = 0
+        aqi[(data > 0.00005) & (data <= 0.00010)] = 1
+        aqi[(data > 0.00010) & (data <= 0.00015)] = 2
+        aqi[(data > 0.00015) & (data <= 0.00020)] = 3
+        aqi[(data > 0.00020) & (data <= 0.00030)] = 4
+        aqi[data > 0.00030] = 5
     else:  # AQI direct
         aqi[data <= 50]  = 0
         aqi[(data > 50)  & (data <= 100)] = 1
@@ -91,11 +92,17 @@ def calculate_air_quality_index(geotiff_path, output_path):
 
     aqi = classify_aqi(data, pollutant)
 
-    dst_crs = "EPSG:4326"
-    transform_4326, w, h = calculate_default_transform(
-        src_crs, dst_crs, meta["width"], meta["height"],
-        *rasterio.transform.array_bounds(meta["height"], meta["width"], transform),
-    )
+    # dst_crs = "EPSG:4326"
+    # transform_4326, w, h = calculate_default_transform(
+    #     src_crs, dst_crs, meta["width"], meta["height"],
+    #     *rasterio.transform.array_bounds(meta["height"], meta["width"], transform),
+    # )
+
+    dst_crs = src_crs
+    transform_4326 = transform
+    w = meta["width"]
+    h = meta["height"]
+    out = aqi  
 
     out = np.full((h, w), -9999, dtype="int16")
     reproject(

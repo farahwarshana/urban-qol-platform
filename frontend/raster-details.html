@@ -474,36 +474,78 @@ const RASTER_CONFIG = {
   },
 
   "air-quality": {
-    title: "Air Quality Analysis",
-    dataFormat: "GeoTIFF",
-    classTitle: "Air Quality Classes",
-    legend: [
-      { color:"#00e400", label:"Good", range:"Low pollution" },
-      { color:"#ffff00", label:"Moderate", range:"Acceptable" },
-      { color:"#ff7e00", label:"Unhealthy for Sensitive Groups", range:"Elevated pollution" },
-      { color:"#ff0000", label:"Unhealthy", range:"High pollution" },
-      { color:"#8f3f97", label:"Very Unhealthy", range:"Very high pollution" }
-    ],
-    colorFn(v, min, max) {
-      if (v === null || v === undefined || isNaN(v)) return null;
-      const t = normalize(v, min, max);
-      if (t < 0.2) return "rgba(0,228,0,0.8)";
-      if (t < 0.4) return "rgba(255,255,0,0.8)";
-      if (t < 0.6) return "rgba(255,126,0,0.8)";
-      if (t < 0.8) return "rgba(255,0,0,0.8)";
-      return "rgba(143,63,151,0.8)";
-    },
-    buildInsight(stats) {
-      return "Air quality raster loaded. Higher values indicate worse air quality conditions.";
-    },
-    recommendations() {
+  title: "Air Quality Analysis",
+  dataFormat: "GeoTIFF",
+  classTitle: "AQI Classification Summary",
+
+  legend: [
+    { color:"#00e400", label:"Good", range:"Class 0" },
+    { color:"#ffff00", label:"Moderate", range:"Class 1" },
+    { color:"#ff7e00", label:"Sensitive Groups", range:"Class 2" },
+    { color:"#ff0000", label:"Unhealthy", range:"Class 3" },
+    { color:"#8f3f97", label:"Very Unhealthy", range:"Class 4" },
+    { color:"#7e0023", label:"Hazardous", range:"Class 5" }
+  ],
+
+  colorFn(v) {
+    const c = Math.round(v);
+
+    if (c === -9999 || isNaN(c)) return null;
+
+    if (c === 0) return "rgba(0,228,0,0.8)";
+    if (c === 1) return "rgba(255,255,0,0.8)";
+    if (c === 2) return "rgba(255,126,0,0.8)";
+    if (c === 3) return "rgba(255,0,0,0.8)";
+    if (c === 4) return "rgba(143,63,151,0.8)";
+    if (c === 5) return "rgba(126,0,35,0.8)";
+
+    return null;
+  },
+
+  buildInsight(stats) {
+    const mean = stats.mean;
+
+    if (mean >= 4)
+      return "Severe air pollution conditions dominate the analyzed area.";
+
+    if (mean >= 3)
+      return "Unhealthy air quality patterns are detected across major urban zones.";
+
+    if (mean >= 2)
+      return "Moderate to elevated pollution levels affect sensitive groups.";
+
+    if (mean >= 1)
+      return "Air quality is generally acceptable with moderate pollution signals.";
+
+    return "Air quality conditions are mostly good across the area.";
+  },
+
+  recommendations(stats) {
+    const mean = stats.mean;
+
+    if (mean >= 3) {
       return [
-        "Identify high-pollution zones and compare them with traffic density.",
-        "Prioritize monitoring and mitigation in the worst air quality zones.",
-        "Use vegetation and mobility interventions to reduce exposure."
+        "Prioritize emission reduction in high-pollution zones.",
+        "Compare pollution hotspots with traffic density.",
+        "Increase green buffers around dense roads."
       ];
     }
+
+    if (mean >= 2) {
+      return [
+        "Reduce exposure in high-pollution areas.",
+        "Improve public transport and reduce traffic emissions.",
+        "Use vegetation corridors to improve urban air quality."
+      ];
+    }
+
+    return [
+      "Maintain current air quality conditions through monitoring.",
+      "Compare future analyses to detect pollution change.",
+      "Integrate air quality with heat and density analyses."
+    ];
   }
+}
 };
 
 function normalize(v, min, max) {
