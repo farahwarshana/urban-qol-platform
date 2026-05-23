@@ -978,20 +978,22 @@ def calculate_air_quality_endpoint(
         stats = calculate_air_quality_index(str(input_path), str(output_path))
 
         return FileResponse(
-            path=str(output_path),
-            media_type="image/tiff",
-            filename=f"air_quality_{job_id}.tif",
-            headers={
-                "X-Pollutant":          stats["pollutant"],
-                "X-Valid-Pixels":       str(stats["valid_pixels"]),
-                "X-Good-Pct":           str(stats["good_pct"]),
-                "X-Moderate-Pct":       str(stats["moderate_pct"]),
-                "X-Sensitive-Pct":      str(stats["sensitive_pct"]),
-                "X-Unhealthy-Pct":      str(stats["unhealthy_pct"]),
-                "X-Very-Unhealthy-Pct": str(stats["very_unhealthy_pct"]),
-                "X-Hazardous-Pct":      str(stats["hazardous_pct"]),
-            },
-        )
+    path=str(output_path),
+    media_type="image/tiff",
+    filename=f"air_quality_{job_id}.tif",
+    headers={
+        "X-Result-File": f"outputs/air_quality/air_quality_{job_id}.tif",
+        "X-Pollutant":          stats["pollutant"],
+        "X-Valid-Pixels":       str(stats["valid_pixels"]),
+        "X-Good-Pct":           str(stats["good_pct"]),
+        "X-Moderate-Pct":       str(stats["moderate_pct"]),
+        "X-Sensitive-Pct":      str(stats["sensitive_pct"]),
+        "X-Unhealthy-Pct":      str(stats["unhealthy_pct"]),
+        "X-Very-Unhealthy-Pct": str(stats["very_unhealthy_pct"]),
+        "X-Hazardous-Pct":      str(stats["hazardous_pct"]),
+        "X-Score": str(stats["score"]),
+    },
+)
 
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

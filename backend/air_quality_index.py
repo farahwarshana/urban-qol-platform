@@ -140,16 +140,29 @@ def calculate_air_quality_index(geotiff_path, output_path):
         raise ValueError("No valid AQI pixels after reprojection.")
 
     total = valid.size
+
     stats = {
-        "output_path":      output_path,
-        "crs":              dst_crs,
-        "pollutant":        pollutant,
-        "valid_pixels":     int(total),
-        "good_pct":         round(float(np.sum(valid == 0) / total * 100), 1),
-        "moderate_pct":     round(float(np.sum(valid == 1) / total * 100), 1),
-        "sensitive_pct":    round(float(np.sum(valid == 2) / total * 100), 1),
-        "unhealthy_pct":    round(float(np.sum(valid == 3) / total * 100), 1),
-        "very_unhealthy_pct": round(float(np.sum(valid == 4) / total * 100), 1),
-        "hazardous_pct":    round(float(np.sum(valid == 5) / total * 100), 1),
-    }
+    "output_path":      output_path,
+    "crs":              dst_crs,
+    "pollutant":        pollutant,
+    "valid_pixels":     int(total),
+    "good_pct":         round(float(np.sum(valid == 0) / total * 100), 1),
+    "moderate_pct":     round(float(np.sum(valid == 1) / total * 100), 1),
+    "sensitive_pct":    round(float(np.sum(valid == 2) / total * 100), 1),
+    "unhealthy_pct":    round(float(np.sum(valid == 3) / total * 100), 1),
+    "very_unhealthy_pct": round(float(np.sum(valid == 4) / total * 100), 1),
+    "hazardous_pct":    round(float(np.sum(valid == 5) / total * 100), 1),
+}
+
+    stats["score"] = round(
+    (
+        stats["good_pct"] * 100 +
+        stats["moderate_pct"] * 75 +
+        stats["sensitive_pct"] * 55 +
+        stats["unhealthy_pct"] * 35 +
+        stats["very_unhealthy_pct"] * 15 +
+        stats["hazardous_pct"] * 0
+    ) / 100
+)
+
     return stats

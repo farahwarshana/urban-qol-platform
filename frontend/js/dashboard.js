@@ -63,9 +63,14 @@ function autoSaveCurrentAnalysis() {
   // const panel = document.getElementById('analysisPanel');
   const scoreEl = panel ? panel.querySelector('.insight-card .value') : null;
   const scoreMatch = scoreEl ? scoreEl.textContent.match(/(\d+)\s*\/\s*100/) : null;
-  const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
+  const score =
+  lastAnalysisScore
+    ? parseInt(lastAnalysisScore)
+    : (scoreMatch ? parseInt(scoreMatch[1]) : 50);
   const status = score >= 75 ? 'high' : score >= 40 ? 'mid' : 'low';
 
+  console.log("SAVING SCORE =", score);
+ console.log("LAST ANALYSIS SCORE =", lastAnalysisScore);
 
   fetch(`${API_BASE_URL}/analyses?username=${username}`, {
   // fetch(`http://localhost:8000/analyses?username=${username}`, {
@@ -3540,6 +3545,7 @@ function renderHeatIndexResults(stats, inputs) {
 async function runAirQualityAnalysis() {
   const tiffInput = document.getElementById("tiffInput");
 
+
   if (!tiffInput || !tiffInput.files[0]) {
     alert("Please upload a GeoTIFF file first.");
     return;
@@ -3582,12 +3588,18 @@ async function runAirQualityAnalysis() {
     const unhealthyPct    = response.headers.get("X-Unhealthy-Pct");
     const veryUnhealthyPct= response.headers.get("X-Very-Unhealthy-Pct");
     const hazardousPct    = response.headers.get("X-Hazardous-Pct");
+    const analysisScore = response.headers.get("X-Score");
 
     const arrayBuffer = await response.arrayBuffer();
     
     lastResultBlob    = arrayBuffer.slice(0);
     lastResultService = "air-quality";
-    lastResultFile = "air_quality_result.tif";
+    lastAnalysisScore = analysisScore;
+    console.log("HEADER SCORE =", analysisScore);
+    console.log("GLOBAL SCORE =", lastAnalysisScore);
+
+    lastResultFile = response.headers.get("X-Result-File");
+    console.log("Saved Air Quality result file:", lastResultFile);
 
     updateLegend("air-quality", "full");
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
@@ -6133,7 +6145,7 @@ let aiLayer     = null;  // AI highlight overlays — shown when AI Recommendati
 // Holds the last analysis result so the grid endpoint can re-use it
 let lastResultBlob    = null;  // ArrayBuffer (rasters) or object (geojson)
 let lastResultService = null;  // e.g. "ndvi", "heat-index", "crime", "urban-density"
-
+let lastAnalysisScore = null;
 // Holds per-feature urban density data so the grid tab can build a histogram
 let lastUrbanDensityFeatures = null;  // array of {name, density} from the full-area result
 

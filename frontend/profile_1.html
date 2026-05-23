@@ -845,7 +845,20 @@ async function loadAnalyses() {
     currentFilter = filter;
     const list = document.getElementById('analysisList');
     const count = document.getElementById('historyCount');
-    const filtered = filter === 'all' ? analyses : analyses.filter(a => a.type === filter);
+    const filterMap = {
+  heat: "heat-index",
+  urban: "urban-density",
+  air: "air-quality",
+  transit: "public-transport",
+};
+
+const normalizedFilter =
+  filterMap[filter] || filter;
+
+const filtered =
+  filter === 'all'
+    ? analyses
+    : analyses.filter(a => a.type === normalizedFilter);
     count.textContent =
     filtered.length + ' ' + translations[currentLang].runs;
     if (!filtered.length) {
