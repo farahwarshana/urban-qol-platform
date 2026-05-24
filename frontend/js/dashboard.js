@@ -6350,10 +6350,16 @@ function _fullAnalysisFillHex(feature, service) {
       return p.type === "covered" ? "#4cc2ff" : "#e74c3c";
     }
     case "facility-accessibility": {
+      if (p.type === "uncovered" || p.category === "uncovered") return "#e74c3c";
+      if (p.layer === "boundary") return null;
+      // Use dynamic zone colors keyed by sorted position
       const t = p.time_min;
-      if (t === 5)  return "#198754";
-      if (t === 10) return "#ffc107";
-      return "#dc3545";
+      if (t == null) return null;
+      const allTimes = [...new Set(
+        lastResultBlob.features.map(f => f.properties.time_min).filter(x => x != null)
+      )].sort((a, b) => a - b);
+      const idx = allTimes.indexOf(t);
+      return FACILITY_ZONE_COLORS[idx] ?? "#888";
     }
     case "vegetation":
       return cssColorToHex(vegPctColor(p.vegetation_pct ?? 0));
@@ -6373,8 +6379,13 @@ function _fullAnalysisFillOpacity(feature, service) {
     return p.type === "covered" ? 0.45 : 0.25;
   }
   if (service === "facility-accessibility") {
-    const t = p.time_min;
-    if (t === 5) return 0.40; if (t === 10) return 0.32; return 0.24;
+    if (p.type === "uncovered" || p.category === "uncovered") return 0.18;
+    if (p.layer === "boundary") return 0;
+    const allTimes = [...new Set(
+      lastResultBlob.features.map(f => f.properties.time_min).filter(x => x != null)
+    )].sort((a, b) => a - b);
+    const idx = allTimes.indexOf(p.time_min);
+    return Math.max(0.20, 0.45 - idx * 0.05);
   }
   if (service === "traffic" && p.type === "hotspot") return 0;
   if (service === "informal-settlement" && p.type === "high_irregularity_zone") return 0;
@@ -6399,14 +6410,46 @@ function downloadFullAnalysisResult() {
   } else {
     // Deep-copy the GeoJSON and inject simplestyle fill properties
     const geojson = JSON.parse(JSON.stringify(lastResultBlob));
+
+    // ── Sort features so bottom layers come first in the file ─────────────────
+    // GIS tools render features in file order (last = topmost), so we place
+    // boundary/reference outlines first, uncovered areas next, then data zones
+    // from largest (widest) to smallest so inner zones render on top.
+    if (lastResultService === "facility-accessibility") {
+      // Collect sorted zone times (largest first so they sit below in the stack)
+      const allTimes = [...new Set(
+        geojson.features.map(f => f.properties.time_min).filter(x => x != null)
+      )].sort((a, b) => b - a); // descending: largest time first = bottom of stack
+
+      geojson.features.sort((a, b) => {
+        const pa = a.properties || {}, pb = b.properties || {};
+        const rankA = pa.layer === "boundary" ? 0
+          : (pa.type === "uncovered" || pa.category === "uncovered") ? 1
+          : pa.time_min != null ? 2 + allTimes.indexOf(pa.time_min)
+          : 99;
+        const rankB = pb.layer === "boundary" ? 0
+          : (pb.type === "uncovered" || pb.category === "uncovered") ? 1
+          : pb.time_min != null ? 2 + allTimes.indexOf(pb.time_min)
+          : 99;
+        return rankA - rankB;
+      });
+    } else if (lastResultService === "public-transport") {
+      // boundary/stations → uncovered → covered
+      geojson.features.sort((a, b) => {
+        const rank = p => p.layer === "boundary" || p.layer === "station" ? 0
+          : p.type === "uncovered" ? 1 : 2;
+        return rank(a.properties || {}) - rank(b.properties || {});
+      });
+    }
+
     geojson.features.forEach(f => {
       const fill = _fullAnalysisFillHex(f, lastResultService);
       const fillOpacity = _fullAnalysisFillOpacity(f, lastResultService);
       const p = f.properties;
-      p["fill"]          = fill || "transparent";
-      p["fill-opacity"]  = fillOpacity;
-      p["stroke"]        = fill || "#333333";
-      p["stroke-width"]  = 1;
+      p["fill"]           = fill || "transparent";
+      p["fill-opacity"]   = fillOpacity;
+      p["stroke"]         = fill || "#333333";
+      p["stroke-width"]   = 1;
       p["stroke-opacity"] = fill ? 0.6 : 0;
     });
     downloadGeoJSON(geojson, `${lastResultService}_result.geojson`);
