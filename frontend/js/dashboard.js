@@ -8345,26 +8345,7 @@ async function downloadAIReportPDF() {
   const highlights = _lastAIHighlights || [];
 
   // ── Capture map via the full composite pipeline ───────────
-  const btn = tabEl.querySelector("button[onclick='downloadAIReportPDF()']");
-  if (btn) { btn.disabled = true; btn.textContent = "⏳ Building…"; }
-
-  // Show a quick toast if available
-  if (typeof showToast === "function") showToast("Capturing map and building PDF…", "info");
-
-  // We need to wait one frame so the AI map layer is fully painted
-  const mapCapture = await new Promise(resolve => {
-    setTimeout(() => {
-      buildCompositeCanvas(canvas => {
-        if (!canvas) { resolve(null); return; }
-        try {
-          resolve({ dataUrl: canvas.toDataURL("image/jpeg", 0.88), w: canvas.width, h: canvas.height });
-        } catch(e) { resolve(null); }
-      });
-    }, 200);
-  });
-  const mapDataUrl = mapCapture?.dataUrl || null;
-
-  if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-4-4h2.5V2h3v6H12L8 12z"/><path d="M2 13h12v1.5H2z"/></svg> PDF Report'; }
+  if (typeof showToast === "function") showToast("Building PDF…", "info");
 
   // ── PDF scaffolding ───────────────────────────────────────
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -8647,21 +8628,6 @@ async function downloadAIReportPDF() {
     setTextC(C.textMain); doc.setFont("helvetica","bold"); doc.setFontSize(9);
     hlLines.forEach((ln, i) => doc.text(safe(ln), ML + 6, y + 5.5 + i * 5.5));
     y += hlH + 6;
-  }
-
-  // ── Map snapshot ──────────────────────────────────────────
-  if (mapDataUrl) {
-    // Derive height that preserves the canvas aspect ratio, capped at 110 mm tall
-    const pxW    = mapCapture.w || 1;
-    const pxH    = mapCapture.h || 1;
-    const imgW   = CW - 2;                              // fill column width
-    const imgH   = Math.min(110, imgW * (pxH / pxW));  // locked aspect ratio
-    ensurePage(imgH + 14);
-    setFill(C.panel); rct(ML, y, CW, imgH + 4);
-    try { doc.addImage(mapDataUrl, "JPEG", ML + 1, y + 1, imgW, imgH); } catch(e) {}
-    setTextC(C.textMuted); doc.setFont("helvetica","italic"); doc.setFontSize(7);
-    doc.text("Map - AI layer view at time of export", ML + 2, y + imgH + 5);
-    y += imgH + 9;
   }
 
   // ── Score gauge ───────────────────────────────────────────
