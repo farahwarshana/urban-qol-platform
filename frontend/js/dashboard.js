@@ -268,6 +268,7 @@ function renderServicePanel(key) {
   clearMap();
   inputLayer = null;
   resultLayer = null;
+  lastRawInputBuffer = null;
 
   // Special case for the "Future Expansion Suitability" flow
   if (service.isExpansion) {
@@ -615,6 +616,8 @@ async function runHeatIndexAnalysis() {
   const file = tiffInput.files[0];
   const inputs = { fileName: file.name };
 
+  const rawArrayBuffer = await file.arrayBuffer();
+
   const formData = new FormData();
   formData.append("lst_geotiff", file);
 
@@ -677,6 +680,9 @@ async function runHeatIndexAnalysis() {
     }
 
     clearMap();
+
+    // Store the raw uploaded bytes so the Raw Data tab can render them on demand
+    lastRawInputBuffer = rawArrayBuffer;
 
     resultLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
   opacity: 0.85,
@@ -4168,15 +4174,62 @@ function wireTabSwitching() {
               if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
             } catch (e) {}
           }
-        } else {
+        } else if (lastRawInputBuffer) {
+          // Raster service with a stored raw upload (e.g. heat-index) — build and show it now
           if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
-          if (inputLayer && !map.hasLayer(inputLayer)) {
+          if (inputLayer && map.hasLayer(inputLayer)) map.removeLayer(inputLayer);
+          inputLayer = null;
+          (async () => {
             try {
+              const georaster = await parseGeoraster(lastRawInputBuffer.slice(0));
+              // Apply same proj4 / projection-override logic as renderGeoRasterFromArrayBuffer
+              if (typeof proj4 !== "undefined") {
+                proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
+                proj4.defs("EPSG:3857", "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs");
+                proj4.defs("EPSG:32636", "+proj=utm +zone=36 +datum=WGS84 +units=m +no_defs");
+                proj4.defs("EPSG:32637", "+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs");
+                proj4.defs("EPSG:32638", "+proj=utm +zone=38 +datum=WGS84 +units=m +no_defs");
+                const { xmin, xmax, ymin, ymax } = georaster;
+                if (xmin >= -180 && xmax <= 180 && ymin >= -90 && ymax <= 90) {
+                  proj4.defs("32767", "+proj=longlat +datum=WGS84 +no_defs");
+                }
+              }
+              if (georaster.projection === 32767) {
+                const { xmin, xmax, ymin, ymax } = georaster;
+                if (xmin >= -180 && xmax <= 180 && ymin >= -90 && ymax <= 90) georaster.projection = 4326;
+              }
+              const rawMin = georaster.mins?.[0] ?? 0;
+              const rawMax = georaster.maxs?.[0] ?? 1;
+              const rawRange = rawMax - rawMin || 1;
+              inputLayer = new GeoRasterLayer({
+                georaster,
+                opacity: 0.9,
+                resolution: 256,
+                pixelValuesToColorFn: (values) => {
+                  const v = values[0];
+                  if (v === undefined || v === null || isNaN(v) || v === -9999) return null;
+                  const t = Math.max(0, Math.min(1, (v - rawMin) / rawRange));
+                  // thermal gradient: cool blue → warm red
+                  const r = Math.round(t * 255);
+                  const g = Math.round(100 * (1 - Math.abs(t - 0.5) * 2));
+                  const b = Math.round((1 - t) * 255);
+                  return `rgba(${r},${g},${b},0.9)`;
+                },
+              });
               inputLayer.addTo(map);
-              const b = inputLayer.getBounds ? inputLayer.getBounds() : null;
-              if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
-            } catch (e) { console.warn("Could not restore input layer:", e); }
-          }
+              const bounds = inputLayer.getBounds();
+              if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
+            } catch (e) {
+              console.warn("Could not render raw input raster:", e);
+            }
+          })();
+        } else if (inputLayer) {
+          if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+          try {
+            if (!map.hasLayer(inputLayer)) inputLayer.addTo(map);
+            const b = inputLayer.getBounds ? inputLayer.getBounds() : null;
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+          } catch (e) { console.warn("Could not restore input layer:", e); }
         }
 
       } else if (target === "full") {
@@ -6143,8 +6196,9 @@ let gridLayer   = null;  // 200 m cell QoL layer — shown when Grid/Cell tab is
 let aiLayer     = null;  // AI highlight overlays — shown when AI Recommendations tab is active
 
 // Holds the last analysis result so the grid endpoint can re-use it
-let lastResultBlob    = null;  // ArrayBuffer (rasters) or object (geojson)
-let lastResultService = null;  // e.g. "ndvi", "heat-index", "crime", "urban-density"
+let lastResultBlob      = null;  // ArrayBuffer (rasters) or object (geojson)
+let lastRawInputBuffer  = null;  // original uploaded raster bytes — used to show Raw Data tab
+let lastResultService   = null;  // e.g. "ndvi", "heat-index", "crime", "urban-density"
 let lastAnalysisScore = null;
 // Holds per-feature urban density data so the grid tab can build a histogram
 let lastUrbanDensityFeatures = null;  // array of {name, density} from the full-area result
