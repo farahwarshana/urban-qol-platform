@@ -360,13 +360,16 @@ const RASTER_CONFIG = {
       { color:"#4575b4", label:"Water / No Vegetation", range:"NDVI < 0" }
     ],
     colorFn(v) {
-      if (v === null || v === undefined || isNaN(v)) return null;
-      if (v < 0) return "rgba(69,117,180,0.8)";
-      if (v < 0.2) return "rgba(217,168,90,0.8)";
-      if (v < 0.4) return "rgba(255,255,191,0.8)";
-      if (v < 0.6) return "rgba(166,217,106,0.8)";
-      return "rgba(26,150,65,0.8)";
-    },
+    const c = Math.round(v);
+    if (c === -9999 || isNaN(c) || v === null || v === undefined) return null;
+    if (c <= 0) return "rgba(0,228,0,0.8)";
+    if (c === 1) return "rgba(255,255,0,0.8)";
+    if (c === 2) return "rgba(255,126,0,0.8)";
+    if (c === 3) return "rgba(255,0,0,0.8)";
+    if (c === 4) return "rgba(143,63,151,0.8)";
+    if (c >= 5) return "rgba(126,0,35,0.8)";  // ← أي رقم أكبر من 5 هياخد أحمر غامق
+    return null;
+  },
     buildInsight(stats) {
       const mean = stats.mean;
       if (mean === null) return "NDVI analysis completed. Review spatial vegetation distribution on the map.";
@@ -837,6 +840,15 @@ function exportCurrentAnalysis() {
   const size = document.getElementById("metaRasterSize").textContent;
   const pixel = document.getElementById("metaPixelSize").textContent;
 
+  // جيبي الـ stats من الصفحة
+  const statBoxes = document.querySelectorAll(".stat-box");
+  let statsText = "";
+  statBoxes.forEach(box => {
+    const label = box.querySelector(".stat-label")?.textContent || "";
+    const value = box.querySelector(".stat-value")?.textContent || "";
+    statsText += `${label}: ${value}\n`;
+  });
+
   const content =
 `MALAZ RASTER ANALYSIS REPORT
 ============================
@@ -847,6 +859,9 @@ Generated At: ${date}
 Raster Size: ${size}
 Pixel Size: ${pixel}
 
+Pixel Statistics:
+-----------------
+${statsText}
 Generated from MALAZ Platform.
 `;
 
