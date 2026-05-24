@@ -112,37 +112,126 @@ function toggleLang() {
 }
 
 function applyLang() {
+  const isAr = currentLang === "ar";
+  const T = TXT[currentLang];
 
-  const isAr =
-    currentLang === "ar";
-
-  document.documentElement.dir =
-    isAr ? "rtl" : "ltr";
+  document.documentElement.dir = isAr ? "rtl" : "ltr";
 
   document.getElementById("langBtn").textContent =
-    isAr
-      ? "🌐 English"
-      : "🌐 العربية";
+    isAr ? "🌐 English" : "🌐 العربية";
+
+  // Sidebar title
+  const sidebarH2 = document.querySelector(".sidebar h2");
+  if (sidebarH2) sidebarH2.textContent = T.servicesTitle;
+
+  // Service list items
+  const serviceMap = {
+    "urban-density":             T.urban,
+    "public-transport":          T.transport,
+    "facility_Accessibility_index": T.facility,
+    "heat-index":                T.heat,
+    "vegetation":                T.vegetation,
+    "ndvi":                      T.ndvi,
+    "crime":                     T.crime,
+    "traffic":                   T.traffic,
+    "informal-settlement":       T.informal,
+    "air-quality":               T.air,
+    "expansion":                 T.expansion,
+  };
+
+  document.querySelectorAll("li[data-service]").forEach(li => {
+    const key = li.getAttribute("data-service");
+    if (serviceMap[key]) {
+      // نحافظ على الـ icon وبس نغير النص
+      const dot  = li.querySelector(".dot");
+      const img  = li.querySelector("img");
+      li.textContent = serviceMap[key];
+      if (dot) li.prepend(dot);
+      if (img) li.insertBefore(img, li.firstChild.nextSibling || li.firstChild);
+    }
+  });
+
+  // Empty panel
+  const emptyPanel = document.getElementById("emptyPanel");
+  if (emptyPanel) {
+    emptyPanel.textContent = isAr
+      ? "← اختر خدمة من اليسار للبدء."
+      : "← Select a service from the left to begin.";
+  }
+// Navbar
+  const shareBtn = document.querySelector("button[onclick='sharePortal()']");
+  if (shareBtn) shareBtn.innerHTML = `<img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/share-rounded.png" alt="share-rounded"/> ${isAr ? "مشاركة" : "Share"}`;
+
+  const userSpan = document.querySelector(".user-btn span:nth-child(2)");
+  if (userSpan) userSpan.textContent = isAr ? "الملف الشخصي" : "Profile";
+
+  const dropdownLinks = document.querySelectorAll(".user-menu .dropdown a");
+  if (dropdownLinks[0]) dropdownLinks[0].textContent = isAr ? "الملف الشخصي" : "Profile";
+  if (dropdownLinks[1]) dropdownLinks[1].textContent = isAr ? "تسجيل خروج" : "Logout";
+
+  // Map controls
+  const measureBtn = document.getElementById("measureBtn");
+  if (measureBtn) measureBtn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/> ${isAr ? "قياس" : "Measure"}`;
+
+  const annotateBtn = document.getElementById("annotateBtn");
+  if (annotateBtn) annotateBtn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/> ${isAr ? "تعليق" : "Annotate"}`;
+
+  // Chatbot
+  const chatHeader = document.querySelector(".chatbot-header");
+  if (chatHeader) chatHeader.textContent = isAr ? "اسأل حضاري" : "Ask Hadary";
+
+  const chatInput = document.getElementById("chatInput");
+  if (chatInput) chatInput.placeholder = isAr ? "اكتب رسالة..." : "Type a message…";
+
+  const chatSendBtn = document.querySelector(".chatbot-input .btn-primary");
+  if (chatSendBtn) chatSendBtn.textContent = isAr ? "إرسال" : "Send";
 }
+
+
 const TXT = {
   en: {
-    ndvi: "NDVI Analysis",
-    heat: "Heat Index",
+    urban:        "Population Density",
+    transport:    "Public Transport Station Coverage",
+    facility:     "Facility Accessibility Index",
+    heat:         "Heat Index",
+    vegetation:   "Vegetation Density",
+    ndvi:         "NDVI",
+    crime:        "Safety / Crime Density",
+    traffic:      "Traffic Analysis",
+    informal:     "Informal Settlement Pattern Analysis",
+    air:          "Air Quality Index",
+    expansion:    "Future Expansion Suitability",
     uploadRaster: "Upload raster (GeoTIFF)",
+    servicesTitle:"Analysis Services",
+    urbanDesc: "Estimate population density across an area.",
+    uploadBoundary: "Upload boundary data (GeoJSON)",
+    populationField: "Population field name",
   },
-
   ar: {
-    ndvi: "تحليل الغطاء النباتي",
-    heat: "مؤشر الحرارة",
-    uploadRaster: "رفع ملف الراستر",
+    urban:        "كثافة السكان",
+    transport:    "تغطية محطات النقل العام",
+    facility:     "مؤشر إمكانية الوصول للمرافق",
+    heat:         "مؤشر الحرارة",
+    vegetation:   "كثافة الغطاء النباتي",
+    ndvi:         "تحليل الغطاء النباتي NDVI",
+    crime:        "الأمان / كثافة الجريمة",
+    traffic:      "تحليل حركة المرور",
+    informal:     "تحليل أنماط المناطق العشوائية",
+    air:          "مؤشر جودة الهواء",
+    expansion:    "ملاءمة التوسع المستقبلي",
+    uploadRaster: "رفع ملف الراستر (GeoTIFF)",
+    servicesTitle:"خدمات التحليل",
+    urbanDesc: "تقدير كثافة السكان داخل المنطقة.",
+    uploadBoundary: "رفع حدود المنطقة (GeoJSON)",
+    populationField: "اسم حقل السكان",
   }
 };
 const SERVICES = {
   "urban-density": {
     title: TXT[currentLang].urban,
-    desc: "Estimate population density across an area.",
+    desc: TXT[currentLang].urbanDesc,
     inputs: [
-      { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" },
+      { type: "file", id: "geoJsonInput", label: TXT[currentLang].uploadBoundary},
       { type: "text", id: "populationField", label: "Population field name", placeholder: "e.g. population, pop" }
     ],
   },
