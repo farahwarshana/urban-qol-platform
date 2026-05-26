@@ -111,6 +111,64 @@ function toggleLang() {
   location.reload();
 }
 
+function translateLabels() {
+  if (currentLang !== "ar") return;
+  
+  const labelMap = {
+    "Overall Score":              "النتيجة الإجمالية",
+    "Performance":                "الأداء",
+    "Thermal Class":              "الفئة الحرارية",
+    "Mean Temp (°C)":             "متوسط الحرارة (°C)",
+    "Min Temp (°C)":              "أدنى حرارة (°C)",
+    "Max Temp (°C)":              "أقصى حرارة (°C)",
+    "Valid Pixels":               "البكسل الصالح",
+    "Temperature Spread":         "توزيع الحرارة",
+    "Total Population":           "إجمالي السكان",
+    "Total Area":                 "إجمالي المساحة",
+    "Areas Analyzed":             "المناطق المحللة",
+    "Avg Density":                "متوسط الكثافة",
+    "Peak Density Zone":          "أعلى منطقة كثافة",
+    "Distribution Balance":       "توازن التوزيع",
+    "Area Coverage":              "تغطية المنطقة",
+    "Stations Analyzed":          "المحطات المحللة",
+    "Walking Buffer":             "مسافة المشي",
+    "Mean NDVI":                  "متوسط NDVI",
+    "Min NDVI":                   "أدنى NDVI",
+    "Max NDVI":                   "أقصى NDVI",
+    "Std. Deviation":             "الانحراف المعياري",
+    "Vegetation Coverage":        "تغطية الغطاء النباتي",
+    "Overall QoL Score":          "نتيجة جودة الحياة",
+    "Avg Density Classification": "تصنيف متوسط الكثافة",
+    "Coverage Balance":           "توازن التغطية",
+    "Station Distribution":       "توزيع المحطات",
+    "Road network file":          "ملف شبكة الطرق",
+    "Total Road Length":          "إجمالي طول الطرق",
+    "Road Segments":              "قطاعات الطرق",
+    "Road Density":               "كثافة الطرق",
+    "Connectivity Index":         "مؤشر الاتصال",
+    "Fragmented Zones":           "المناطق المجزأة",
+    "Peak Hotspot Density":       "أعلى كثافة جريمة",
+    "GeoTIFF file":               "ملف GeoTIFF",
+    "Raster file":                "ملف الراستر",
+    "Total Cells":                "إجمالي الخلايا",
+    "Best Cell":                  "أفضل خلية",
+    "Worst Cell":                 "أسوأ خلية",
+    "Status":                     "الحالة",
+    "Avg Irregularity Score":     "متوسط نتيجة عدم الانتظام",
+    "Overall Classification":     "التصنيف العام",
+    "Vegetation Health":          "صحة الغطاء النباتي",
+    "Pollutant detected":         "الملوث المكتشف",
+    "Walking distance":           "مسافة المشي",
+    "Stations file":              "ملف المحطات",
+    "Area of interest":           "منطقة الاهتمام",
+  };
+
+  document.querySelectorAll(".label").forEach(el => {
+    const text = el.textContent.trim();
+    if (labelMap[text]) el.textContent = labelMap[text];
+  });
+}
+
 function applyLang() {
   const isAr = currentLang === "ar";
   const T = TXT[currentLang];
@@ -150,7 +208,33 @@ function applyLang() {
       if (img) li.insertBefore(img, li.firstChild.nextSibling || li.firstChild);
     }
   });
+// Service descriptions في الـ sidebar
+  const descMap = {
+    "urban-density":                isAr ? "تحسب كثافة السكان لكل وحدة مساحة." : "Calculates population per unit area to assess concentration.",
+    "public-transport":             isAr ? "تحلل تغطية محطات النقل العام في المنطقة." : "Evaluates how well public transport stations cover the selected area.",
+    "facility_Accessibility_index": isAr ? "تحدد إمكانية الوصول للخدمات الأساسية بناءً على وقت السفر." : "Determines accessibility to key services based on travel time or distance.",
+    "heat-index":                   isAr ? "تحلل بيانات الحرارة لتحديد البقع الساخنة." : "Analyzes temperature raster data to identify heat intensity and hotspots.",
+    "vegetation":                   isAr ? "تقيس نسبة المساحات الخضراء من إجمالي المنطقة." : "Measures the proportion of green areas relative to the total land area.",
+    "ndvi":                         isAr ? "تقيّم صحة الغطاء النباتي باستخدام بيانات الأقمار الصناعية." : "Assesses the health and vitality of vegetation using satellite-derived indices.",
+    "crime":                        isAr ? "ترسم وتحلل تركز حوادث الجريمة في المنطقة." : "Maps and analyzes the concentration of crime incidents across the area.",
+    "traffic":                      isAr ? "تفحص أنماط حركة المرور ومستويات الازدحام." : "Examines traffic patterns and congestion levels within the selected region.",
+    "informal-settlement":          isAr ? "تكتشف أنماط المناطق العشوائية من صور الأقمار الصناعية." : "Detects informal settlement patterns from satellite imagery.",
+    "air-quality":                  isAr ? "تسترجع وتقيّم بيانات جودة الهواء للمنطقة المحددة." : "Retrieves and evaluates air quality data for the defined area of interest.",
+    "expansion":                    isAr ? "تحدد المناطق الأكثر ملاءمة للتطوير." : "Identifies the most suitable areas for development.",
+  };
 
+  document.querySelectorAll("li[data-service]").forEach(li => {
+    const key = li.getAttribute("data-service");
+    const nextP = li.nextElementSibling;
+    if (nextP && nextP.tagName === "P" && descMap[key]) {
+      nextP.textContent = descMap[key];
+    }
+  });
+
+  // Run Analysis button
+  document.querySelectorAll("button[onclick*='runAnalysis']").forEach(btn => {
+    btn.textContent = isAr ? "▶ تشغيل التحليل" : "▶ Run Analysis";
+  });
   // Empty panel
   const emptyPanel = document.getElementById("emptyPanel");
   if (emptyPanel) {
@@ -186,7 +270,6 @@ function applyLang() {
   const chatSendBtn = document.querySelector(".chatbot-input .btn-primary");
   if (chatSendBtn) chatSendBtn.textContent = isAr ? "إرسال" : "Send";
 }
-
 
 const TXT = {
   en: {
@@ -424,7 +507,7 @@ function renderServicePanel(key) {
       <!-- STEP 3 — Run Analysis button -->
       <button class="btn btn-primary btn-block btn-lg mt-3"
               onclick="runAnalysis('${key}')">
-        ▶ Run Analysis
+        ${currentLang === "ar" ? "▶ تشغيل التحليل" : "▶ Run Analysis"}
       </button>
     </div>
   `;
@@ -1505,6 +1588,16 @@ async function runPublicTransportAnalysis() {
 
 
 /* ---------- Render Public Transport Results ---------- */
+function tabsHtml() {
+  const isAr = currentLang === "ar";
+  return `
+    <div class="tabs">
+      <div class="tab"        data-tab="raw">${isAr ? "البيانات الخام" : "Raw Data"}</div>
+      <div class="tab active" data-tab="full">${isAr ? "المنطقة الكاملة" : "Full Area"}</div>
+      <div class="tab"        data-tab="grid">${isAr ? "شبكة الخلايا" : "Grid / Cell"}</div>
+      <div class="tab"        data-tab="ai">${isAr ? "✦ توصيات الذكاء الاصطناعي" : "✦ AI Recommendations"}</div>
+    </div>`;
+}
 function renderTransitResults(stats, inputs, geojsonData) {
   lastAnalysisContext = {
     service: "public-transport",
@@ -1557,11 +1650,11 @@ function renderTransitResults(stats, inputs, geojsonData) {
       <div class="value">${inputs.walkingDistance} m</div>
     </div>
     ${populationCount ? `<div class="insight-card">
-      <div class="label">Total Population</div>
+      <div class="label">${currentLang === "ar" ? "إجمالي السكان" : "Total Population"}</div>
       <div class="value">${parseInt(populationCount).toLocaleString()}</div>
     </div>` : ""}
     <div class="insight-card">
-      <div class="label">Stations Analyzed</div>
+      <div class="label">${currentLang === "ar" ? "المحطات المحللة" : "Stations Analyzed"}</div>
       <div class="value">${stats.station_count || "N/A"}</div>
     </div>
     <div class="insight-card">
@@ -1627,15 +1720,10 @@ function renderTransitResults(stats, inputs, geojsonData) {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Public Transport — Results</h3>
+      <h3 class="panel-title">${currentLang === "ar" ? "النقل العام — النتائج" : "Public Transport — Results"}</h3>
       <p class="panel-desc">Analysis complete.</p>
 
-      <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
-        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
-      </div>
+    ${tabsHtml()}
 
       <div class="tab-content" id="tab-raw">
         <p class="text-muted" style="font-size:11px;">Input data summary. Boundary and stations are shown on the map.</p>
@@ -1644,20 +1732,20 @@ function renderTransitResults(stats, inputs, geojsonData) {
 
       <div class="tab-content active" id="tab-full">
         <div class="insight-card">
-          <div class="label">Area Coverage</div>
+          <div class="label">${currentLang === "ar" ? "تغطية المنطقة" : "Area Coverage"}</div>
           <div class="value">${covPct !== null ? covPct.toFixed(1) + "%" : "N/A"}</div>
         </div>
         ${coveredPopHtml}
         ${cat ? `<div class="insight-card">
-          <div class="label">Performance</div>
+          <div class="label">${currentLang === "ar" ? "الأداء" : "Performance"}</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>` : ""}
         <div class="insight-card">
-          <div class="label">Stations Analyzed</div>
+          <div class="label">${currentLang === "ar" ? "المحطات المحللة" : "Stations Analyzed"}</div>
           <div class="value">${stats.station_count || "N/A"}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Walking Buffer</div>
+          <div class="label">${currentLang === "ar" ? "مسافة المشي" : "Walking Buffer"}</div>
           <div class="value">${stats.walking_distance_m || "N/A"} m</div>
         </div>
         ${covPct !== null ? `<div class="insight-card">
@@ -1695,7 +1783,7 @@ function renderTransitResults(stats, inputs, geojsonData) {
       </button>
     </div>
   `;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -1901,13 +1989,13 @@ function renderVegetationResults(stats, inputs) {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Vegetation Density — Results</h3>
+      <h3 class="panel-title">${currentLang === "ar" ? "كثافة الغطاء النباتي — النتائج" : "Vegetation Density — Results"}</h3>
       <p class="panel-desc">Vegetation coverage = % of pixels with NDVI ≥ ${inputs.threshold}. Green = vegetated · Red = bare/urban.</p>
 
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -1924,15 +2012,15 @@ function renderVegetationResults(stats, inputs) {
           <div class="value">${aboveBelow}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Vegetation Coverage</div>
+          <div class="label">${currentLang === "ar" ? "تغطية الغطاء النباتي" : "Vegetation Coverage"}</div>
           <div class="value">${vegPct.toFixed(1)}%</div>
         </div>
         <div class="insight-card">
-          <div class="label">Overall QoL Score</div>
+          <div class="label">${currentLang === "ar" ? "نتيجة جودة الحياة" : "Overall QoL Score"}</div>
           <div class="value" style="color:${scoreColor}">${stats.overall_score.toFixed(1)} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Performance</div>
+          <div class="label">${currentLang === "ar" ? "الأداء" : "Performance"}</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>
         <div class="insight-card">
@@ -1982,7 +2070,7 @@ function renderVegetationResults(stats, inputs) {
                 style="flex:1;font-size:12px;">← Back</button>
       </div>
     </div>`;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -2298,9 +2386,9 @@ function renderTrafficResults(stats, inputs) {
       <p class="panel-desc">Road hierarchy map · Red = primary corridors · Amber = connectors · Blue = local</p>
 
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -2391,7 +2479,7 @@ function renderTrafficResults(stats, inputs) {
       </button>
     </div>
   `;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -2592,13 +2680,13 @@ function renderInformalSettlementResults(stats, inputs) {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Informal Settlement — Results</h3>
+      <h3 class="panel-title">${currentLang === "ar" ? "المناطق العشوائية — النتائج" : "Informal Settlement — Results"}</h3>
       <p class="panel-desc">Irregularity score 0–33 = Planned · 34–66 = Mixed · 67–100 = Informal. Green = regular · Red = irregular.</p>
 
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -2630,11 +2718,11 @@ function renderInformalSettlementResults(stats, inputs) {
           <div class="value">${stats.avg_irregularity.toFixed(1)} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Overall QoL Score</div>
+          <div class="label">${currentLang === "ar" ? "نتيجة جودة الحياة" : "Overall QoL Score"}</div>
           <div class="value" style="color:${scoreColor}">${stats.overall_qol} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Performance</div>
+          <div class="label">${currentLang === "ar" ? "الأداء" : "Performance"}</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>
         <div class="insight-card">
@@ -2654,7 +2742,7 @@ function renderInformalSettlementResults(stats, inputs) {
           <div class="value">${stats.high_zone_count}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Distribution Balance</div>
+          <div class="label">${currentLang === "ar" ? "توازن التوزيع" : "Distribution Balance"}</div>
           <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
         </div>
         ${chartHtml}
@@ -2690,7 +2778,7 @@ function renderInformalSettlementResults(stats, inputs) {
                 style="flex:1;font-size:12px;">← Back</button>
       </div>
     </div>`;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -2965,7 +3053,7 @@ function renderCrimeResults(stats, inputs, geojsonData) {
       <div class="value">${crimeCount.toLocaleString()}</div>
     </div>
     <div class="insight-card">
-      <div class="label">Areas Analyzed</div>
+      <div class="label">${currentLang === "ar" ? "المناطق المحللة" : "Areas Analyzed"}</div>
       <div class="value">${stats.area_count || "N/A"}</div>
     </div>
     <div class="insight-card">
@@ -3003,13 +3091,13 @@ function renderCrimeResults(stats, inputs, geojsonData) {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Crime Density — Results</h3>
+      <h3 class="panel-title">${currentLang === "ar" ? "كثافة الجريمة — النتائج" : "Crime Density — Results"}</h3>
       <p class="panel-desc">Crime density = incidents per km². Higher values = more crime.</p>
 
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -3026,11 +3114,11 @@ function renderCrimeResults(stats, inputs, geojsonData) {
           <div class="value" style="color:${scoreColor}">${safetyScore} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Performance</div>
+          <div class="label">${currentLang === "ar" ? "الأداء" : "Performance"}</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Avg Density</div>
+          <div class="label">${currentLang === "ar" ? "متوسط الكثافة" : "Avg Density"}</div>
           <div class="value">${stats.avg_density || "N/A"} crimes/km²</div>
         </div>
         <div class="insight-card">
@@ -3067,7 +3155,7 @@ function renderCrimeResults(stats, inputs, geojsonData) {
       </button>
     </div>
   `;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -3190,13 +3278,13 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Urban Density — Results</h3>
+      <h3 class="panel-title">${currentLang === "ar" ? "كثافة السكان — النتائج" : "Urban Density — Results"}</h3>
       <p class="panel-desc">Urban density = population per km². Blue gradient: darker = more densely populated.</p>
 
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -3207,33 +3295,33 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
 
       <div class="tab-content active" id="tab-full">
         <div class="insight-card">
-          <div class="label">Total Population</div>
+          <div class="label">${currentLang === "ar" ? "إجمالي السكان" : "Total Population"}</div>
           <div class="value">${stats.total_population ? parseInt(stats.total_population).toLocaleString() : "N/A"}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Total Area</div>
+          <div class="label">${currentLang === "ar" ? "إجمالي المساحة" : "Total Area"}</div>
           <div class="value">${totalArea ? totalArea.toFixed(2) + " km²" : "N/A"}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Areas Analyzed</div>
+          <div class="label">${currentLang === "ar" ? "المناطق المحللة" : "Areas Analyzed"}</div>
           <div class="value">${areaCount.toLocaleString()}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Avg Density</div>
+          <div class="label">${currentLang === "ar" ? "متوسط الكثافة" : "Avg Density"}</div>
           <div class="value">${stats.avg_density || "N/A"} pop/km²</div>
         </div>
         <div class="insight-card">
-          <div class="label">Avg Density Classification</div>
+          <div class="label">${currentLang === "ar" ? "تصنيف متوسط الكثافة" : "Avg Density Classification"}</div>
           <div class="value" style="color:${avgClass.color};font-size:15px;">${avgClass.label}
             <span style="font-size:10px;color:var(--text-muted);font-weight:normal;"> (standard: 5,000 pop/km²)</span>
           </div>
         </div>
         <div class="insight-card">
-          <div class="label">Peak Density Zone</div>
+          <div class="label">${currentLang === "ar" ? "أعلى منطقة كثافة" : "Peak Density Zone"}</div>
           <div class="value" style="color:var(--warning)">${stats.max_density || "N/A"} pop/km²</div>
         </div>
         ${ineq ? `<div class="insight-card">
-          <div class="label">Distribution Balance</div>
+          <div class="label">${currentLang === "ar" ? "توازن التوزيع" : "Distribution Balance"}</div>
           <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
         </div>` : ""}
         ${hotspotHtml}
@@ -3266,7 +3354,7 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
       </button>
     </div>
   `;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -3380,13 +3468,13 @@ function renderNDVIResults(stats, inputs) {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">NDVI — Results</h3>
+      <h3 class="panel-title">${currentLang === "ar" ? "NDVI — النتائج" : "NDVI — Results"}</h3>
       <p class="panel-desc">NDVI ranges −1 to 1. Values &gt; 0.2 = healthy vegetation. Map: green = high NDVI · red = low NDVI.</p>
 
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -3405,7 +3493,7 @@ function renderNDVIResults(stats, inputs) {
           </div>
         </div>
         <div class="insight-card">
-          <div class="label">Overall Score</div>
+          <div class="label">${currentLang === "ar" ? "النتيجة الإجمالية" : "Overall Score"}</div>
           <div class="value" style="color:${scoreColor}">${ndviScore} / 100</div>
         </div>
         <div class="insight-card">
@@ -3413,19 +3501,19 @@ function renderNDVIResults(stats, inputs) {
           <div class="value" style="color:${vegHealthClass.color};font-size:13px;">${vegHealthClass.label}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Mean NDVI</div>
+          <div class="label">${currentLang === "ar" ? "متوسط NDVI" : "Mean NDVI"}</div>
           <div class="value">${meanNDVI.toFixed(4)}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Min NDVI</div>
+          <div class="label">${currentLang === "ar" ? "أدنى NDVI" : "Min NDVI"}</div>
           <div class="value">${minNDVI.toFixed(4)}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Max NDVI</div>
+          <div class="label">${currentLang === "ar" ? "أقصى NDVI" : "Max NDVI"}</div>
           <div class="value">${maxNDVI.toFixed(4)}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Std. Deviation</div>
+          <div class="label">${currentLang === "ar" ? "الانحراف المعياري" : "Std. Deviation"}</div>
           <div class="value">${stdNDVI.toFixed(4)}</div>
         </div>
         <div style="margin:10px 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Vegetation Coverage</div>
@@ -3474,7 +3562,7 @@ function renderNDVIResults(stats, inputs) {
       </button>
     </div>
   `;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -3553,13 +3641,13 @@ function renderHeatIndexResults(stats, inputs) {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Heat Index — Results</h3>
+      <h3 class="panel-title">${currentLang === "ar" ? "مؤشر الحرارة — النتائج" : "Heat Index — Results"}</h3>
       <p class="panel-desc">Surface temperature in °C. &lt;27 = Comfortable · 27–32 = Caution · 32–38 = Extreme · ≥38 = Danger.</p>
 
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -3570,35 +3658,35 @@ function renderHeatIndexResults(stats, inputs) {
 
       <div class="tab-content active" id="tab-full">
         <div class="insight-card">
-          <div class="label">Overall Score</div>
+          <div class="label">${currentLang === "ar" ? "النتيجة الإجمالية" : "Overall Score"}</div>
           <div class="value" style="color:${scoreColor}">${heatScore} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Performance</div>
+          <div class="label">${currentLang === "ar" ? "الأداء" : "Performance"}</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Thermal Class</div>
+          <div class="label">${currentLang === "ar" ? "الفئة الحرارية" : "Thermal Class"}</div>
           <div class="value" style="color:${heatClassColor}">${heatClass}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Mean Temp (°C)</div>
+          <div class="label">${currentLang === "ar" ? "متوسط الحرارة (°C)" : "Mean Temp (°C)"}</div>
           <div class="value">${stats.mean || "N/A"}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Min Temp (°C)</div>
+          <div class="label">${currentLang === "ar" ? "أدنى حرارة (°C)" : "Min Temp (°C)"}</div>
           <div class="value">${stats.min || "N/A"}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Max Temp (°C)</div>
+          <div class="label">${currentLang === "ar" ? "أقصى حرارة (°C)" : "Max Temp (°C)"}</div>
           <div class="value" style="color:${maxTemp >= 38 ? "var(--danger)" : "inherit"}">${stats.max || "N/A"}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Valid Pixels</div>
+          <div class="label">${currentLang === "ar" ? "البكسل الصالح" : "Valid Pixels"}</div>
           <div class="value">${validPx.toLocaleString()}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Temperature Spread</div>
+          <div class="label">${currentLang === "ar" ? "توزيع الحرارة" : "Temperature Spread"}</div>
           <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
         </div>
         ${chartHtml}
@@ -3630,7 +3718,7 @@ function renderHeatIndexResults(stats, inputs) {
       </button>
     </div>
   `;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -3817,13 +3905,13 @@ function renderAirQualityResults(stats, inputs) {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Air Quality Index — Results</h3>
+      <h3 class="panel-title">${currentLang === "ar" ? "جودة الهواء — النتائج" : "Air Quality Index — Results"}</h3>
       <p class="panel-desc">AQI: ≤50 Good · 51–100 Moderate · 101–150 Sensitive · 151–200 Unhealthy · 201–300 Very Unhealthy · &gt;300 Hazardous.</p>
 
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -3834,15 +3922,15 @@ function renderAirQualityResults(stats, inputs) {
 
       <div class="tab-content active" id="tab-full">
         <div class="insight-card">
-          <div class="label">Overall Score</div>
+          <div class="label">${currentLang === "ar" ? "النتيجة الإجمالية" : "Overall Score"}</div>
           <div class="value" style="color:${scoreColor}">${aqiScore} / 100</div>
         </div>
         <div class="insight-card">
-          <div class="label">Performance</div>
+          <div class="label">${currentLang === "ar" ? "الأداء" : "Performance"}</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>
         <div class="insight-card">
-          <div class="label">Valid Pixels</div>
+          <div class="label">${currentLang === "ar" ? "البكسل الصالح" : "Valid Pixels"}</div>
           <div class="value">${validPx.toLocaleString()}</div>
         </div>
         <div class="insight-card">
@@ -3866,7 +3954,7 @@ function renderAirQualityResults(stats, inputs) {
           <div class="value" style="color:var(--danger)">${(vUnhPct + hazPct).toFixed(1)}%</div>
         </div>
         <div class="insight-card">
-          <div class="label">Distribution Balance</div>
+          <div class="label">${currentLang === "ar" ? "توازن التوزيع" : "Distribution Balance"}</div>
           <div class="value" style="color:${ineq.color};font-size:13px;">${ineq.text}</div>
         </div>
         ${chartHtml}
@@ -3898,7 +3986,7 @@ function renderAirQualityResults(stats, inputs) {
       </button>
     </div>
   `;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -4113,13 +4201,13 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Facility Accessibility — Results</h3>
+      <h3 class="panel-title">${currentLang === "ar" ? "إمكانية الوصول — النتائج" : "Facility Accessibility — Results"}</h3>
       <p class="panel-desc">Walkable service areas: ${legendLine}</p>
 
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -4129,11 +4217,11 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
 
       <div class="tab-content active" id="tab-full">
         ${overallScore !== null ? `<div class="insight-card">
-          <div class="label">Overall Score</div>
+          <div class="label">${currentLang === "ar" ? "النتيجة الإجمالية" : "Overall Score"}</div>
           <div class="value" style="color:${scoreColor}">${overallScore} / 100</div>
         </div>` : ""}
         ${cat ? `<div class="insight-card">
-          <div class="label">Performance</div>
+          <div class="label">${currentLang === "ar" ? "الأداء" : "Performance"}</div>
           <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
         </div>` : ""}
         ${zoneCardsHtml}
@@ -4168,7 +4256,7 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
       </button>
     </div>
   `;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -4183,9 +4271,9 @@ function renderResults(service) {
 
       <!-- Tab headers -->
       <div class="tabs">
-        <div class="tab"        data-tab="raw">Raw Data</div>
-        <div class="tab active" data-tab="full">Full Area</div>
-        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="raw">${currentLang === "ar" ? "البيانات الخام" : "Raw Data"}</div>
+        <div class="tab active" data-tab="full">${currentLang === "ar" ? "المنطقة الكاملة" : "Full Area"}</div>
+        <div class="tab"        data-tab="grid">${currentLang === "ar" ? "شبكة الخلايا" : "Grid / Cell"}</div>
         <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
       </div>
 
@@ -4221,7 +4309,7 @@ function renderResults(service) {
       </button>
     </div>
   `;
-
+  translateLabels();
   wireTabSwitching();
   autoSaveCurrentAnalysis();
 }
@@ -4834,7 +4922,7 @@ async function fetchAIRecommendations() {
     const res = await fetch(`${API_BASE_URL}/ai/recommendations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(lastAnalysisContext),
+      body: JSON.stringify({ ...lastAnalysisContext, lang: currentLang }),
     });
 
     if (!res.ok) {
