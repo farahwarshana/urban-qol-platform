@@ -9011,5 +9011,65 @@ async function downloadAIReportPDF() {
   doc.save(filename);
   if (typeof showToast === "function") showToast(`PDF saved: ${filename}`, "success");
 }
+// --------------------------------share bottom --------
+// دالة لفتح وإغلاق قائمة المشاركة عند الضغط على الزرار
+function toggleShareMenu() {
+  const menu = document.getElementById("shareMenu");
+  menu.classList.toggle("show");
+}
 
+// إغلاق القائمة تلقائياً لو المستخدم ضغط في أي مكان بره القائمة
+window.onclick = function(event) {
+  if (!event.target.matches('.btn-ghost') && !event.target.closest('.btn-ghost')) {
+    const dropdown = document.getElementById("shareMenu");
+    if (dropdown && dropdown.classList.contains('show')) {
+      dropdown.classList.remove('show');
+    }
+  }
+}
+// دالة مشاركة الواتساب
+function shareWhatsApp() {
+  const url = encodeURIComponent(window.location.href);
+  const text = encodeURIComponent("شوف مشروع تحليل جودة الحياة الحضرية في الملز:");
+  window.open(`https://api.whatsapp.com/send?text=${text}%20${url}`, "_blank");
+}
+
+// دالة مشاركة التليجرام
+function shareTelegram() {
+  const url = encodeURIComponent(window.location.href);
+  const text = encodeURIComponent("مشروع تحليل جودة الحياة الحضرية - الملز");
+  window.open(`https://t.me/share/url?url=${url}&text=${text}`, "_blank");
+}
+
+// دالة مشاركة الفيسبوك
+function shareFacebook() {
+  const url = encodeURIComponent(window.location.href);
+  window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, "_blank");
+}
+
+// دالة نسخ الرابط
+function copyLink() {
+  navigator.clipboard.writeText(window.location.href).then(() => {
+    alert("📋 تم نسخ رابط الموقع بنجاح!");
+  }).catch(err => {
+    console.error('فشل نسخ الرابط: ', err);
+  });
+}
+
+// دالة المشاركة الأصلية للموبايل/المتصفح (إذا كان يدعمها)
+function nativeShare() {
+  if (navigator.share) {
+    navigator.share({
+      title: 'Malaz · Urban Quality of Life Analysis',
+      text: 'تحليل جودة الحياة الحضرية في حي الملز',
+      url: window.location.href,
+    })
+    .then(() => console.log('تمت المشاركة بنجاح'))
+    .catch((error) => console.log('خطأ في المشاركة:', error));
+  } else {
+    // إذا كان المتصفح لا يدعمها (مثل بعض متصفحات الكمبيوتر) يعمل نسخ للرابط كبديل
+    copyLink();
+  }
+}
+// ---------------------------------------
 applyLang();

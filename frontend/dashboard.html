@@ -41,22 +41,33 @@
 <body>
 
   <div class="app-shell">
-
-    <!-- ===================== TOP NAVBAR test ===================== -->
-    <nav class="navbar-app">
+<nav class="navbar-app">
       <div class="brand"><a href="">
         <span><img width="45" height="45" src="https://img.icons8.com/isometric-line/50/4cc2ff/building.png" alt="building"/></span>
         <span>Malaz · Urban Quality of Life Analysis</span>
       </a></div>
 
       <div class="nav-actions">
-        <button onclick="sharePortal()" class="btn btn-ghost"> <img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/share-rounded.png" alt="share-rounded"/>
-        Share</button>
+    
+        <div class="share-container">
+          <button onclick="toggleShareMenu()" class="btn btn-ghost">
+            <img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/share-rounded.png" alt="share-rounded"/>
+            Share
+          </button>
+
+          <div id="shareMenu" class="share-menu">
+            <button onclick="shareWhatsApp()">🟢 WhatsApp</button>
+            <button onclick="shareTelegram()">🔵 Telegram</button>
+            <button onclick="shareFacebook()">🔵 Facebook</button>
+            <button onclick="copyLink()">📋 Copy Link</button>
+            <button onclick="nativeShare()">📤 More...</button>
+          </div>
+        </div>
+
         <button onclick="toggleLang()" class="btn btn-ghost" id="langBtn">
           🌐 العربية
         </button>
 
-        <!-- User dropdown -->
         <div class="user-menu" id="userMenu">
           <button class="user-btn" onclick="toggleUserMenu()">
             <img width="24" height="24" src="https://img.icons8.com/material-rounded/24/FFFFFF/name.png" alt="name"/>
@@ -70,7 +81,6 @@
         </div>
       </div>
     </nav>
-
     <!-- ===================== MAIN BODY (3 columns) ===================== -->
     <div class="dashboard-body">
 
