@@ -915,3 +915,51 @@ footer hr {
 footer p {
     margin: 1px;
 }
+
+
+/* -------------share bottom  in dashboard--------------- */
+/* الحاوية الرئيسية لزر المشاركة والقائمة */
+.share-container {
+  position: relative; /* مهم جداً لضبط مكان القائمة المنسدلة */
+  display: inline-block;
+}
+
+/* تنسيق قائمة المشاركة نفسها */
+.share-menu {
+  display: none; /* مخفية بشكل افتراضي */
+  position: absolute;
+  top: 100%; /* تظهر مباشرة أسفل الزر */
+  right: 0; /* محاذاة جهة اليمين، غيرها لـ left إذا كنت تفضل */
+  background-color: #1e2530; /* لون خلفية داكن متناسق مع تصميمك */
+  border: 1px solid #334155;
+  border-radius: 8px;
+  box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.3);
+  z-index: 1000; /* للتأكد من ظهورها فوق الخريطة */
+  min-width: 160px;
+  padding: 8px 0;
+}
+
+/* تنسيق الأزرار داخل قائمة المشاركة لتصبح عمودية */
+.share-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: white;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+/* تأثير عند تمرير الماوس فوق خيارات المشاركة */
+.share-menu button:hover {
+  background-color: #334155;
+}
+
+/* هذا الكلاس سيتم إضافته بواسطة الـ JavaScript لإظهار القائمة */
+.share-menu.show {
+  display: block;
+}
