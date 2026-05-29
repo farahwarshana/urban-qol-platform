@@ -246,6 +246,9 @@ function applyLang() {
   const shareBtn = document.querySelector("button[onclick='sharePortal()']");
   if (shareBtn) shareBtn.innerHTML = `<img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/share-rounded.png" alt="share-rounded"/> ${isAr ? "مشاركة" : "Share"}`;
 
+  const feedbackBtn = document.getElementById("feedbackBtn");
+  if (feedbackBtn) feedbackBtn.innerHTML = `<img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/feedback.png" alt="feedback"/> ${isAr ? "ملاحظات" : "Feedback"}`;
+
   const userSpan = document.querySelector(".user-btn span:nth-child(2)");
   if (userSpan) userSpan.textContent = isAr ? "الملف الشخصي" : "Profile";
 
