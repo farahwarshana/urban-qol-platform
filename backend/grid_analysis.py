@@ -1148,8 +1148,7 @@ def combine_grids_weighted(grids_with_weights: list) -> dict:
 def extract_top_areas(weighted_grid: dict, top_n: int = 3) -> list:
     """
     From a weighted composite grid return the top N contiguous high-scoring
-    clusters, each as a dict with boundary, score, cell_count, centroid,
-    and layer_avg_scores (per-layer average score within the cluster).
+    clusters, each as a dict with boundary, score, cell_count, centroid.
     """
     from shapely.geometry import shape
 
@@ -1172,7 +1171,6 @@ def extract_top_areas(weighted_grid: dict, top_n: int = 3) -> list:
 
     geoms    = [shape(f["geometry"]) for f in high_feats]
     s_arr    = [f["properties"].get("weighted_score", 0) for f in high_feats]
-    ls_arr   = [f["properties"].get("layer_scores", []) for f in high_feats]
     n        = len(geoms)
     parent   = list(range(n))
 
@@ -1201,17 +1199,6 @@ def extract_top_areas(weighted_grid: dict, top_n: int = 3) -> list:
     def cluster_avg(idxs):
         return sum(s_arr[i] for i in idxs) / len(idxs)
 
-    def layer_avgs(idxs):
-        # Average per-layer scores across cluster cells (skip None values)
-        if not ls_arr or not ls_arr[idxs[0]]:
-            return []
-        num_layers = len(ls_arr[idxs[0]])
-        avgs = []
-        for li in range(num_layers):
-            vals = [ls_arr[i][li] for i in idxs if ls_arr[i] and ls_arr[i][li] is not None]
-            avgs.append(round(sum(vals) / len(vals), 1) if vals else None)
-        return avgs
-
     ranked = sorted(clusters.values(), key=cluster_avg, reverse=True)[:top_n]
 
     results = []
@@ -1221,11 +1208,10 @@ def extract_top_areas(weighted_grid: dict, top_n: int = 3) -> list:
         merged        = unary_union(cluster_geoms).convex_hull
         c             = merged.centroid
         results.append({
-            "boundary":         merged.__geo_interface__,
-            "score":            round(avg_score, 1),
-            "cell_count":       len(idxs),
-            "centroid":         [round(c.x, 6), round(c.y, 6)],
-            "layer_avg_scores": layer_avgs(idxs),
+            "boundary":   merged.__geo_interface__,
+            "score":      round(avg_score, 1),
+            "cell_count": len(idxs),
+            "centroid":   [round(c.x, 6), round(c.y, 6)],
         })
 
     return results

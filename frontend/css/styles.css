@@ -343,14 +343,6 @@ input:focus, select:focus, textarea:focus {
   background: rgba(76,194,255,0.05);
 }
 
-/* ---------- Expansion area result cards ---------- */
-.expansion-area-card {
-  transition: box-shadow 0.2s;
-}
-.expansion-area-card:hover {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-}
-
 /* ---------- Map area ---------- */
 .map-wrapper {
   flex: 1;

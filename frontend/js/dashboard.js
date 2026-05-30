@@ -985,98 +985,25 @@ function renderExpansionResults(result, candidates, weightMap) {
       </div>`;
   }).join('');
 
-  // Service type → display label and icon
-  const _serviceLabel = {
-    'ndvi':                     { label: 'Vegetation (NDVI)',       icon: '🌿' },
-    'heat-index':               { label: 'Heat Index',              icon: '🌡️' },
-    'air-quality':              { label: 'Air Quality',             icon: '💨' },
-    'crime':                    { label: 'Crime Safety',            icon: '🛡️' },
-    'urban-density':            { label: 'Urban Density',           icon: '🏙️' },
-    'public-transport':         { label: 'Public Transport',        icon: '🚌' },
-    'vegetation':               { label: 'Vegetation Coverage',     icon: '🌳' },
-    'traffic':                  { label: 'Traffic Flow',            icon: '🚗' },
-    'informal-settlement':      { label: 'Settlement Quality',      icon: '🏘️' },
-    'facility-accessibility':   { label: 'Facility Access',         icon: '🏥' },
-    'facility_Accessibility_index': { label: 'Facility Access',     icon: '🏥' },
-  };
-
-  const rankColors  = ['#f1c40f', '#95a5a6', '#cd7f32'];
-  const rankLabels  = ['1st', '2nd', '3rd'];
-  const rankTitles  = ['Best Expansion Zone', 'Second-Best Zone', 'Third-Best Zone'];
-  const rankMedals  = ['🥇', '🥈', '🥉'];
-
-  // Top areas for full tab — rich card per area with per-layer breakdown
+  // Top areas for full tab
   const topAreasHtml = (top_areas && top_areas.length)
     ? top_areas.map((area, i) => {
-        const rankColor = rankColors[i] || '#888';
-        const cat       = perfCategory(area.score);
-
-        // Per-layer score breakdown
-        const layerBreakdown = (area.layer_avg_scores && area.layer_avg_scores.length)
-          ? candidates.map((c, li) => {
-              const sc = area.layer_avg_scores[li];
-              if (sc == null) return '';
-              const w       = weightMap[String(c.id)] || 0;
-              const pct     = Math.round((w / totalW) * 100);
-              const svc     = _serviceLabel[c.type] || { label: c.title || c.type, icon: '📊' };
-              const barColor = sc >= 75 ? '#27ae60' : sc >= 50 ? '#f39c12' : '#e74c3c';
-              return `
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
-                  <span style="font-size:13px;width:20px;text-align:center;">${svc.icon}</span>
-                  <div style="flex:1;min-width:0;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-                      <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;">${svc.label}</span>
-                      <span style="font-size:11px;font-weight:700;color:${barColor};margin-left:4px;">${sc}/100</span>
-                    </div>
-                    <div style="height:3px;background:var(--border-color);border-radius:2px;position:relative;">
-                      <div style="height:100%;width:${sc}%;background:${barColor};border-radius:2px;transition:width 0.4s;"></div>
-                    </div>
-                  </div>
-                  <span style="font-size:9px;color:var(--text-muted);white-space:nowrap;">${pct}% wt</span>
-                </div>`;
-            }).join('')
-          : '';
-
-        const areaSizeKm2 = area.cell_count * Math.pow((weighted_grid.cell_size_m || 200) / 1000, 2);
-
+        const rank    = ['#f1c40f','#95a5a6','#cd7f32'][i] || '#888';
+        const medal   = ['1st','2nd','3rd'][i] || `${i+1}th`;
+        const cat     = perfCategory(area.score);
         return `
-          <div class="expansion-area-card" style="border:2px solid ${rankColor};border-radius:10px;padding:12px 14px;margin-bottom:14px;background:rgba(255,255,255,0.02);position:relative;overflow:hidden;">
-            <!-- rank stripe -->
-            <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:${rankColor};border-radius:10px 0 0 10px;"></div>
-            <div style="padding-left:8px;">
-              <!-- Header -->
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                <span style="font-size:22px;">${rankMedals[i] || `#${i+1}`}</span>
-                <div style="flex:1;">
-                  <div style="font-size:13px;font-weight:700;color:var(--text);">${rankTitles[i] || `Area #${i+1}`}</div>
-                  <div style="font-size:10px;color:var(--text-muted);">${area.cell_count} cells · ~${areaSizeKm2.toFixed(2)} km²</div>
-                </div>
-                <!-- Score ring -->
-                <div style="text-align:center;">
-                  <div style="font-size:22px;font-weight:800;color:${cat.color};line-height:1;">${area.score}</div>
-                  <div style="font-size:9px;color:var(--text-muted);">/ 100</div>
-                  <div style="font-size:9px;color:${cat.color};font-weight:600;">${cat.label}</div>
-                </div>
-              </div>
-
-              <!-- Score bar -->
-              <div style="height:6px;background:var(--border-color);border-radius:3px;margin-bottom:10px;">
-                <div style="height:100%;width:${area.score}%;background:linear-gradient(90deg,${rankColor},${cat.color});border-radius:3px;transition:width 0.5s;"></div>
-              </div>
-
-              <!-- Per-layer breakdown -->
-              ${layerBreakdown ? `
-                <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:0.05em;margin-bottom:6px;text-transform:uppercase;">Score by Analysis Layer</div>
-                ${layerBreakdown}
-              ` : ''}
-
-              <!-- Location + focus button -->
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color);">
-                <span style="font-size:10px;color:var(--text-muted);">📍 ${area.centroid[1].toFixed(4)}°N, ${area.centroid[0].toFixed(4)}°E</span>
-                <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;" onclick="_expansionFocusArea(${i})">
-                  Focus on map →
-                </button>
-              </div>
+          <div style="border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:rgba(255,255,255,0.03);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="background:${rank};color:#111;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${i+1}</span>
+              <strong style="font-size:14px;">${medal} Best Area</strong>
+              <span style="margin-left:auto;font-size:13px;font-weight:700;color:${cat.color};">${area.score}/100</span>
+            </div>
+            <div class="insight-card" style="margin-bottom:4px;">
+              <div class="label">Cells in cluster</div><div class="value">${area.cell_count}</div>
+            </div>
+            <div class="insight-card">
+              <div class="label">Centroid</div>
+              <div class="value" style="font-size:11px;">${area.centroid[1].toFixed(5)}°N, ${area.centroid[0].toFixed(5)}°E</div>
             </div>
           </div>`;
       }).join('')
@@ -1101,29 +1028,17 @@ function renderExpansionResults(result, candidates, weightMap) {
       </div>
 
       <div class="tab-content active" id="tab-full">
-        <!-- Summary strip -->
-        <div style="display:flex;gap:8px;margin-bottom:12px;">
-          ${avgScore != null ? `<div style="flex:1;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;text-align:center;">
-            <div style="font-size:18px;font-weight:800;color:var(--accent);">${avgScore}</div>
-            <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">Avg Score</div>
-          </div>` : ''}
-          ${bestScore != null ? `<div style="flex:1;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;text-align:center;">
-            <div style="font-size:18px;font-weight:800;color:#27ae60;">${bestScore}</div>
-            <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">Best Cell</div>
-          </div>` : ''}
-          <div style="flex:1;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;text-align:center;">
-            <div style="font-size:18px;font-weight:800;color:var(--text);">${candidates.length}</div>
-            <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">Layers</div>
-          </div>
-        </div>
-
-        <p style="font-size:10px;color:var(--text-muted);margin-bottom:12px;line-height:1.5;">
-          Top expansion zones ranked by composite quality-of-life score across all ${candidates.length} analysis layer${candidates.length !== 1 ? 's' : ''}. Each area shows how individual analyses contribute to its suitability.
-        </p>
-
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Top 3 recommended expansion areas based on composite score.</p>
+        ${avgScore != null ? `<div class="insight-card">
+          <div class="label">Composite avg score</div>
+          <div class="value">${avgScore}/100</div>
+        </div>` : ''}
+        ${bestScore != null ? `<div class="insight-card">
+          <div class="label">Best cell score</div>
+          <div class="value" style="color:#27ae60;">${bestScore}/100</div>
+        </div>` : ''}
         ${topAreasHtml}
-
-        <button class="btn btn-ghost btn-block" style="margin-top:4px;font-size:12px;" onclick="_downloadExpansionGeoJSON()">
+        <button class="btn btn-ghost btn-block" style="margin-top:10px;font-size:12px;" onclick="_downloadExpansionGeoJSON()">
           <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
           Download Weighted Grid GeoJSON
         </button>
@@ -1156,78 +1071,47 @@ function renderExpansionResults(result, candidates, weightMap) {
   wireTabSwitching();
 }
 
-// Stores top-area boundary layers for "Focus on map" interaction
-let _expansionAreaLayers = [];
-
 function _renderExpansionMap(weighted_grid, top_areas) {
-  _expansionAreaLayers = [];
-
-  // Subtle background: very low-opacity grid so geography is visible without dominating
+  // Weighted grid cells (background)
   resultLayer = L.geoJSON(weighted_grid, {
     style: f => ({
       fillColor:   qolScoreColor(f.properties.qol_score),
-      fillOpacity: 0.25,
-      color:       'rgba(0,0,0,0)',
-      weight:      0,
+      fillOpacity: 0.65,
+      color:       'rgba(0,0,0,0.1)',
+      weight:      0.4,
     }),
     onEachFeature: (f, layer) => {
       layer.bindPopup(`<strong>Score:</strong> ${f.properties.qol_score}/100`);
     },
   }).addTo(map);
 
-  // Top area boundaries — prominent, dashed, with rank label
+  // Top area boundaries
   if (top_areas && top_areas.length) {
-    const colors  = ['#f1c40f', '#95a5a6', '#cd7f32'];
-    const medals  = ['🥇 1st', '🥈 2nd', '🥉 3rd'];
+    const colors = ['#f1c40f','#95a5a6','#cd7f32'];
     top_areas.forEach((area, i) => {
       const color = colors[i] || '#888';
-      const lyr = L.geoJSON({ type: 'Feature', geometry: area.boundary }, {
+      L.geoJSON({ type: 'Feature', geometry: area.boundary }, {
         style: {
           color,
-          weight:      2.5,
+          weight:      3,
           fill:        true,
           fillColor:   color,
-          fillOpacity: 0.12,
-          dashArray:   '10,5',
+          fillOpacity: 0.08,
+          dashArray:   '8,4',
         },
       }).bindPopup(`
-        <strong>${medals[i] || `#${i+1}`} Best Expansion Zone</strong><br>
-        Composite Score: <strong>${area.score}/100</strong><br>
+        <strong>${['1st','2nd','3rd'][i] || `#${i+1}`} Best Area</strong><br>
+        Score: <strong>${area.score}/100</strong><br>
         Cells: ${area.cell_count}
       `).addTo(map);
-      _expansionAreaLayers.push(lyr);
     });
 
-    // Fit to all top areas
-    try {
-      const group = L.featureGroup(_expansionAreaLayers);
-      const b = group.getBounds();
-      if (b && b.isValid()) map.fitBounds(b, { padding: [60, 60] });
-    } catch(e) {
-      try {
-        const b = resultLayer.getBounds();
-        if (b && b.isValid()) map.fitBounds(b, { padding: [50,50] });
-      } catch(e2){}
-    }
-  } else {
+    // Fit to extent of all top areas + grid
     try {
       const b = resultLayer.getBounds();
       if (b && b.isValid()) map.fitBounds(b, { padding: [50,50] });
     } catch(e){}
   }
-}
-
-// Called from "Focus on map →" buttons in Full Area cards
-function _expansionFocusArea(idx) {
-  const lyr = _expansionAreaLayers[idx];
-  if (!lyr) return;
-  try {
-    const b = lyr.getBounds();
-    if (b && b.isValid()) {
-      map.fitBounds(b, { padding: [80, 80], maxZoom: 15 });
-      lyr.openPopup();
-    }
-  } catch(e){}
 }
 
 function _downloadExpansionGeoJSON() {
@@ -5134,35 +5018,17 @@ function wireTabSwitching() {
         if (resultLayer && !map.hasLayer(resultLayer)) {
           try {
             resultLayer.addTo(map);
+            const b = resultLayer.getBounds ? resultLayer.getBounds() : null;
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
           } catch (e) { console.warn("Could not restore result layer:", e); }
         }
-        // Restore expansion area boundary layers when returning to Full Area tab
-        if (lastResultService === "expansion" && _expansionAreaLayers && _expansionAreaLayers.length) {
-          _expansionAreaLayers.forEach(lyr => { if (!map.hasLayer(lyr)) { try { lyr.addTo(map); } catch(e){} } });
-          try {
-            const group = L.featureGroup(_expansionAreaLayers);
-            const b = group.getBounds();
-            if (b && b.isValid()) map.fitBounds(b, { padding: [60, 60] });
-          } catch(e){}
-        } else {
-          try {
-            const b = resultLayer ? resultLayer.getBounds() : null;
-            if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
-          } catch (e) {}
-        }
-        if (lastResultService !== "expansion") {
-          autoSaveCurrentAnalysis();
-          _wireFullDownloadBtn();
-        }
+        autoSaveCurrentAnalysis();
+        _wireFullDownloadBtn();
 
       } else if (target === "grid") {
         if (inputLayer  && map.hasLayer(inputLayer))  map.removeLayer(inputLayer);
         if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
         if (aiLayer     && map.hasLayer(aiLayer))     map.removeLayer(aiLayer);
-        // Remove expansion area boundaries from Full Area view when switching to Grid
-        if (_expansionAreaLayers && _expansionAreaLayers.length) {
-          _expansionAreaLayers.forEach(lyr => { if (map.hasLayer(lyr)) { try { map.removeLayer(lyr); } catch(e){} } });
-        }
 
         // Expansion: weighted grid is already in lastResultBlob — no backend round-trip needed
         if (lastResultService === "expansion" && lastResultBlob) {
