@@ -1191,11 +1191,11 @@ def create_token(data: dict):
 def register(user: UserRegister):
     with engine.connect() as conn:
         existing = conn.execute(
-            text("SELECT id FROM users WHERE email = :email"),
-            {"email": user.email}
+            text("SELECT id FROM users WHERE email = :email OR username = :username"),
+            {"email": user.email, "username": user.username}
         ).fetchone()
         if existing:
-            raise HTTPException(status_code=400, detail="Email already registered")
+            raise HTTPException(status_code=400, detail="Email or username already registered")
     
     hashed_password = hash_password(user.password)
     names = user.full_name.strip().split() if user.full_name else [user.username]
