@@ -1147,8 +1147,9 @@ def combine_grids_weighted(grids_with_weights: list) -> dict:
 
 def extract_top_areas(weighted_grid: dict, top_n: int = 3) -> list:
     """
-    From a weighted composite grid return the top N contiguous high-scoring
-    clusters, each as a dict with boundary, score, cell_count, centroid.
+    Return top N contiguous high-scoring clusters, ranked best to least.
+    Minimum cluster size scales with the total grid size (3% of cells).
+    Boundary is the tight union of actual cell polygons — no convex hull.
     """
     from shapely.geometry import shape
 
@@ -1156,62 +1157,153 @@ def extract_top_areas(weighted_grid: dict, top_n: int = 3) -> list:
     if not features:
         return []
 
-    scores = np.array([f["properties"].get("weighted_score", 0) for f in features])
+    total_cells   = len(features)
+    cell_size_m   = weighted_grid.get("cell_size_m", 200)
+    cell_size_deg = cell_size_m / 111_000 * 1.5          # adjacency radius
+    cell_buf_deg  = (cell_size_m / 2) / 111_000           # half-cell buffer
 
-    threshold = max(float(np.percentile(scores, 75)), 60.0)
-    high_feats = [f for f in features if (f["properties"].get("weighted_score") or 0) >= threshold]
-    if not high_feats:
-        threshold  = float(np.percentile(scores, 66))
-        high_feats = [f for f in features if (f["properties"].get("weighted_score") or 0) >= threshold]
-    if not high_feats:
-        return []
+    scores    = np.array([f["properties"].get("weighted_score", 0) for f in features])
+    score_min = float(scores.min())
+    score_max = float(scores.max())
+    score_range = score_max - score_min
 
-    cell_size_m  = weighted_grid.get("cell_size_m", 200)
-    cell_size_deg = cell_size_m / 111_000 * 1.5
+    # Minimum cluster size: 3% of total cells, at least 2
+    size_frac     = 0.03
+    abs_min_cells = max(2, int(total_cells * size_frac))
 
-    geoms    = [shape(f["geometry"]) for f in high_feats]
-    s_arr    = [f["properties"].get("weighted_score", 0) for f in high_feats]
-    n        = len(geoms)
-    parent   = list(range(n))
+    # ── helpers ────────────────────────────────────────────────────────────────
 
-    def find(x):
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
+    def build_clusters(high_feats):
+        geoms  = [shape(f["geometry"]) for f in high_feats]
+        s_arr  = [f["properties"].get("weighted_score", 0) for f in high_feats]
+        ls_arr = [f["properties"].get("layer_scores", []) for f in high_feats]
+        n      = len(geoms)
+        parent = list(range(n))
 
-    def union(x, y):
-        parent[find(x)] = find(y)
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
 
-    centroids = [(g.centroid.x, g.centroid.y) for g in geoms]
-    for i in range(n):
-        for j in range(i + 1, n):
-            dx = centroids[i][0] - centroids[j][0]
-            dy = centroids[i][1] - centroids[j][1]
-            if (dx * dx + dy * dy) ** 0.5 <= cell_size_deg:
-                union(i, j)
+        cents = [(g.centroid.x, g.centroid.y) for g in geoms]
+        for i in range(n):
+            for j in range(i + 1, n):
+                dx = cents[i][0] - cents[j][0]
+                dy = cents[i][1] - cents[j][1]
+                if (dx*dx + dy*dy) ** 0.5 <= cell_size_deg:
+                    parent[find(i)] = find(j)
 
-    clusters: dict = {}
-    for i in range(n):
-        root = find(i)
-        clusters.setdefault(root, []).append(i)
+        groups: dict = {}
+        for i in range(n):
+            groups.setdefault(find(i), []).append(i)
+        return groups, geoms, s_arr, ls_arr
 
-    def cluster_avg(idxs):
+    def cavg(idxs, s_arr):
         return sum(s_arr[i] for i in idxs) / len(idxs)
 
-    ranked = sorted(clusters.values(), key=cluster_avg, reverse=True)[:top_n]
+    def layer_avgs(idxs, ls_arr):
+        if not ls_arr or not ls_arr[idxs[0]]:
+            return []
+        num_layers = len(ls_arr[idxs[0]])
+        result = []
+        for li in range(num_layers):
+            vals = [ls_arr[i][li] for i in idxs if ls_arr[i] and ls_arr[i][li] is not None]
+            result.append(round(sum(vals)/len(vals), 1) if vals else None)
+        return result
 
-    results = []
-    for idxs in ranked:
-        cluster_geoms = [geoms[i] for i in idxs]
-        avg_score     = cluster_avg(idxs)
-        merged        = unary_union(cluster_geoms).convex_hull
-        c             = merged.centroid
-        results.append({
-            "boundary":   merged.__geo_interface__,
-            "score":      round(avg_score, 1),
-            "cell_count": len(idxs),
-            "centroid":   [round(c.x, 6), round(c.y, 6)],
-        })
+    def tight_boundary(cluster_geoms):
+        """Actual cell union with a small buffer-unbuffer to close gaps."""
+        merged = unary_union(cluster_geoms)
+        merged = merged.buffer(cell_buf_deg * 0.6).buffer(-cell_buf_deg * 0.4)
+        if merged.is_empty:
+            merged = unary_union(cluster_geoms)
+        return merged
 
-    return results
+    def make_entry(idxs, geoms, s_arr, ls_arr):
+        boundary = tight_boundary([geoms[i] for i in idxs])
+        c = boundary.centroid
+        return {
+            "boundary":         boundary.__geo_interface__,
+            "score":            round(cavg(idxs, s_arr), 1),
+            "cell_count":       len(idxs),
+            "centroid":         [round(c.x, 6), round(c.y, 6)],
+            "layer_avg_scores": layer_avgs(idxs, ls_arr),
+        }
+
+    # ── adaptive threshold loop ────────────────────────────────────────────────
+    # Strategy:
+    #   • Walk thresholds from 90th pct down to 55th in 5-pt steps.
+    #   • At each step collect ALL clusters that pass abs_min_cells (size filter).
+    #   • Skip if the largest single cluster swallows >50% of high cells (blob).
+    #   • Skip if threshold is not meaningfully above the score floor.
+    #   • Track the candidate set that yields the MOST clusters passing size filter.
+    #   • Also track the candidate set with the MOST clusters regardless of count,
+    #     so we can fill up to top_n even if no single threshold gives top_n.
+    #   • Never break early — exhaust all thresholds so lower ones (larger clusters)
+    #     are considered when size=large, higher ones (more clusters) for size=small.
+
+    # Score each threshold attempt and pick the best trade-off:
+    #   primary key  = number of eligible clusters (want top_n)
+    #   secondary key = how well cluster sizes match the requested size_frac
+    candidates_by_pct = []  # list of (n_eligible, result_list)
+
+    for pct in range(90, 50, -5):
+        threshold = float(np.percentile(scores, pct))
+
+        # Skip degenerate thresholds (≤ 5% above score floor)
+        if score_range > 0 and (threshold - score_min) < score_range * 0.05:
+            continue
+
+        high_feats = [f for f in features
+                      if (f["properties"].get("weighted_score") or 0) >= threshold]
+        n_high = len(high_feats)
+
+        if n_high < abs_min_cells:
+            continue
+
+        groups, geoms, s_arr, ls_arr = build_clusters(high_feats)
+
+        # Blob guard: skip if one cluster eats more than half the high-scoring cells
+        largest = max(len(v) for v in groups.values())
+        if largest > n_high * 0.50:
+            continue
+
+        eligible = [idxs for idxs in groups.values() if len(idxs) >= abs_min_cells]
+        if not eligible:
+            continue
+
+        ranked = sorted(eligible, key=lambda idx: cavg(idx, s_arr), reverse=True)[:top_n]
+        result = [make_entry(idxs, geoms, s_arr, ls_arr) for idxs in ranked]
+        candidates_by_pct.append((len(result), result))
+
+    if candidates_by_pct:
+        # Pick the attempt with the most clusters; on a tie take the one with
+        # the highest total cell count (larger, more meaningful zones).
+        best_result = max(candidates_by_pct,
+                          key=lambda item: (item[0], sum(r["cell_count"] for r in item[1])))[1]
+    else:
+        best_result = []
+
+    # Last-resort: no threshold passed the blob guard (highly uniform data).
+    # Take the tightest high-scoring cluster we can find, no blob check.
+    if not best_result:
+        for pct in range(90, 20, -5):
+            threshold = float(np.percentile(scores, pct))
+            if score_range > 0 and (threshold - score_min) < score_range * 0.02:
+                continue
+            high_feats = [f for f in features
+                          if (f["properties"].get("weighted_score") or 0) >= threshold]
+            if len(high_feats) < abs_min_cells:
+                continue
+            groups, geoms, s_arr, ls_arr = build_clusters(high_feats)
+            # Apply size filter even in last resort
+            eligible = [idxs for idxs in groups.values() if len(idxs) >= abs_min_cells]
+            if not eligible:
+                continue
+            ranked = sorted(eligible, key=lambda idx: cavg(idx, s_arr), reverse=True)[:top_n]
+            best_result = [make_entry(idxs, geoms, s_arr, ls_arr) for idxs in ranked]
+            if best_result:
+                break
+
+    return best_result
