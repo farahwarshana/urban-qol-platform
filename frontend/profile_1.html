@@ -1032,21 +1032,18 @@ document.querySelectorAll('.stat-num')[3].textContent = memberYear;
 }
 
 function openAnalysisDetails(id, type) {
-
   const rasterTypes = [
     "ndvi",
     "heat-index",
-    "vegetation",
     "air-quality"
   ];
 
   const detailsPage = rasterTypes.includes(type)
-    ? "raster-details.html"
-    : "analysis-details.html";
+    ? "raster_details.html"
+    : "vector_details.html";
 
   window.location.href = `${detailsPage}?id=${id}`;
 }
-
 const translations = {
   en: {
     backToMap:      "← Back to Map",

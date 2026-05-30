@@ -428,7 +428,8 @@ def facility_accessibility_endpoint(
     job_id  = str(uuid.uuid4())
     tmp_dir = UPLOAD_DIR / job_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    output_path  = tmp_dir / "facility_accessibility_zones.geojson"
+    facility_dir = get_output_subdir("facility_accessibility")
+    output_path  = facility_dir / f"facility_accessibility_{job_id}.geojson"
     input_path   = tmp_dir / "input.geojson"
     aoi_path     = None
 
@@ -453,6 +454,7 @@ def facility_accessibility_endpoint(
             geojson_data = json.load(f)
 
         headers = {
+            "X-Result-File":          result_file_header(output_path),
             "X-Total-Facilities":     str(result["total_facilities"]),
             "X-Facilities-Processed": str(result["facilities_processed"]),
             "X-Walking-Speed-Kmh":    str(result["walking_speed_kmh"]),

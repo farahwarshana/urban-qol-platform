@@ -1309,6 +1309,7 @@ async function runFacilityAccessibilityAnalysis() {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.detail || `HTTP error ${response.status}`);
     }
+    lastResultFile = response.headers.get("X-Result-File") || "";
 
     const totalFacilities     = response.headers.get("X-Total-Facilities");
     const facilitiesProcessed = response.headers.get("X-Facilities-Processed");
@@ -1320,12 +1321,12 @@ async function runFacilityAccessibilityAnalysis() {
     const zonePctsRaw = response.headers.get("X-Zone-Pcts");
     const zonePcts    = zonePctsRaw ? JSON.parse(decodeURIComponent(zonePctsRaw)) : {};
 
-    const geojsonData = await response.json();
+captureResultFile(response);
+const geojsonData = await response.json();
 
-    lastResultBlob    = geojsonData;
-    lastResultService = "facility-accessibility";
-    updateLegend("facility-accessibility", "full");
-
+lastResultBlob    = geojsonData;
+lastResultService = "facility-accessibility";
+updateLegend("facility-accessibility", "full");
     if (gridLayer)  { map.removeLayer(gridLayer);  gridLayer  = null; }
     if (inputLayer)   map.removeLayer(inputLayer);
     clearMap();
