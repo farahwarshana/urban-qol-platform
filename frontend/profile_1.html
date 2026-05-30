@@ -384,10 +384,43 @@
     .btn-save:hover { background: #00f0c0; }
 
     /* ── Analysis History ── */
+
+    /* Primary tabs: All Analyses / By Project */
+    .history-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 14px;
+    }
+
+    .history-tab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      padding: 8px 20px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .history-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .history-tab:hover:not(.active) {
+      color: var(--text);
+    }
+
+    /* Service chip filters inside the All tab */
     .filters {
       display: flex;
-      gap: 8px;
-      margin-bottom: 1rem;
+      gap: 6px;
+      margin-bottom: 14px;
       flex-wrap: wrap;
     }
 
@@ -395,7 +428,7 @@
       background: var(--surface2);
       border: 1px solid var(--border);
       color: var(--muted);
-      padding: 5px 14px;
+      padding: 4px 13px;
       border-radius: 20px;
       font-family: inherit;
       font-size: 12px;
@@ -783,7 +816,14 @@
 
   </div>
 
-      <div class="filters">
+      <!-- Primary tabs -->
+      <div class="history-tabs">
+        <button class="history-tab active" id="tabAll" onclick="setViewMode('service', this)">All Analyses</button>
+        <button class="history-tab" id="tabProject" onclick="setViewMode('project', this)">By Project</button>
+      </div>
+
+      <!-- Service chip filters — only visible in "All" tab -->
+      <div class="filters" id="serviceFilters">
         <button class="filter-btn active" onclick="filterHistory('all', this)">All</button>
         <button class="filter-btn" onclick="filterHistory('ndvi', this)">NDVI</button>
         <button class="filter-btn" onclick="filterHistory('heat', this)">Heat Index</button>
@@ -791,6 +831,10 @@
         <button class="filter-btn" onclick="filterHistory('crime', this)">Crime</button>
         <button class="filter-btn" onclick="filterHistory('urban', this)">Urban Density</button>
         <button class="filter-btn" onclick="filterHistory('air', this)">Air Quality</button>
+        <button class="filter-btn" onclick="filterHistory('vegetation', this)">Vegetation</button>
+        <button class="filter-btn" onclick="filterHistory('traffic', this)">Traffic</button>
+        <button class="filter-btn" onclick="filterHistory('informal', this)">Informal Settlement</button>
+        <button class="filter-btn" onclick="filterHistory('facility', this)">Facility Access</button>
       </div>
 
       <div class="analysis-list" id="analysisList"></div>
@@ -831,14 +875,109 @@
 
 let analyses = [];
 let currentFilter = "all";
+let currentViewMode = "service"; // "service" | "project"
 
 async function loadAnalyses() {
   const username = localStorage.getItem('username') || 'default';
   const res = await fetch(`${API_BASE_URL}/analyses?username=${username}`)
-  // fetch(`http://localhost:8000/analyses?username=${username}`)
   const data = await res.json();
   analyses = Array.isArray(data) ? data : [];
-  renderList('all');
+  if (currentViewMode === "project") renderByProject();
+  else renderList('all');
+}
+
+function setViewMode(mode, btn) {
+  currentViewMode = mode;
+  document.querySelectorAll('.history-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const serviceFilters = document.getElementById('serviceFilters');
+  if (mode === "project") {
+    serviceFilters.style.display = 'none';
+    renderByProject();
+  } else {
+    serviceFilters.style.display = '';
+    renderList(currentFilter);
+  }
+}
+
+function renderByProject() {
+  const list = document.getElementById('analysisList');
+  const count = document.getElementById('historyCount');
+
+  // Group by project_name (null → "Unassigned")
+  const groups = {};
+  analyses.forEach(a => {
+    const key = a.project_name || '__none__';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(a);
+  });
+
+  count.textContent = analyses.length + ' ' + (translations[currentLang]?.runs || 'runs');
+
+  if (!analyses.length) {
+    list.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <p>No analyses found.</p>
+    </div>`;
+    return;
+  }
+
+  // Sort: named projects first, unassigned last
+  const sortedKeys = Object.keys(groups).sort((a, b) => {
+    if (a === '__none__') return 1;
+    if (b === '__none__') return -1;
+    return a.localeCompare(b);
+  });
+
+  list.innerHTML = sortedKeys.map(key => {
+    const label = key === '__none__' ? 'Unassigned' : key;
+    const items = groups[key];
+    const itemsHtml = items.map(a => renderAnalysisItem(a)).join('');
+    return `
+      <div style="margin-bottom:18px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.07);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="color:var(--accent);"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span style="font-size:13px; font-weight:600; color:var(--accent);">${label}</span>
+          <span style="font-size:11px; color:var(--muted);">${items.length} run${items.length !== 1 ? 's' : ''}</span>
+        </div>
+        ${itemsHtml}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderAnalysisItem(a) {
+  const icon = ANALYSIS_ICONS?.[a.type]
+    ? `<img src="${ANALYSIS_ICONS[a.type]}" alt="${a.type}">`
+    : "📊";
+  const translatedTitle = ANALYSIS_LABELS?.[a.type]?.[currentLang] || a.title;
+  const date = a.created_at ? new Date(a.created_at).toLocaleDateString() : '';
+  const time = a.created_at ? new Date(a.created_at).toLocaleTimeString() : '';
+  return `
+    <div class="analysis-item" onclick="openAnalysisDetails(${a.id}, '${a.type}')">
+      <div class="analysis-icon ${a.type}">${icon}</div>
+      <div class="analysis-meta">
+        <h4>${translatedTitle}</h4>
+        <p>
+          <span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            ${a.area || '—'}
+          </span>
+          <span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            ${date} · ${time}
+          </span>
+        </p>
+      </div>
+      <div class="analysis-right">
+        <span class="score-badge score-${a.status}">${a.score}/100</span>
+        <button class="dl-btn" onclick="exportAnalysis(event, ${a.id})">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          ${translations[currentLang]?.export || 'Export'}
+        </button>
+      </div>
+    </div>
+  `;
 }
 
   function renderList(filter) {
@@ -850,6 +989,8 @@ async function loadAnalyses() {
   urban: "urban-density",
   air: "air-quality",
   transit: "public-transport",
+  informal: "informal-settlement",
+  facility: "facility-accessibility",
 };
 
 const normalizedFilter =
@@ -869,60 +1010,12 @@ const filtered =
       return;
     }
 
-list.innerHTML = filtered.map(a => {
-
-  const icon =
-  ANALYSIS_ICONS[a.type]
-    ? `<img src="${ANALYSIS_ICONS[a.type]}" alt="${a.type}">`
-    : "📊";
-
-  const translatedTitle =
-    ANALYSIS_LABELS[a.type]?.[currentLang]
-    || a.title;
-
-  const date =
-    a.created_at
-      ? new Date(a.created_at).toLocaleDateString()
-      : '';
-
-  const time =
-    a.created_at
-      ? new Date(a.created_at).toLocaleTimeString()
-      : '';
-
-  return `
-
-    <div class="analysis-item" onclick="openAnalysisDetails(${a.id}, '${a.type}')">
-      <div class="analysis-icon ${a.type}">${icon}</div>
-      <div class="analysis-meta">
-        <h4>${translatedTitle}</h4>
-        <p>
-          <span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            ${a.area}
-          </span>
-          <span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            ${date} · ${time}
-          </span>
-        </p>
-      </div>
-      <div class="analysis-right">
-        <span class="score-badge score-${a.status}">${a.score}/100</span>
-        <button class="dl-btn"
-        onclick="exportAnalysis(event, ${a.id})">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          ${translations[currentLang].export}
-        </button>
-      </div>
-    </div>
-  `;
-}).join('');
+list.innerHTML = filtered.map(a => renderAnalysisItem(a)).join('');
   }
 
   function filterHistory(type, btn) {
     currentFilter = type;
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#serviceFilters .filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     renderList(type);
   }
@@ -1050,13 +1143,17 @@ const translations = {
     langBtn:        "🌐 العربية",
     editProfile:    "✏️ Edit Profile",
     analysisHistory:"Analysis History",
-    allFilter:      "All",
-    ndviFilter:     "NDVI",
-    heatFilter:     "Heat Index",
-    transitFilter:  "Transport",
-    crimeFilter:    "Crime",
-    urbanFilter:    "Urban Density",
-    airFilter:      "Air Quality",
+    allFilter:        "All",
+    ndviFilter:       "NDVI",
+    heatFilter:       "Heat Index",
+    transitFilter:    "Transport",
+    crimeFilter:      "Crime",
+    urbanFilter:      "Urban Density",
+    airFilter:        "Air Quality",
+    vegetationFilter: "Vegetation",
+    trafficFilter:    "Traffic",
+    informalFilter:   "Informal Settlement",
+    facilityFilter:   "Facility Access",
     analyses:       "Analyses",
     layerTypes:     "Layer Types",
     region:         "Region",
@@ -1083,13 +1180,17 @@ const translations = {
     langBtn:        "🌐 English",
     editProfile:    "✏️ تعديل الملف الشخصي",
     analysisHistory:"سجل التحليلات",
-    allFilter:      "الكل",
-    ndviFilter:     "NDVI",
-    heatFilter:     "مؤشر الحرارة",
-    transitFilter:  "المواصلات",
-    crimeFilter:    "الجريمة",
-    urbanFilter:    "الكثافة السكانية",
-    airFilter:      "جودة الهواء",
+    allFilter:        "الكل",
+    ndviFilter:       "NDVI",
+    heatFilter:       "مؤشر الحرارة",
+    transitFilter:    "المواصلات",
+    crimeFilter:      "الجريمة",
+    urbanFilter:      "الكثافة السكانية",
+    airFilter:        "جودة الهواء",
+    vegetationFilter: "الغطاء النباتي",
+    trafficFilter:    "حركة المرور",
+    informalFilter:   "المناطق العشوائية",
+    facilityFilter:   "إمكانية الوصول",
     analyses:       "تحليل",
     layerTypes:     "أنواع الطبقات",
     region:         "المنطقة",
@@ -1147,7 +1248,7 @@ document.getElementById("historyTitle").textContent =
   t.analysisHistory;
 
   // الـ filters
-  const filterBtns = document.querySelectorAll(".filter-btn");
+  const filterBtns = document.querySelectorAll("#serviceFilters .filter-btn");
   filterBtns[0].textContent = t.allFilter;
   filterBtns[1].textContent = t.ndviFilter;
   filterBtns[2].textContent = t.heatFilter;
@@ -1155,6 +1256,10 @@ document.getElementById("historyTitle").textContent =
   filterBtns[4].textContent = t.crimeFilter;
   filterBtns[5].textContent = t.urbanFilter;
   filterBtns[6].textContent = t.airFilter;
+  filterBtns[7].textContent = t.vegetationFilter;
+  filterBtns[8].textContent = t.trafficFilter;
+  filterBtns[9].textContent = t.informalFilter;
+  filterBtns[10].textContent = t.facilityFilter;
 
   // الـ form labels
   const labels = document.querySelectorAll("label");

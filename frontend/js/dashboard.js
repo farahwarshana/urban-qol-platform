@@ -33,6 +33,83 @@ function captureResultFile(response) {
   lastResultFile = response.headers.get("X-Result-File") || "";
 }
 
+// ── Project state ──────────────────────────────────────────────
+let currentProjectId = null;
+let currentProjectName = null;
+let _pendingRunKey = null;
+
+async function loadProjects() {
+  const username = localStorage.getItem('username');
+  if (!username) return;
+  try {
+    const res = await fetch(`${API_BASE_URL}/projects?username=${username}`);
+    const projects = await res.json();
+    const sel = document.getElementById('projectSelect');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— No project —</option>' +
+      projects.map(p => `<option value="${p.id}" data-name="${p.name}">${p.name}</option>`).join('');
+    // Re-select current project if set
+    if (currentProjectId) sel.value = currentProjectId;
+  } catch (e) { console.warn('Could not load projects', e); }
+}
+
+function showProjectModal(key) {
+  _pendingRunKey = key;
+  loadProjects();
+  const modal = document.getElementById('projectModal');
+  modal.style.display = 'flex';
+  document.getElementById('newProjectName').value = '';
+  document.getElementById('newProjectDesc').value = '';
+}
+
+function hideProjectModal() {
+  document.getElementById('projectModal').style.display = 'none';
+}
+
+async function confirmProjectAndRun() {
+  const username = localStorage.getItem('username');
+  const sel = document.getElementById('projectSelect');
+  const newName = document.getElementById('newProjectName').value.trim();
+  const newDesc = document.getElementById('newProjectDesc').value.trim();
+
+  if (newName) {
+    // Create new project and use it
+    try {
+      const res = await fetch(`${API_BASE_URL}/projects?username=${username}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, description: newDesc || null })
+      });
+      const proj = await res.json();
+      currentProjectId = proj.id;
+      currentProjectName = proj.name;
+    } catch (e) { console.warn('Could not create project', e); }
+  } else if (sel.value) {
+    currentProjectId = parseInt(sel.value);
+    const selectedOption = sel.options[sel.selectedIndex];
+    currentProjectName = selectedOption.dataset.name || selectedOption.text;
+  } else {
+    currentProjectId = null;
+    currentProjectName = null;
+  }
+
+  hideProjectModal();
+  _dispatchRun(_pendingRunKey);
+}
+
+function skipProjectAndRun() {
+  currentProjectId = null;
+  currentProjectName = null;
+  hideProjectModal();
+  _dispatchRun(_pendingRunKey);
+}
+
+function _dispatchRun(key) {
+  _pendingRunKey = null;
+  _runAnalysisCore(key);
+}
+// ──────────────────────────────────────────────────────────────
+
 
 // ------------------saveAnalysisToProfile--------------------
 
@@ -82,12 +159,9 @@ function autoSaveCurrentAnalysis() {
   area: '',
   score: score,
   status: status,
-
- preview_image:
-  lastPreviewImage,
-
-result_file:
-  lastResultFile
+  preview_image: lastPreviewImage,
+  result_file: lastResultFile,
+  project_id: currentProjectId || null
 })
 
   }).catch(e => console.warn('Could not save analysis:', e));
@@ -575,10 +649,13 @@ function renderExpansionPanel(service) {
 /* ============================================================
    3. RUN ANALYSIS — switches the panel to the Results view
    ============================================================ */
-// function runAnalysis(key) {
-//   const service = SERVICES[key];  ضيفت بدالها السطر الجاي
 
+// Public entry point: shows project modal first, then runs
 function runAnalysis(key) {
+  showProjectModal(key);
+}
+
+function _runAnalysisCore(key) {
   document.getElementById('analysisPanel').dataset.saved = '';
 
   if (key === "facility_Accessibility_index") {
