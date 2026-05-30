@@ -137,19 +137,38 @@ def get_output_subdir(name):
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-app.mount(
-    "/outputs",
-    StaticFiles(directory=str(OUTPUT_DIR)),
-    name="outputs"
-)
+@app.get("/outputs/{file_path:path}", tags=["Static"])
+def serve_output_file(file_path: str):
+    full_path = OUTPUT_DIR / file_path
+    if not full_path.exists() or not full_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    # Resolve and confirm the path is still inside OUTPUT_DIR (prevent path traversal)
+    try:
+        full_path.resolve().relative_to(OUTPUT_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    # Force octet-stream for tif files so browsers pass bytes to fetch() instead of
+    # intercepting them as image/tiff and triggering a download dialog
+    suffix = full_path.suffix.lower()
+    if suffix in (".tif", ".tiff"):
+        media_type = "application/octet-stream"
+    elif suffix == ".geojson":
+        media_type = "application/geo+json"
+    else:
+        media_type = "application/octet-stream"
+    return FileResponse(path=str(full_path), media_type=media_type)
 
 def result_file_header(output_path):
-
-    relative_path = Path(output_path)\
-        .relative_to(BACKEND_DIR)
-
-    return str(relative_path)\
-        .replace("\\", "/")
+    try:
+        relative_path = Path(output_path).relative_to(BACKEND_DIR)
+    except ValueError:
+        # output_path is not under BACKEND_DIR — return just the filename as fallback
+        relative_path = Path(output_path).name
+    result = str(relative_path).replace("\\", "/")
+    # Guard against double outputs/ prefix
+    while result.startswith("outputs/outputs/"):
+        result = result[len("outputs/"):]
+    return result
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -993,7 +1012,7 @@ def calculate_air_quality_endpoint(
     media_type="image/tiff",
     filename=f"air_quality_{job_id}.tif",
     headers={
-        "X-Result-File": f"outputs/air_quality/air_quality_{job_id}.tif",
+        "X-Result-File": result_file_header(output_path),
         "X-Pollutant":          stats["pollutant"],
         "X-Valid-Pixels":       str(stats["valid_pixels"]),
         "X-Good-Pct":           str(stats["good_pct"]),

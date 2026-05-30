@@ -648,6 +648,66 @@ const VECTOR_CONFIG = {
     }
   },
 
+  "urban-density": {
+    title: "Urban Density Analysis",
+    dataFormat: "GeoJSON",
+    classTitle: "Density Classes",
+    legend: [
+      { color:"#ffffcc", label:"Very Low",  range:"< 500 /km²" },
+      { color:"#a1dab4", label:"Low",       range:"500 – 2000 /km²" },
+      { color:"#41b6c4", label:"Moderate",  range:"2000 – 5000 /km²" },
+      { color:"#2c7fb8", label:"High",      range:"5000 – 10000 /km²" },
+      { color:"#253494", label:"Very High", range:"> 10000 /km²" }
+    ],
+    styleFeature(f) {
+      const d = f.properties.urban_density || 0;
+      let color = "#ffffcc";
+      if (d > 500)   color = "#a1dab4";
+      if (d > 2000)  color = "#41b6c4";
+      if (d > 5000)  color = "#2c7fb8";
+      if (d > 10000) color = "#253494";
+      return { fillColor: color, fillOpacity: 0.65, color: "#333", weight: 1 };
+    },
+    popupFn(f) {
+      const p = f.properties;
+      const density = p.urban_density != null ? Number(p.urban_density).toFixed(1) : "—";
+      const area    = p.area_km2      != null ? Number(p.area_km2).toFixed(2)      : "—";
+      const name    = p.NBHD_NAME || p.name || p.ADM3_EN || "Area";
+      return `<strong>${name}</strong><br>
+              Density: ${density} /km²<br>
+              Area: ${area} km²`;
+    },
+    buildStats(features) {
+      const densities = features.map(f => f.properties.urban_density || 0).filter(v => v > 0);
+      const avg = densities.length ? (densities.reduce((a,b)=>a+b,0)/densities.length).toFixed(1) : "--";
+      const max = densities.length ? Math.max(...densities).toFixed(1) : "--";
+      const high = features.filter(f => (f.properties.urban_density || 0) > 5000).length;
+      return [
+        { label:"Avg Density",        value: avg + " /km²" },
+        { label:"Max Density",        value: max + " /km²" },
+        { label:"High-Density Zones", value: high },
+        { label:"Total Areas",        value: features.length },
+      ];
+    },
+    recommendations(score) {
+      if (score >= 75) return [
+        "Urban density distribution appears well-balanced.",
+        "Monitor high-density cores to prevent overcrowding.",
+        "Invest in vertical development in low-density peripheries."
+      ];
+      if (score >= 40) return [
+        "Moderate urban density with notable variation across zones.",
+        "Improve infrastructure in high-density clusters.",
+        "Encourage mixed-use development to redistribute population load."
+      ];
+      return [
+        "High density concentration detected. Urban stress risk is elevated.",
+        "Prioritize new housing and service expansion to low-density areas.",
+        "Plan transport corridors to connect underserved zones."
+      ];
+    }
+  },
+
   "facility-accessibility": {
     title: "Facility Accessibility",
     dataFormat: "GeoJSON",

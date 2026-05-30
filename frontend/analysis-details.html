@@ -1,213 +1,56 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Analysis Details</title>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <link rel="stylesheet" href="css/theme.css">
   <style>
-
     * { margin:0; padding:0; box-sizing:border-box; }
-
-
-    body {
-      background:var(--bg);
-      color:var(--text);
-      font-family:'Space Grotesk',sans-serif;
-      min-height:100vh;
-      padding:40px;
-    }
-
+    body { background:var(--bg); color:var(--text); font-family:'Space Grotesk',sans-serif; min-height:100vh; padding:40px; }
     .container { max-width:1800px; margin:auto; }
-
-    .topbar {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:24px;
-    }
-
-    .back-btn {
-      background:var(--surface2);
-      border:1px solid var(--border);
-      color:var(--text);
-      padding:10px 18px;
-      border-radius:10px;
-      cursor:pointer;
-      transition:.2s;
-      font-family:inherit;
-    }
-
+    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+    .back-btn { background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:10px 18px; border-radius:10px; cursor:pointer; transition:.2s; font-family:inherit; }
     .back-btn:hover { border-color:var(--accent); color:var(--accent); }
-
     .analysis-title { font-size:34px; font-weight:700; margin-bottom:10px; }
-    .analysis-sub   { color:var(--muted); margin-bottom:30px; font-size:15px; }
-
-    .card {
-      background:rgba(26,29,39,.88);
-      border:1px solid var(--border);
-      border-radius:20px;
-      padding:22px;
-      backdrop-filter:blur(14px);
-      transition:transform .25s ease, border-color .25s ease, box-shadow .25s ease;
-    }
-
-    .card:hover {
-      transform:translateY(-4px);
-      border-color:rgba(0,212,170,.28);
-      box-shadow:0 10px 30px rgba(0,212,170,.08);
-    }
-
+    .analysis-sub { color:var(--muted); margin-bottom:30px; font-size:15px; }
+    .card { background:rgba(26,29,39,.88); border:1px solid var(--border); border-radius:20px; padding:22px; backdrop-filter:blur(14px); transition:transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
+    .card:hover { transform:translateY(-4px); border-color:rgba(0,212,170,.28); box-shadow:0 10px 30px rgba(0,212,170,.08); }
     .section-title { font-size:18px; margin-bottom:18px; font-weight:600; }
-
-    .two-col {
-      display:grid;
-      grid-template-columns:1.3fr .7fr;
-      gap:24px;
-      margin-bottom:24px;
-    }
-
-    .two-col-equal {
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:24px;
-      margin-bottom:24px;
-    }
-
-    /* ── Map ── */
-    #analysisPreview {
-      width:100%;
-      height:500px;
-      border-radius:16px;
-      overflow:hidden;
-      background:#1f2635;
-    }
-
-    /* ── Legend ── */
+    .two-col { display:grid; grid-template-columns:1.3fr .7fr; gap:24px; margin-bottom:24px; }
+    .two-col-equal { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:24px; }
+    #analysisPreview { width:100%; height:500px; border-radius:16px; overflow:hidden; background:#1f2635; }
     .legend-list { display:flex; flex-direction:column; gap:12px; }
-
-    .legend-item {
-      display:flex;
-      align-items:center;
-      gap:14px;
-      padding:12px;
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.06);
-      border-radius:12px;
-    }
-
+    .legend-item { display:flex; align-items:center; gap:14px; padding:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); border-radius:12px; }
     .legend-color { width:36px; height:36px; border-radius:10px; flex-shrink:0; }
     .legend-label { font-size:14px; color:#d8fffa; font-weight:500; }
     .legend-range { font-size:12px; color:#94a3b8; margin-top:2px; }
-
-    /* ── Top Areas ── */
-    .chart-placeholder {
-      padding:16px;
-      border-radius:16px;
-      background:#1f2635;
-      border:1px solid rgba(0,212,170,.18);
-      color:#d8fffa;
-      font-size:14px;
-    }
-
-    .top-area-item {
-      display:flex;
-      align-items:center;
-      gap:16px;
-      padding:14px;
-      margin-bottom:12px;
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.06);
-      border-radius:14px;
-    }
-
-    .top-area-item:last-child { margin-bottom:0; }
-
-    .top-area-rank {
-      width:42px; height:42px;
-      border-radius:12px;
-      background:rgba(0,212,170,.12);
-      color:#00d4aa;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-weight:700;
-      flex-shrink:0;
-    }
-
-    .top-area-name    { font-weight:600; margin-bottom:4px; }
-    .top-area-density { color:#94a3b8; font-size:13px; }
-
-    /* ── Metadata ── */
+    .class-item { display:flex; align-items:center; gap:16px; padding:14px; margin-bottom:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); border-radius:14px; }
+    .class-rank { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; }
+    .class-name { font-weight:600; margin-bottom:4px; }
+    .class-range { color:#94a3b8; font-size:13px; }
     .meta-list { display:flex; flex-direction:column; gap:14px; }
-
-    .meta-row {
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:30px;
-      padding-bottom:12px;
-      border-bottom:1px solid rgba(255,255,255,.05);
-    }
-
-    .meta-row span   { color:var(--muted); font-size:17px; min-width:160px; }
+    .meta-row { display:flex; justify-content:space-between; align-items:flex-start; gap:30px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,.05); }
+    .meta-row span { color:var(--muted); font-size:17px; min-width:160px; }
     .meta-row strong { color:#d8fffa; font-size:17px; text-align:right; max-width:260px; word-break:break-word; }
-
-    /* ── Stats ── */
+    .score-badge { display:inline-block; padding:4px 12px; border-radius:8px; font-weight:700; font-size:14px; }
+    .score-high { background:rgba(46,204,113,.15); color:#2ecc71; border:1px solid rgba(46,204,113,.3); }
+    .score-mid  { background:rgba(240,165,0,.15);  color:#f0a500; border:1px solid rgba(240,165,0,.3); }
+    .score-low  { background:rgba(231,76,60,.15);  color:#e74c3c; border:1px solid rgba(231,76,60,.3); }
     .stats { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-
-    .stat-box {
-      background:var(--surface2);
-      border:1px solid var(--border);
-      border-radius:14px;
-      padding:20px;
-    }
-
+    .stat-box { background:var(--surface2); border:1px solid var(--border); border-radius:14px; padding:20px; }
     .stat-label { color:var(--muted); font-size:13px; margin-bottom:8px; }
     .stat-value { font-size:28px; font-weight:700; color:var(--accent); }
-
-    /* ── Recommendations ── */
-    .recommendation {
-      padding:14px;
-      background:rgba(0,212,170,.08);
-      border:1px solid rgba(0,212,170,.18);
-      border-radius:12px;
-      margin-bottom:12px;
-      color:#d8fffa;
-      font-size:14px;
-      line-height:1.5;
-    }
-
-    .export-btn {
-      margin-top:18px;
-      width:100%;
-      border:none;
-      background:var(--accent);
-      color:#08110f;
-      font-weight:700;
-      padding:14px;
-      border-radius:12px;
-      cursor:pointer;
-      transition:.2s;
-      font-family:inherit;
-    }
-
+    .recommendation { padding:14px; background:rgba(0,212,170,.08); border:1px solid rgba(0,212,170,.18); border-radius:12px; margin-bottom:12px; color:#d8fffa; font-size:14px; line-height:1.5; }
+    .export-btn { margin-top:18px; width:100%; border:none; background:var(--accent); color:#08110f; font-weight:700; padding:14px; border-radius:12px; cursor:pointer; transition:.2s; font-family:inherit; }
     .export-btn:hover { transform:translateY(-2px); }
-
-    @media(max-width:950px) {
-      body { padding:20px; }
-      .two-col, .two-col-equal { grid-template-columns:1fr; }
-      #analysisPreview { height:320px; }
-    }
-
+    .error-msg { padding:30px; color:#e74c3c; font-size:15px; }
+    @media(max-width:950px) { body{padding:20px;} .two-col,.two-col-equal{grid-template-columns:1fr;} #analysisPreview{height:320px;} }
   </style>
 </head>
-
 <body>
-
 <div class="container">
 
   <div class="topbar">
@@ -219,336 +62,82 @@
 
   <!-- ROW 1: Map + Legend -->
   <div class="two-col">
-
-    <div class="card" style="padding:0; overflow:hidden;">
+    <div class="card" style="padding:0;overflow:hidden;">
       <div id="analysisPreview"></div>
     </div>
-
     <div class="card">
-      <div class="section-title">Map Legend</div>
-      <div class="legend-list">
-        <div class="legend-item">
-          <div class="legend-color" style="background:#d50000;"></div>
-          <div>
-            <div class="legend-label">Very High Density</div>
-            <div class="legend-range">&gt; 2000 pop/km²</div>
-          </div>
-        </div>
-        <div class="legend-item">
-          <div class="legend-color" style="background:#ff6d00;"></div>
-          <div>
-            <div class="legend-label">High Density</div>
-            <div class="legend-range">1000 – 2000 pop/km²</div>
-          </div>
-        </div>
-        <div class="legend-item">
-          <div class="legend-color" style="background:#ffd600;"></div>
-          <div>
-            <div class="legend-label">Medium Density</div>
-            <div class="legend-range">500 – 1000 pop/km²</div>
-          </div>
-        </div>
-        <div class="legend-item">
-          <div class="legend-color" style="background:#aeea00;"></div>
-          <div>
-            <div class="legend-label">Low Density</div>
-            <div class="legend-range">100 – 500 pop/km²</div>
-          </div>
-        </div>
-        <div class="legend-item">
-          <div class="legend-color" style="background:#00c853;"></div>
-          <div>
-            <div class="legend-label">Very Low Density</div>
-            <div class="legend-range">&lt; 100 pop/km²</div>
-          </div>
-        </div>
-      </div>
+      <div class="section-title" id="legendTitle">Legend</div>
+      <div class="legend-list" id="legendList"></div>
     </div>
-
   </div>
 
-  <!-- ROW 2: Top 5 + Metadata -->
+  <!-- ROW 2: Classification / Stats + Metadata -->
   <div class="two-col-equal">
-
     <div class="card">
-      <div class="section-title">Top 5 Highest Density Areas</div>
-      <div class="chart-placeholder">
-        <div id="topAreasList"></div>
-      </div>
+      <div class="section-title" id="classSummaryTitle">Classification Summary</div>
+      <div id="classSummaryList"></div>
     </div>
-
     <div class="card">
       <div class="section-title">Metadata</div>
       <div class="meta-list">
-        <div class="meta-row">
-          <span>Analysis Type</span>
-          <strong id="metaType">--</strong>
-        </div>
-        <div class="meta-row">
-          <span>Generated At</span>
-          <strong id="metaDate">--</strong>
-        </div>
-        <div class="meta-row">
-          <span>Total Areas</span>
-          <strong id="metaTotalAreas">--</strong>
-        </div>
-        <div class="meta-row">
-          <span>Highest Density Area</span>
-          <strong id="metaHighestArea">--</strong>
-        </div>
-        <div class="meta-row">
-          <span>Data Format</span>
-          <strong>GeoJSON</strong>
-        </div>
+        <div class="meta-row"><span>Analysis Type</span><strong id="metaType">--</strong></div>
+        <div class="meta-row"><span>Generated At</span><strong id="metaDate">--</strong></div>
+        <div class="meta-row"><span>Data Format</span><strong id="metaFormat">--</strong></div>
+        <div class="meta-row"><span>Score</span><strong id="metaScore">--</strong></div>
+        <div class="meta-row"><span>Status</span><strong id="metaStatus">--</strong></div>
       </div>
     </div>
-
   </div>
 
   <!-- ROW 3: Statistics + Recommendations -->
   <div class="two-col-equal">
-
     <div class="card">
-      <div class="section-title">Analysis Statistics</div>
-      <div class="stats">
-        <div class="stat-box">
-          <div class="stat-label">Average Density</div>
-          <div class="stat-value" id="avgDensityValue">--</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-label">Max Density</div>
-          <div class="stat-value" id="maxDensityValue">--</div>
-        </div>
-      </div>
+      <div class="section-title">Statistics</div>
+      <div class="stats" id="statsGrid"></div>
     </div>
-
     <div class="card">
       <div class="section-title">Recommendations</div>
-      <div class="recommendation" id="densityInsight"></div>
-      <div class="recommendation">Increase monitoring frequency for this area.</div>
-      <div class="recommendation">Compare with previous analyses for trend tracking.</div>
-      <button class="export-btn" onclick="exportCurrentAnalysis()">Export Full Report</button>
+      <div id="recommendationsList"></div>
+      <button class="export-btn" onclick="exportReport()">Export Report</button>
     </div>
-
   </div>
 
 </div>
+
 <script src="js/config.js"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/georaster"></script>
 <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
-
 <script>
 
 const API_BASE_URL =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1"
+  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
     ? "http://localhost:8000"
     : "";
 
 const params     = new URLSearchParams(window.location.search);
 const analysisId = params.get("id");
 
-async function loadAnalysisDetails() {
+// ── Per-type configuration ────────────────────────────────────────────────────
+// Each entry has: title, dataFormat, legend[], classTitle,
+//   renderMap(analysis, map)  — loads data onto map, returns stats array
+//   buildStats(features)      — (vector only, called after render)
+//   recommendations(score)    — returns string[]
 
-  const username = localStorage.getItem("username") || "default";
-  const res      = await fetch(`${API_BASE_URL}/analyses?username=${username}`);
-  const data     = await res.json();
-  const analysis = data.find(a => String(a.id) === String(analysisId));
-  console.log("Analysis type:", analysis?.type);
+const ANALYSIS_CONFIG = {
 
-if (!analysis) {
-  document.getElementById("analysisTitle").textContent = "Analysis not found";
-  return;
-}
+  // ── RASTER types ────────────────────────────────────────────────────────────
 
-document.getElementById("analysisTitle").textContent = analysis.title;
-document.getElementById("analysisMeta").textContent  = `${analysis.area} • ${new Date(analysis.created_at).toLocaleString()}`;
-document.getElementById("metaType").textContent = analysis.title || analysis.type || "Unknown";
-document.getElementById("metaDate").textContent = new Date(analysis.created_at).toLocaleString();
-
-  if (analysis.result_file) {
-
-    const type = analysis.type || "urban-density";
-    const map  = L.map("analysisPreview").setView([30.0444, 31.2357], 10);
-
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap"
-    }).addTo(map);
-  
-  if (type === "ndvi") {
-      await loadNdviMap(analysis, map);
-    } else {
-
-    const geojsonUrl = `${API_BASE_URL}/${analysis.result_file}`;
-    const geoRes     = await fetch(geojsonUrl);
-    const geoData    = await geoRes.json();
-
-    const topAreas = geoData.features
-      .map((feature, index) => {
-        const props = feature.properties || {};
-        return {
-          name: props.name || props.NAME || props.area || props.Area ||
-                props.region || props.district || `Area ${index + 1}`,
-          density: Number(props.urban_density || 0)
-        };
-      })
-      .sort((a, b) => b.density - a.density)
-      .slice(0, 5);
-
-    const densities   = topAreas.map(a => a.density);
-    const avgDensity  = Math.round(densities.reduce((a, b) => a + b, 0) / densities.length);
-    const maxDensity  = Math.max(...densities);
-    const highestArea = topAreas[0]?.name || "Unknown";
-
-    document.getElementById("avgDensityValue").textContent = avgDensity.toLocaleString();
-    document.getElementById("maxDensityValue").textContent = maxDensity.toLocaleString();
-    document.getElementById("metaTotalAreas").textContent  = geoData.features.length;
-    document.getElementById("metaHighestArea").textContent = highestArea;
-
-    document.getElementById("topAreasList").innerHTML = topAreas.map((area, i) => `
-      <div class="top-area-item">
-        <div class="top-area-rank">#${i + 1}</div>
-        <div class="top-area-info">
-          <div class="top-area-name">${area.name}</div>
-          <div class="top-area-density">${area.density.toLocaleString()} pop/km²</div>
-        </div>
-      </div>
-    `).join("");
-
-    let densityInsight = "";
-    if (avgDensity > 2000)      densityInsight = `Very high urban density detected, especially in ${highestArea}.`;
-    else if (avgDensity > 1000) densityInsight = `Moderate-to-high urban concentration observed across analyzed areas.`;
-    else                         densityInsight = `Most analyzed zones show relatively low urban density.`;
-    document.getElementById("densityInsight").textContent = densityInsight;
-
-    const geoLayer = L.geoJSON(geoData, {
-      style: function(feature) {
-        const density = feature.properties.urban_density || 0;
-        let color = "#00c853";
-        if (density > 100)  color = "#aeea00";
-        if (density > 500)  color = "#ffd600";
-        if (density > 1000) color = "#ff6d00";
-        if (density > 2000) color = "#d50000";
-        return { fillColor: color, fillOpacity: 0.6, color: "#333", weight: 1 };
-      },
-      onEachFeature: function(feature, layer) {
-        const props = feature.properties || {};
-        const popupContent = Object.entries(props)
-          .map(([k, v]) => `<strong>${k}:</strong> ${v}`)
-          .join("<br>");
-        layer.bindPopup(popupContent);
-      }
-    }).addTo(map);
-
-    map.fitBounds(geoLayer.getBounds());
-    setTimeout(() => map.invalidateSize(), 300);
-
-    } // end else (ndvi check)
-
-  } else {
-
-    const preview = analysis.preview_image || "images/opening-bg.png";
-    document.getElementById("analysisPreview").style.background =
-      `linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url(${preview}) center/cover`;
-  }
-}
-function exportCurrentAnalysis() {
-  const title   = document.getElementById("analysisTitle").textContent;
-  const content = `MALAZ ANALYSIS REPORT\n=========================\n\n${title}\n\nGenerated from MALAZ Platform\n`;
-  const blob    = new Blob([content], { type: 'text/plain' });
-  const url     = URL.createObjectURL(blob);
-  const a       = document.createElement('a');
-  a.href        = url;
-  a.download    = "analysis-report.txt";
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-
-async function loadNdviMap(analysis, map) {
-
-  // ── Legend ──
-  document.querySelector(".legend-list").innerHTML = `
-    <div class="legend-item">
-      <div class="legend-color" style="background:#1a9641;"></div>
-      <div><div class="legend-label">Dense Vegetation</div><div class="legend-range">NDVI &gt; 0.6</div></div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-color" style="background:#a6d96a;"></div>
-      <div><div class="legend-label">Moderate Vegetation</div><div class="legend-range">NDVI 0.4 – 0.6</div></div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-color" style="background:#ffffbf;"></div>
-      <div><div class="legend-label">Sparse Vegetation</div><div class="legend-range">NDVI 0.2 – 0.4</div></div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-color" style="background:#d9a85a;"></div>
-      <div><div class="legend-label">Bare Soil</div><div class="legend-range">NDVI 0 – 0.2</div></div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-color" style="background:#4575b4;"></div>
-      <div><div class="legend-label">Water / No Vegetation</div><div class="legend-range">NDVI &lt; 0</div></div>
-    </div>
-  `;
-
-  // ── Top List ──
-  document.querySelector(".section-title:nth-of-type(3)").textContent = "Vegetation Zones";
-  document.getElementById("topAreasList").innerHTML = `
-    <div class="top-area-item">
-      <div class="top-area-rank" style="background:rgba(26,150,65,.15);color:#1a9641;">1</div>
-      <div class="top-area-info"><div class="top-area-name">Dense Vegetation</div><div class="top-area-density">NDVI &gt; 0.6</div></div>
-    </div>
-    <div class="top-area-item">
-      <div class="top-area-rank" style="background:rgba(166,217,106,.15);color:#a6d96a;">2</div>
-      <div class="top-area-info"><div class="top-area-name">Moderate Vegetation</div><div class="top-area-density">NDVI 0.4 – 0.6</div></div>
-    </div>
-    <div class="top-area-item">
-      <div class="top-area-rank" style="background:rgba(255,255,191,.15);color:#ccc;">3</div>
-      <div class="top-area-info"><div class="top-area-name">Sparse Vegetation</div><div class="top-area-density">NDVI 0.2 – 0.4</div></div>
-    </div>
-    <div class="top-area-item">
-      <div class="top-area-rank" style="background:rgba(217,168,90,.15);color:#d9a85a;">4</div>
-      <div class="top-area-info"><div class="top-area-name">Bare Soil</div><div class="top-area-density">NDVI 0 – 0.2</div></div>
-    </div>
-    <div class="top-area-item">
-      <div class="top-area-rank" style="background:rgba(69,117,180,.15);color:#4575b4;">5</div>
-      <div class="top-area-info"><div class="top-area-name">Water / No Vegetation</div><div class="top-area-density">NDVI &lt; 0</div></div>
-    </div>
-  `;
-
-  // ── Stats ──
-  document.querySelector(".stats").innerHTML = `
-    <div class="stat-box">
-      <div class="stat-label">Min NDVI</div>
-      <div class="stat-value" id="ndviMin">--</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Max NDVI</div>
-      <div class="stat-value" id="ndviMax">--</div>
-    </div>
-  `;
-
-  // ── Insight ──
-  document.getElementById("densityInsight").textContent =
-    "NDVI analysis completed. Review the map for spatial vegetation distribution.";
-
-  // ── تحميل الـ GeoTIFF ──
-  const tiffUrl     = `${API_BASE_URL}/${analysis.result_file}`;
-  const response    = await fetch(tiffUrl);
-  const arrayBuffer = await response.arrayBuffer();
-  const georaster   = await parseGeoraster(arrayBuffer);
-
-  // ── Stats من الـ georaster ──
-  document.getElementById("ndviMin").textContent = georaster.mins?.[0]?.toFixed(3) || "--";
-  document.getElementById("ndviMax").textContent = georaster.maxs?.[0]?.toFixed(3) || "--";
-
-  // ── Map Layer ──
-  const layer = new GeoRasterLayer({
-    georaster,
-    opacity: 0.8,
-    pixelValuesToColorFn: values => {
-      const v = values[0];
+  "ndvi": {
+    title: "NDVI Analysis", dataFormat: "GeoTIFF", classTitle: "Vegetation Classes",
+    legend: [
+      { color:"#1a9641", label:"Dense Vegetation",        range:"NDVI > 0.6" },
+      { color:"#a6d96a", label:"Moderate Vegetation",     range:"NDVI 0.4 – 0.6" },
+      { color:"#ffffbf", label:"Sparse Vegetation",       range:"NDVI 0.2 – 0.4" },
+      { color:"#d9a85a", label:"Bare Soil",               range:"NDVI 0 – 0.2" },
+      { color:"#4575b4", label:"Water / No Vegetation",   range:"NDVI < 0" }
+    ],
+    colorFn(v) {
       if (v === null || v === undefined || isNaN(v)) return null;
       if (v < 0)   return "rgba(69,117,180,0.8)";
       if (v < 0.2) return "rgba(217,168,90,0.8)";
@@ -556,16 +145,662 @@ async function loadNdviMap(analysis, map) {
       if (v < 0.6) return "rgba(166,217,106,0.8)";
       return "rgba(26,150,65,0.8)";
     },
+    buildInsight(mean) {
+      if (mean === null) return "NDVI analysis completed. Review spatial vegetation distribution.";
+      if (mean >= 0.6) return "Healthy vegetation condition detected. Dense vegetation dominates.";
+      if (mean >= 0.4) return "Moderate vegetation detected. Green coverage exists but may be uneven.";
+      if (mean >= 0.2) return "Sparse vegetation detected. The area may need more green infrastructure.";
+      return "Low vegetation signal. Bare soil, built-up surfaces, or water may dominate.";
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Dense vegetation coverage is healthy.", "Monitor for seasonal changes.", "Consider expanding green corridors."];
+      if (score >= 40) return ["Moderate vegetation needs targeted improvement.", "Prioritize planting in sparse zones.", "Use grid analysis to locate lowest-NDVI cells."];
+      return ["Critical lack of vegetation detected.", "Initiate urban greening programs immediately.", "Coordinate with municipality on tree-planting targets."];
+    }
+  },
+
+  "heat-index": {
+    title: "Heat Index Analysis", dataFormat: "GeoTIFF", classTitle: "Temperature Classes",
+    legend: [
+      { color:"#313695", label:"Cool",        range:"< 25 °C" },
+      { color:"#74add1", label:"Mild",         range:"25 – 30 °C" },
+      { color:"#fee090", label:"Warm",         range:"30 – 35 °C" },
+      { color:"#f46d43", label:"Hot",          range:"35 – 40 °C" },
+      { color:"#a50026", label:"Extreme Heat", range:"> 40 °C" }
+    ],
+    colorFn(v) {
+      if (v === null || v === undefined || isNaN(v) || v < -100) return null;
+      if (v < 25) return "rgba(49,54,149,0.8)";
+      if (v < 30) return "rgba(116,173,209,0.8)";
+      if (v < 35) return "rgba(254,224,144,0.8)";
+      if (v < 40) return "rgba(244,109,67,0.8)";
+      return "rgba(165,0,38,0.8)";
+    },
+    buildInsight(mean) {
+      if (mean === null) return "Heat index analysis completed.";
+      if (mean >= 40) return "Extreme heat detected across the area. Urban heat island effect is severe.";
+      if (mean >= 35) return "High surface temperatures detected. Heat stress risk is elevated.";
+      if (mean >= 30) return "Warm surface temperatures with moderate heat stress potential.";
+      return "Relatively cool surface temperatures. Thermal comfort is acceptable.";
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Thermal conditions are relatively comfortable.", "Monitor during summer peak periods.", "Preserve existing green and water surfaces."];
+      if (score >= 40) return ["Moderate heat stress detected in parts of the area.", "Increase urban tree canopy and green roofs.", "Assess dark-surface coverage and replace with lighter materials."];
+      return ["Severe urban heat island effect detected.", "Urgent intervention needed: trees, water features, reflective surfaces.", "Consider restricting dark paving expansion in hotspot zones."];
+    }
+  },
+
+  "air-quality": {
+    title: "Air Quality Analysis", dataFormat: "GeoTIFF", classTitle: "AQI Classes",
+    legend: [
+      { color:"#00e400", label:"Good",            range:"Class 0" },
+      { color:"#ffff00", label:"Moderate",         range:"Class 1" },
+      { color:"#ff7e00", label:"Sensitive Groups", range:"Class 2" },
+      { color:"#ff0000", label:"Unhealthy",        range:"Class 3" },
+      { color:"#8f3f97", label:"Very Unhealthy",   range:"Class 4" },
+      { color:"#7e0023", label:"Hazardous",        range:"Class 5" }
+    ],
+    colorFn(v) {
+      const c = Math.round(v);
+      if (isNaN(c) || c === -9999) return null;
+      if (c === 0) return "rgba(0,228,0,0.8)";
+      if (c === 1) return "rgba(255,255,0,0.8)";
+      if (c === 2) return "rgba(255,126,0,0.8)";
+      if (c === 3) return "rgba(255,0,0,0.8)";
+      if (c === 4) return "rgba(143,63,151,0.8)";
+      if (c === 5) return "rgba(126,0,35,0.8)";
+      return null;
+    },
+    buildInsight(mean) {
+      if (mean === null) return "Air quality analysis completed.";
+      if (mean >= 4) return "Severe air pollution conditions dominate the analyzed area.";
+      if (mean >= 3) return "Unhealthy air quality patterns detected across major urban zones.";
+      if (mean >= 2) return "Moderate to elevated pollution levels affect sensitive groups.";
+      if (mean >= 1) return "Air quality is generally acceptable with moderate pollution signals.";
+      return "Air quality conditions are mostly good across the area.";
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Air quality is largely acceptable.", "Monitor PM2.5 and NO2 levels seasonally.", "Maintain green buffer zones around roads."];
+      if (score >= 40) return ["Moderate pollution detected in some zones.", "Increase monitoring frequency near industrial and traffic corridors.", "Promote public transport to reduce vehicle emissions."];
+      return ["Poor air quality across significant portions of the area.", "Identify and restrict major emission sources.", "Establish clean-air zones and enforce emission standards."];
+    }
+  },
+
+  // ── VECTOR types ─────────────────────────────────────────────────────────────
+
+  "crime": {
+    title: "Crime Density Analysis", dataFormat: "GeoJSON", classTitle: "Crime Density Classes",
+    legend: [
+      { color:"#2ecc71", label:"Safe",      range:"0 – 5 crimes/km²" },
+      { color:"#f1c40f", label:"Low Risk",  range:"5 – 10 crimes/km²" },
+      { color:"#e67e22", label:"Moderate",  range:"10 – 15 crimes/km²" },
+      { color:"#e74c3c", label:"High Risk", range:"15 – 20 crimes/km²" },
+      { color:"#891508", label:"Hotspot",   range:"> 20 crimes/km²" }
+    ],
+    styleFeature(f) {
+      const d = f.properties.crime_density || 0;
+      let color = "#2ecc71";
+      if (d > 5)  color = "#f1c40f";
+      if (d > 10) color = "#e67e22";
+      if (d > 15) color = "#e74c3c";
+      if (d > 20) color = "#891508";
+      return { fillColor: color, fillOpacity: 0.65, color: "#333", weight: 1 };
+    },
+    popupFn(f) {
+      const p = f.properties;
+      return `<strong>${p.NBHD_NAME || p.name || "Area"}</strong><br>
+              Crime Count: ${p.crime_count || 0}<br>
+              Density: ${(p.crime_density || 0).toFixed(2)} /km²`;
+    },
+    buildStats(features) {
+      const densities = features.map(f => f.properties.crime_density || 0).filter(v => v > 0);
+      const avg = densities.length ? (densities.reduce((a,b)=>a+b,0)/densities.length).toFixed(2) : "--";
+      const max = densities.length ? Math.max(...densities).toFixed(2) : "--";
+      const hotspots = features.filter(f => (f.properties.crime_density||0) > 20).length;
+      return [
+        { label:"Avg Crime Density", value: avg + " /km²" },
+        { label:"Max Crime Density", value: max + " /km²" },
+        { label:"Hotspot Areas",     value: hotspots },
+        { label:"Total Areas",       value: features.length }
+      ];
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Crime density is relatively low across the area.", "Maintain current policing and surveillance strategies.", "Continue community engagement programs."];
+      if (score >= 40) return ["Moderate crime density detected in several zones.", "Increase patrol frequency in medium-risk areas.", "Install additional street lighting in risk zones."];
+      return ["High crime density detected. Immediate action needed.", "Deploy targeted policing in identified hotspots.", "Coordinate with local authorities for community safety programs."];
+    }
+  },
+
+  "public-transport": {
+    title: "Public Transport Coverage", dataFormat: "GeoJSON", classTitle: "Coverage Classes",
+    legend: [
+      { color:"#198754", label:"Well Covered",    range:"> 80% coverage" },
+      { color:"#52b788", label:"Good Coverage",   range:"60 – 80%" },
+      { color:"#ffc107", label:"Moderate",        range:"40 – 60%" },
+      { color:"#fd7e14", label:"Limited",         range:"20 – 40%" },
+      { color:"#e74c3c", label:"Underserved",     range:"< 20%" }
+    ],
+    styleFeature(f) {
+      const p = f.properties;
+      if (p.type === "station" || p.layer === "station") return { fillColor:"#4cc2ff", fillOpacity:0.9, color:"#1a8fc1", weight:2 };
+      if (p.layer === "boundary") return { fillColor:"transparent", fillOpacity:0, color:"#f0a500", weight:2.5, dashArray:"6,3" };
+      const cov = p.coverage_pct || 0;
+      let color = "#e74c3c";
+      if (cov > 80) color = "#198754";
+      else if (cov > 60) color = "#52b788";
+      else if (cov > 40) color = "#ffc107";
+      else if (cov > 20) color = "#fd7e14";
+      return { fillColor: color, fillOpacity: 0.55, color: "#333", weight: 1 };
+    },
+    pointToLayer(f, latlng) {
+      return L.circleMarker(latlng, { radius:6, fillColor:"#4cc2ff", color:"#1a8fc1", weight:2, fillOpacity:0.9 });
+    },
+    popupFn(f) {
+      const p = f.properties;
+      if (p.type === "station") return `<strong>Station</strong><br>${p.name || "Transit Stop"}`;
+      return `<strong>${p.name || "Zone"}</strong><br>Coverage: ${(p.coverage_pct||0).toFixed(1)}%`;
+    },
+    buildStats(features) {
+      const stations = features.filter(f => f.properties.type === "station" || f.properties.layer === "station").length;
+      const zones    = features.filter(f => f.properties.coverage_pct != null);
+      const avg      = zones.length ? (zones.reduce((s,f)=>s+(f.properties.coverage_pct||0),0)/zones.length).toFixed(1) : "--";
+      return [
+        { label:"Transit Stations", value: stations },
+        { label:"Avg Coverage",     value: avg + "%" },
+        { label:"Coverage Zones",   value: zones.length },
+        { label:"Total Features",   value: features.length }
+      ];
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Strong transit coverage across the area.", "Focus on frequency and reliability improvements.", "Extend coverage to peri-urban fringes."];
+      if (score >= 40) return ["Moderate coverage with notable gaps.", "Prioritise new stops in low-coverage zones.", "Improve pedestrian access to existing stations."];
+      return ["Poor transit coverage. Major investment needed.", "Plan new transit corridors for underserved areas.", "Introduce feeder services to connect gaps."];
+    }
+  },
+
+  "traffic": {
+    title: "Traffic Analysis", dataFormat: "GeoJSON", classTitle: "Road Hierarchy Classes",
+    legend: [
+      { color:"#e74c3c", label:"Primary Roads",   range:"High capacity" },
+      { color:"#f39c12", label:"Secondary Roads", range:"Medium capacity" },
+      { color:"#3498db", label:"Local Roads",     range:"Low capacity" },
+      { color:"#95a5a6", label:"Other",           range:"Unclassified" }
+    ],
+    styleFeature(f) {
+      const h = f.properties.hierarchy || f.properties.road_type || "";
+      if (h === "primary")   return { color:"#e74c3c", weight:3, fillOpacity:0 };
+      if (h === "secondary") return { color:"#f39c12", weight:2, fillOpacity:0 };
+      if (h === "local")     return { color:"#3498db", weight:1.5, fillOpacity:0 };
+      return { color:"#95a5a6", weight:1, fillOpacity:0 };
+    },
+    popupFn(f) {
+      const p = f.properties;
+      return `<strong>${p.name || p.road_name || "Road"}</strong><br>
+              Type: ${p.hierarchy || p.road_type || "—"}<br>
+              Length: ${p.length_m ? (p.length_m/1000).toFixed(2)+" km" : "—"}`;
+    },
+    buildStats(features) {
+      const primary   = features.filter(f => (f.properties.hierarchy||f.properties.road_type) === "primary").length;
+      const secondary = features.filter(f => (f.properties.hierarchy||f.properties.road_type) === "secondary").length;
+      const local     = features.filter(f => (f.properties.hierarchy||f.properties.road_type) === "local").length;
+      return [
+        { label:"Primary Roads",   value: primary },
+        { label:"Secondary Roads", value: secondary },
+        { label:"Local Roads",     value: local },
+        { label:"Total Segments",  value: features.length }
+      ];
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Road network connectivity is strong.", "Monitor congestion at peak hours.", "Consider demand-responsive transit in low-traffic areas."];
+      if (score >= 40) return ["Moderate traffic pressure detected.", "Improve signal coordination on secondary corridors.", "Invest in alternative transport modes."];
+      return ["High traffic pressure across key corridors.", "Urgent road capacity or demand management needed.", "Evaluate new road links or public transport investment."];
+    }
+  },
+
+  "vegetation": {
+    title: "Vegetation Density Analysis", dataFormat: "GeoJSON", classTitle: "Vegetation Classes",
+    legend: [
+      { color:"#1a9641", label:"High Vegetation",     range:"> 60%" },
+      { color:"#a6d96a", label:"Moderate Vegetation", range:"30 – 60%" },
+      { color:"#ffffbf", label:"Low Vegetation",      range:"10 – 30%" },
+      { color:"#d9a85a", label:"Very Low",            range:"< 10%" }
+    ],
+    styleFeature(f) {
+      const v = f.properties.vegetation_pct || 0;
+      let color = "#d9a85a";
+      if (v > 60) color = "#1a9641";
+      else if (v > 30) color = "#a6d96a";
+      else if (v > 10) color = "#ffffbf";
+      return { fillColor: color, fillOpacity: 0.7, color: "rgba(0,0,0,0.15)", weight: 0.5 };
+    },
+    popupFn(f) {
+      const p = f.properties;
+      return `<strong>Vegetation: ${(p.vegetation_pct||0).toFixed(1)}%</strong><br>
+              QoL Score: ${p.qol_score ?? "—"}/100<br>
+              Passes 30% benchmark: ${p.passes_30pct ? "Yes" : "No"}`;
+    },
+    buildStats(features) {
+      const vegPcts = features.map(f => f.properties.vegetation_pct || 0);
+      const avg = vegPcts.length ? (vegPcts.reduce((a,b)=>a+b,0)/vegPcts.length).toFixed(1) : "--";
+      const passing = features.filter(f => f.properties.passes_30pct).length;
+      return [
+        { label:"Avg Vegetation %", value: avg + "%" },
+        { label:"Cells ≥ 30%",      value: passing },
+        { label:"Total Cells",      value: features.length }
+      ];
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Vegetation coverage is healthy across the area.", "Protect existing green spaces from development.", "Maintain diverse urban tree species."];
+      if (score >= 40) return ["Moderate vegetation with room for improvement.", "Target low-vegetation cells for planting initiatives.", "Integrate greenery into new development plans."];
+      return ["Critical vegetation deficit detected.", "Launch urgent urban greening program.", "Prioritise street trees and park expansion in bare zones."];
+    }
+  },
+
+  "informal-settlement": {
+    title: "Informal Settlement Analysis", dataFormat: "GeoJSON", classTitle: "Irregularity Classes",
+    legend: [
+      { color:"#2ecc71", label:"Planned (0–33)",   range:"Low irregularity" },
+      { color:"#f39c12", label:"Mixed (34–66)",    range:"Medium irregularity" },
+      { color:"#e74c3c", label:"Informal (67–100)",range:"High irregularity" }
+    ],
+    styleFeature(f) {
+      const p = f.properties;
+      if (p.type === "high_irregularity_zone") return { fillColor:"transparent", fillOpacity:0, color:"#e74c3c", weight:2.5, dashArray:"5,4" };
+      const s = p.irregularity_score ?? 0;
+      let color = "#2ecc71";
+      if (s > 66) color = "#e74c3c";
+      else if (s > 33) color = "#f39c12";
+      return { fillColor: color, fillOpacity: 0.7, color: "rgba(0,0,0,0.18)", weight: 0.7 };
+    },
+    popupFn(f) {
+      const p = f.properties;
+      if (p.type === "high_irregularity_zone") return "<strong>High Irregularity Zone</strong><br>Potential informal settlement area";
+      return `<strong>Irregularity: ${p.irregularity_score ?? "—"}/100</strong><br>
+              Classification: ${p.classification || "—"}<br>
+              QoL Score: ${p.qol_score ?? "—"}/100`;
+    },
+    buildStats(features) {
+      const cells  = features.filter(f => f.properties.type !== "high_irregularity_zone");
+      const scores = cells.map(f => f.properties.irregularity_score ?? 0);
+      const avg    = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : "--";
+      const high   = cells.filter(f => (f.properties.irregularity_score??0) > 66).length;
+      const zones  = features.filter(f => f.properties.type === "high_irregularity_zone").length;
+      return [
+        { label:"Avg Irregularity Score", value: avg + "/100" },
+        { label:"High-Irregularity Cells",value: high },
+        { label:"Informal Hotspot Zones", value: zones },
+        { label:"Total Cells",            value: cells.length }
+      ];
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Area is mostly planned and regular.", "Monitor edges of formal zones for informal expansion.", "Use results as baseline for future land-use planning."];
+      if (score >= 40) return ["Mixed settlement patterns detected. Some zones need attention.", "Focus urban upgrading programs on high-irregularity clusters.", "Compare with population density to prioritise interventions."];
+      return ["High informality patterns dominate. Priority urban planning needed.", "Initiate community-based upgrading programs in hotspot zones.", "Coordinate with housing authorities for legalisation and infrastructure support."];
+    }
+  },
+
+  "facility-accessibility": {
+    title: "Facility Accessibility", dataFormat: "GeoJSON", classTitle: "Walk-Time Classes",
+    legend: [
+      { color:"#198754", label:"≤ 5 min walk",  range:"Excellent access" },
+      { color:"#52b788", label:"≤ 10 min walk", range:"Good access" },
+      { color:"#ffc107", label:"≤ 15 min walk", range:"Acceptable access" },
+      { color:"#fd7e14", label:"≤ 20 min walk", range:"Limited access" },
+      { color:"#e74c3c", label:"No Access",      range:"Outside walking range" }
+    ],
+    styleFeature(f) {
+      const p = f.properties;
+      if (p.type === "uncovered" || p.category === "uncovered") return { fillColor:"#e74c3c", fillOpacity:0.18, color:"#e74c3c", weight:1, dashArray:"4,3" };
+      if (p.layer === "boundary") return { fillColor:"transparent", fillOpacity:0, color:"#f0a500", weight:2.5, dashArray:"6,3" };
+      const colors = { 5:"#198754", 10:"#52b788", 15:"#ffc107", 20:"#fd7e14" };
+      const opacity = { 5:0.45, 10:0.38, 15:0.30, 20:0.22 };
+      const color = colors[p.time_min] || "#888";
+      return { fillColor: color, fillOpacity: opacity[p.time_min] || 0.2, color, weight:1.5 };
+    },
+    pointToLayer(f, latlng) {
+      return L.circleMarker(latlng, { radius:5, fillColor:"#4cc2ff", color:"#1a8fc1", weight:1.5, fillOpacity:0.9 });
+    },
+    popupFn(f) {
+      const p = f.properties;
+      if (p.type === "uncovered" || p.category === "uncovered") return "<strong style='color:#e74c3c'>Outside walking range</strong>";
+      if (p.layer === "boundary") return "<strong>Area of Interest</strong>";
+      return `<strong>Within ${p.time_min} min walk</strong><br>Radius: ${p.radius_m} m<br>Facilities: ${p.facility_count}`;
+    },
+    buildStats(features) {
+      const uncovered = features.filter(f => f.properties.type === "uncovered" || f.properties.category === "uncovered").length;
+      const within5   = features.filter(f => f.properties.time_min === 5).length;
+      const within15  = features.filter(f => f.properties.time_min != null && f.properties.time_min <= 15).length;
+      return [
+        { label:"Zones within 5 min",  value: within5 },
+        { label:"Zones within 15 min", value: within15 },
+        { label:"Uncovered Zones",     value: uncovered },
+        { label:"Total Features",      value: features.length }
+      ];
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Excellent facility accessibility across the area.", "Maintain current facility distribution.", "Focus on quality and capacity of existing facilities."];
+      if (score >= 40) return ["Moderate facility accessibility. Some gaps remain.", "Prioritise new facilities in uncovered high-density zones.", "Consider mobile or pop-up services for hard-to-reach areas."];
+      return ["Low facility accessibility. Large portions are underserved.", "Plan new facility locations based on population distribution.", "Use grid analysis to identify the worst accessibility cells."];
+    }
+  },
+
+  "urban-density": {
+    title: "Urban Density Analysis", dataFormat: "GeoJSON", classTitle: "Density Classes",
+    legend: [
+      { color:"#ffffcc", label:"Very Low",  range:"< 500 /km²" },
+      { color:"#a1dab4", label:"Low",       range:"500 – 2000 /km²" },
+      { color:"#41b6c4", label:"Moderate",  range:"2000 – 5000 /km²" },
+      { color:"#2c7fb8", label:"High",      range:"5000 – 10000 /km²" },
+      { color:"#253494", label:"Very High", range:"> 10000 /km²" }
+    ],
+    styleFeature(f) {
+      const d = f.properties.urban_density || 0;
+      let color = "#ffffcc";
+      if (d > 500)   color = "#a1dab4";
+      if (d > 2000)  color = "#41b6c4";
+      if (d > 5000)  color = "#2c7fb8";
+      if (d > 10000) color = "#253494";
+      return { fillColor: color, fillOpacity: 0.65, color: "#333", weight: 1 };
+    },
+    popupFn(f) {
+      const p = f.properties;
+      const density = p.urban_density != null ? Number(p.urban_density).toFixed(1) : "—";
+      const area    = p.area_km2      != null ? Number(p.area_km2).toFixed(2)      : "—";
+      return `<strong>${p.NBHD_NAME || p.name || p.ADM3_EN || "Area"}</strong><br>
+              Density: ${density} /km²<br>Area: ${area} km²`;
+    },
+    buildStats(features) {
+      const densities = features.map(f => f.properties.urban_density || 0).filter(v => v > 0);
+      const avg  = densities.length ? (densities.reduce((a,b)=>a+b,0)/densities.length).toFixed(1) : "--";
+      const max  = densities.length ? Math.max(...densities).toFixed(1) : "--";
+      const high = features.filter(f => (f.properties.urban_density||0) > 5000).length;
+      return [
+        { label:"Avg Density",        value: avg + " /km²" },
+        { label:"Max Density",        value: max + " /km²" },
+        { label:"High-Density Zones", value: high },
+        { label:"Total Areas",        value: features.length }
+      ];
+    },
+    recommendations(score) {
+      if (score >= 75) return ["Urban density distribution appears well-balanced.", "Monitor high-density cores to prevent overcrowding.", "Invest in vertical development in low-density peripheries."];
+      if (score >= 40) return ["Moderate density with notable variation across zones.", "Improve infrastructure in high-density clusters.", "Encourage mixed-use development to redistribute population load."];
+      return ["High density concentration detected. Urban stress risk is elevated.", "Prioritise new housing and service expansion to low-density areas.", "Plan transport corridors to connect underserved zones."];
+    }
+  },
+
+  // ── EXPANSION — no spatial result file, show score card only ────────────────
+  "expansion": {
+    title: "Urban Expansion Analysis", dataFormat: "Report", classTitle: "Expansion Suitability",
+    legend: [
+      { color:"#2ecc71", label:"High Suitability",    range:"Score > 70" },
+      { color:"#f1c40f", label:"Moderate Suitability",range:"Score 40 – 70" },
+      { color:"#e74c3c", label:"Low Suitability",     range:"Score < 40" }
+    ],
+    recommendations(score) {
+      if (score >= 70) return ["High expansion suitability detected.", "Prioritise areas with infrastructure access and low flood risk.", "Engage urban planners for phased development."];
+      if (score >= 40) return ["Moderate suitability. Some constraints apply.", "Review utility capacity before approving expansion.", "Consider environmental impact assessments."];
+      return ["Low suitability for expansion in this area.", "Explore alternative sites or densification strategies.", "Address underlying constraints before proceeding."];
+    }
+  }
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function hexToSoftBg(hex) {
+  if (!hex || !hex.startsWith("#")) return "rgba(0,212,170,.12)";
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},.15)`;
+}
+
+function scoreClass(status) {
+  if (status === "high") return "score-high";
+  if (status === "mid")  return "score-mid";
+  return "score-low";
+}
+
+function renderLegend(config) {
+  document.getElementById("legendList").innerHTML = config.legend.map(item => `
+    <div class="legend-item">
+      <div class="legend-color" style="background:${item.color};"></div>
+      <div><div class="legend-label">${item.label}</div><div class="legend-range">${item.range}</div></div>
+    </div>`).join("");
+}
+
+function renderClassSummary(config) {
+  document.getElementById("classSummaryList").innerHTML = config.legend.map((item, i) => `
+    <div class="class-item">
+      <div class="class-rank" style="background:${hexToSoftBg(item.color)};color:${item.color};">${i+1}</div>
+      <div><div class="class-name">${item.label}</div><div class="class-range">${item.range}</div></div>
+    </div>`).join("");
+}
+
+function renderStats(statsArr) {
+  document.getElementById("statsGrid").innerHTML = statsArr.map(s => `
+    <div class="stat-box">
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-value">${s.value}</div>
+    </div>`).join("");
+}
+
+function renderRecommendations(recs) {
+  document.getElementById("recommendationsList").innerHTML =
+    recs.map(r => `<div class="recommendation">${r}</div>`).join("");
+}
+
+function sanitizeResultFile(path) {
+  if (!path || !path.trim()) return null;
+  path = path.trim();
+  // Reject absolute Windows or Unix paths stored from another machine
+  if (/^[A-Za-z]:[\\\/]/.test(path)) return null;
+  if (path.startsWith("/") && !path.startsWith("/outputs")) return null;
+  // Fix double outputs/ prefix
+  path = path.replace(/^outputs\/outputs\//, "outputs/");
+  // Must contain a slash (bare filename like "ndvi_result.tif" can't be served)
+  if (!path.includes("/")) return null;
+  // Must match expected outputs/ structure
+  if (!path.startsWith("outputs/")) return null;
+  return path;
+}
+
+function showNoFile(config, analysis) {
+  document.getElementById("analysisPreview").style.cssText =
+    `background:linear-gradient(rgba(0,0,0,.45),rgba(0,0,0,.45)),url(${analysis.preview_image||"images/opening-bg.png"}) center/cover;border-radius:16px;`;
+  document.getElementById("statsGrid").innerHTML =
+    `<div class="stat-box" style="grid-column:1/-1;"><div class="stat-label">Result File</div><div class="stat-value" style="font-size:18px;color:#e74c3c;">Not available</div></div>`;
+  renderRecommendations(["No result file was saved for this analysis.", "Run the analysis again to regenerate the result.", "If the problem persists, check backend output headers."]);
+}
+
+// ── Raster loader ─────────────────────────────────────────────────────────────
+
+async function loadRasterMap(analysis, map, config) {
+  const url = `${API_BASE_URL}/${analysis.result_file}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} loading ${url}`);
+
+  const buf      = await res.arrayBuffer();
+  const georaster = await parseGeoraster(buf);
+
+  if (!georaster.projection || georaster.projection === 32767) georaster.projection = 4326;
+
+  const min  = (georaster.mins?.[0]  != null && !isNaN(georaster.mins[0]))  ? georaster.mins[0]  : null;
+  const max  = (georaster.maxs?.[0]  != null && !isNaN(georaster.maxs[0]))  ? georaster.maxs[0]  : null;
+  // Use midpoint of min/max as proxy for mean — always available, avoids iterating all pixels
+  const mean = (min !== null && max !== null) ? (min + max) / 2 : null;
+
+  renderStats([
+    { label:"Min Value", value: min  !== null ? Number(min).toFixed(3)  : "--" },
+    { label:"Max Value", value: max  !== null ? Number(max).toFixed(3)  : "--" },
+    { label:"Mean Value",value: mean !== null ? Number(mean).toFixed(3) : "--" },
+    { label:"Raster Size",value: `${georaster.width} × ${georaster.height}` }
+  ]);
+
+  if (config.buildInsight) {
+    const insightEl = document.createElement("div");
+    insightEl.className = "recommendation";
+    insightEl.style.marginBottom = "16px";
+    insightEl.textContent = config.buildInsight(mean);
+    document.getElementById("recommendationsList").prepend(insightEl);
+  }
+
+  const layer = new GeoRasterLayer({
+    georaster,
+    opacity: 0.85,
     resolution: 256,
+    debugLevel: 0,
+    pixelValuesToColorFn: values => config.colorFn(values[0], min, max)
   });
 
   layer.addTo(map);
-  map.fitBounds(layer.getBounds());
+  try { map.fitBounds(layer.getBounds()); } catch(e) {}
   setTimeout(() => map.invalidateSize(), 300);
 }
+
+// ── Vector loader ─────────────────────────────────────────────────────────────
+
+async function loadVectorMap(analysis, map, config) {
+  const url = `${API_BASE_URL}/${analysis.result_file}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} loading ${url}`);
+
+  const geojson  = await res.json();
+  const features = geojson.features || [];
+
+  const layer = L.geoJSON(geojson, {
+    style: f => config.styleFeature ? config.styleFeature(f) : {},
+    pointToLayer: config.pointToLayer ? (f, ll) => config.pointToLayer(f, ll) : undefined,
+    onEachFeature: (f, l) => { const p = config.popupFn ? config.popupFn(f) : null; if (p) l.bindPopup(p); }
+  }).addTo(map);
+
+  try { const b = layer.getBounds(); if (b.isValid()) map.fitBounds(b, { padding:[50,50] }); } catch(e) {}
+  setTimeout(() => map.invalidateSize(), 300);
+
+  if (config.buildStats) renderStats(config.buildStats(features));
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+async function loadAnalysisDetails() {
+  try {
+    const username = localStorage.getItem("username") || "default";
+    const res  = await fetch(`${API_BASE_URL}/analyses?username=${username}`);
+    const data = await res.json();
+    const analysis = data.find(a => String(a.id) === String(analysisId));
+
+    if (!analysis) {
+      document.getElementById("analysisTitle").textContent = "Analysis not found";
+      document.getElementById("analysisMeta").textContent  = "This record does not exist or has been deleted.";
+      return;
+    }
+
+    const config = ANALYSIS_CONFIG[analysis.type];
+
+    // Fill header
+    document.getElementById("analysisTitle").textContent = analysis.title || (config ? config.title : analysis.type);
+    document.getElementById("analysisMeta").textContent  =
+      `${analysis.area || "Analysis"} • ${new Date(analysis.created_at).toLocaleString()}`;
+
+    // Fill metadata card
+    document.getElementById("metaType").textContent   = config ? config.title : analysis.type;
+    document.getElementById("metaDate").textContent   = new Date(analysis.created_at).toLocaleString();
+    document.getElementById("metaFormat").textContent = config ? config.dataFormat : "—";
+    const sc = analysis.score ?? "--", st = analysis.status || "mid";
+    document.getElementById("metaScore").innerHTML  = `<span class="score-badge ${scoreClass(st)}">${sc}/100</span>`;
+    document.getElementById("metaStatus").innerHTML = `<span class="score-badge ${scoreClass(st)}">${st.toUpperCase()}</span>`;
+
+    // If unknown type, show raw info
+    if (!config) {
+      document.getElementById("classSummaryTitle").textContent = "Analysis Type";
+      document.getElementById("classSummaryList").innerHTML =
+        `<div class="recommendation">Type "<strong>${analysis.type}</strong>" has no detail configuration yet.</div>`;
+      renderRecommendations(["This analysis type is not yet configured for detailed display.", "Contact your administrator to add support for this type."]);
+      if (analysis.result_file) {
+        const map = initMap();
+        try { await loadVectorMap(analysis, map, { styleFeature: () => ({ fillColor:"#00d4aa", fillOpacity:0.5, color:"#333", weight:1 }), popupFn: f => JSON.stringify(f.properties).slice(0,200) }); }
+        catch(e) { document.getElementById("analysisPreview").innerHTML = `<div class="error-msg">Could not render map: ${e.message}</div>`; }
+      }
+      return;
+    }
+
+    // Legend & classification
+    renderLegend(config);
+    renderClassSummary(config);
+    document.getElementById("classSummaryTitle").textContent = config.classTitle;
+
+    // Recommendations (will be prepended with insight for raster)
+    renderRecommendations(config.recommendations(analysis.score || 50));
+
+    // Expansion has no file — show score card
+    if (analysis.type === "expansion") {
+      document.getElementById("analysisPreview").style.cssText =
+        `display:flex;align-items:center;justify-content:center;flex-direction:column;background:linear-gradient(135deg,#0d1117,#1a2332);border-radius:16px;`;
+      document.getElementById("analysisPreview").innerHTML = `
+        <div style="text-align:center;padding:40px;">
+          <div style="font-size:72px;font-weight:800;color:var(--accent);">${analysis.score ?? "--"}</div>
+          <div style="font-size:20px;color:#94a3b8;margin-top:8px;">Expansion Suitability Score / 100</div>
+          <div style="font-size:14px;color:#64748b;margin-top:6px;">${analysis.area || "Urban expansion analysis"}</div>
+        </div>`;
+      renderStats([
+        { label:"Score",  value: (analysis.score ?? "--") + "/100" },
+        { label:"Status", value: (analysis.status || "—").toUpperCase() }
+      ]);
+      return;
+    }
+
+    // Sanitize result_file — reject absolute paths, double-prefixed, bare filenames
+    const resultFile = sanitizeResultFile(analysis.result_file);
+    if (!resultFile) { showNoFile(config, analysis); return; }
+    analysis.result_file = resultFile;
+
+    // Init map
+    const map = initMap();
+
+    const isRaster = ["ndvi","heat-index","air-quality"].includes(analysis.type);
+
+    try {
+      if (isRaster) {
+        await loadRasterMap(analysis, map, config);
+      } else {
+        await loadVectorMap(analysis, map, config);
+      }
+    } catch(err) {
+      console.error("Map load error:", err);
+      document.getElementById("analysisPreview").innerHTML =
+        `<div class="error-msg">Failed to load result: ${err.message}<br><small>URL: ${API_BASE_URL}/${analysis.result_file}</small></div>`;
+      renderStats([{ label:"Error", value: "Load failed" }]);
+    }
+
+  } catch(outerErr) {
+    console.error("loadAnalysisDetails failed:", outerErr);
+    document.getElementById("analysisTitle").textContent = "Error loading analysis";
+    document.getElementById("analysisMeta").textContent  = outerErr.message;
+  }
+}
+
+function initMap() {
+  const map = L.map("analysisPreview").setView([30.0444, 31.2357], 10);
+  L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { attribution:"Tiles © Esri" }
+  ).addTo(map);
+  return map;
+}
+
+function exportReport() {
+  const title = document.getElementById("analysisTitle").textContent;
+  const meta  = document.getElementById("analysisMeta").textContent;
+  const recs  = Array.from(document.querySelectorAll(".recommendation")).map(el => "• " + el.textContent).join("\n");
+  const stats = Array.from(document.querySelectorAll(".stat-box")).map(el => {
+    const label = el.querySelector(".stat-label")?.textContent || "";
+    const value = el.querySelector(".stat-value")?.textContent || "";
+    return `  ${label}: ${value}`;
+  }).join("\n");
+  const content = `URBAN QoL ANALYSIS REPORT\n${"=".repeat(40)}\n\n${title}\n${meta}\n\nSTATISTICS\n${stats}\n\nRECOMMENDATIONS\n${recs}\n\nGenerated by Urban QoL Platform`;
+  const blob = new Blob([content], { type:"text/plain" });
+  const a    = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "analysis-report.txt" });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
 loadAnalysisDetails();
-
 </script>
-
 </body>
 </html>

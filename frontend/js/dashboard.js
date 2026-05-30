@@ -121,6 +121,7 @@ function autoSaveCurrentAnalysis() {
   if (panel && panel.dataset.saved === 'true') return;
 
   if (!lastResultService) return;
+  if (lastResultService === 'expansion') return;
 
   const serviceNames = {
     'ndvi': 'NDVI Analysis',
@@ -1708,7 +1709,7 @@ async function runCrimeAnalysis() {
   throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
 }
 
-lastResultFile = response.headers.get("X-Result-File") || "";
+captureResultFile(response);
 
     // Get crime density stats from response headers
     const crimeCount = response.headers.get("X-Crime-Count");
@@ -2018,7 +2019,7 @@ async function runFacilityAccessibilityAnalysis() {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.detail || `HTTP error ${response.status}`);
     }
-    lastResultFile = response.headers.get("X-Result-File") || "";
+    captureResultFile(response);
 
     const totalFacilities     = response.headers.get("X-Total-Facilities");
     const facilitiesProcessed = response.headers.get("X-Facilities-Processed");
@@ -2030,7 +2031,6 @@ async function runFacilityAccessibilityAnalysis() {
     const zonePctsRaw = response.headers.get("X-Zone-Pcts");
     const zonePcts    = zonePctsRaw ? JSON.parse(decodeURIComponent(zonePctsRaw)) : {};
 
-captureResultFile(response);
 const geojsonData = await response.json();
 
 lastResultBlob    = geojsonData;
@@ -2193,9 +2193,7 @@ if (!response.ok) {
   throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
 }
 
-lastResultFile = response.headers.get("X-Result-File") || "";
-
-    captureResultFile(response);
+captureResultFile(response);
     const coveragePct             = response.headers.get("X-Coverage-Pct");
     const overallScore            = response.headers.get("X-Overall-Score");
     const stationCount            = response.headers.get("X-Station-Count");
@@ -2554,7 +2552,7 @@ async function runVegetationAnalysis() {
       const err = await response.json();
       throw new Error(err.detail || `HTTP ${response.status}`);
     }
-    lastResultFile = response.headers.get("X-Result-File") || "";
+    captureResultFile(response);
 
     const vegetationPct   = parseFloat(response.headers.get("X-Vegetation-Pct") || "0");
     const benchmarkGap    = parseFloat(response.headers.get("X-Benchmark-Gap")  || "0");
@@ -2903,9 +2901,7 @@ async function runTrafficAnalysis() {
   throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
 }
 
-lastResultFile = response.headers.get("X-Result-File") || "";
-
-    captureResultFile(response);
+captureResultFile(response);
     // ── Summary headers ──────────────────────────────────────────────────────
     const roadLengthKm       = response.headers.get("X-Road-Length-Km");
     const aoiAreaKm2         = response.headers.get("X-AOI-Area-Km2");
@@ -4537,7 +4533,7 @@ async function runAirQualityAnalysis() {
     console.log("HEADER SCORE =", analysisScore);
     console.log("GLOBAL SCORE =", lastAnalysisScore);
 
-    lastResultFile = response.headers.get("X-Result-File");
+    captureResultFile(response);
     console.log("Saved Air Quality result file:", lastResultFile);
 
     updateLegend("air-quality", "full");
