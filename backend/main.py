@@ -628,8 +628,12 @@ def calculate_transit_coverage_endpoint(
 
         geojson_data = {"type": "FeatureCollection", "features": combined_features}
 
+        with open(str(output_path), "w", encoding="utf-8") as f:
+            json.dump(geojson_data, f)
+
         import urllib.parse
         headers = {
+            "X-Result-File":               result_file_header(output_path),
             "X-Coverage-Pct":              str(result["coverage_pct"]),
             "X-Overall-Score":             str(result["overall_score"]),
             "X-Station-Count":             str(result["station_count"]),
@@ -828,7 +832,11 @@ def calculate_traffic_endpoint(
             "high_congestion_pct":  result["high_congestion_pct"],
         }
 
+        with open(str(output_path), "w", encoding="utf-8") as f:
+            json.dump(combined, f)
+
         headers = {
+            "X-Result-File":           result_file_header(output_path),
             "X-Road-Length-Km":        str(result["road_length_km"]),
             "X-AOI-Area-Km2":          str(result["aoi_area_km2"]),
             "X-Road-Density":          str(result["road_density"]),

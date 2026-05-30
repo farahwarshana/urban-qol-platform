@@ -1131,6 +1131,7 @@ function runAnalysis(key) {
 
 function _runAnalysisCore(key) {
   document.getElementById('analysisPanel').dataset.saved = '';
+  lastAnalysisScore = null; // reset so stale score never carries into next save
 
   if (key === "facility_Accessibility_index") {
   runFacilityAccessibilityAnalysis();
@@ -2035,6 +2036,7 @@ async function runPublicTransportAnalysis() {
       throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
     }
 
+    captureResultFile(response);
     const coveragePct             = response.headers.get("X-Coverage-Pct");
     const overallScore            = response.headers.get("X-Overall-Score");
     const stationCount            = response.headers.get("X-Station-Count");
@@ -2286,6 +2288,10 @@ function renderTransitResults(stats, inputs, geojsonData) {
       </div>
 
       <div class="tab-content active" id="tab-full">
+        ${!isNaN(score) ? `<div class="insight-card">
+          <div class="label">${currentLang === "ar" ? "النتيجة الإجمالية" : "Overall Score"}</div>
+          <div class="value" style="color:${qolScoreTextColor(score)}">${Math.round(score)} / 100</div>
+        </div>` : ""}
         <div class="insight-card">
           <div class="label">${currentLang === "ar" ? "تغطية المنطقة" : "Area Coverage"}</div>
           <div class="value">${covPct !== null ? covPct.toFixed(1) + "%" : "N/A"}</div>
@@ -2340,6 +2346,7 @@ function renderTransitResults(stats, inputs, geojsonData) {
   `;
   translateLabels();
   wireTabSwitching();
+  lastAnalysisScore = !isNaN(score) ? Math.round(score) : null;
   autoSaveCurrentAnalysis();
 }
 
@@ -2627,6 +2634,7 @@ function renderVegetationResults(stats, inputs) {
     </div>`;
   translateLabels();
   wireTabSwitching();
+  lastAnalysisScore = Math.round(parseFloat(stats.overall_score));
   autoSaveCurrentAnalysis();
 }
 
@@ -2735,6 +2743,7 @@ async function runTrafficAnalysis() {
       throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
     }
 
+    captureResultFile(response);
     // ── Summary headers ──────────────────────────────────────────────────────
     const roadLengthKm       = response.headers.get("X-Road-Length-Km");
     const aoiAreaKm2         = response.headers.get("X-AOI-Area-Km2");
@@ -2916,6 +2925,14 @@ function renderTrafficResults(stats, inputs) {
       <div class="value">${parseFloat(stats.traffic_pressure).toFixed(0)} pop / road-km</div>
     </div>` : "";
 
+  // Score: connectivity quality + density optimality - fragmentation penalty
+  const trafficScore = (() => {
+    const connPart    = Math.min(100, Math.round((connIdx / 4) * 50));
+    const densOpt     = densityClass === "optimal" ? 35 : densityClass === "low" ? 15 : 20;
+    const fragPenalty = Math.round(Math.min(25, fragPct * 0.4));
+    return Math.max(0, Math.min(100, connPart + densOpt - fragPenalty));
+  })();
+
   const inputsHtml = `
     <div class="insight-card">
       <div class="label">Road network file</div>
@@ -2956,7 +2973,11 @@ function renderTrafficResults(stats, inputs) {
       <!-- FULL AREA tab — structural network analysis -->
       <div class="tab-content active" id="tab-full">
 
-        <div style="margin:0 0 6px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Network overview</div>
+        <div class="insight-card">
+          <div class="label">Overall Score</div>
+          <div class="value" style="color:${qolScoreTextColor(trafficScore)}">${trafficScore} / 100</div>
+        </div>
+        <div style="margin:8px 0 6px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Network overview</div>
         <div class="insight-card">
           <div class="label">Total Road Length</div>
           <div class="value">${roadLenKm.toFixed(2)} km</div>
@@ -3036,6 +3057,7 @@ function renderTrafficResults(stats, inputs) {
   `;
   translateLabels();
   wireTabSwitching();
+  lastAnalysisScore = trafficScore;
   autoSaveCurrentAnalysis();
 }
 
@@ -3335,6 +3357,7 @@ function renderInformalSettlementResults(stats, inputs) {
     </div>`;
   translateLabels();
   wireTabSwitching();
+  lastAnalysisScore = Math.round(parseFloat(stats.overall_qol));
   autoSaveCurrentAnalysis();
 }
 
@@ -3712,6 +3735,7 @@ function renderCrimeResults(stats, inputs, geojsonData) {
   `;
   translateLabels();
   wireTabSwitching();
+  lastAnalysisScore = safetyScore;
   autoSaveCurrentAnalysis();
 }
 
@@ -3812,6 +3836,14 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
       : `Population is relatively balanced across the area with no extreme density hotspots.`
     : "";
 
+  // Score: penalise extreme inequality; reward moderate density in 1000-10000 range
+  const urbanScore = (() => {
+    if (!avgDen) return 50;
+    const densityScore = avgDen < 500 ? 30 : avgDen <= 10000 ? 70 + ((avgDen - 500) / 9500) * 20 : Math.max(30, 90 - ((avgDen - 10000) / 5000) * 30);
+    const ineqPenalty  = maxDen > 0 ? Math.min(20, ((maxDen - avgDen) / maxDen) * 20) : 0;
+    return Math.max(0, Math.min(100, Math.round(densityScore - ineqPenalty)));
+  })();
+
   const inputsHtml = inputs ? `
     <div class="insight-card">
       <div class="label">Boundary data (GeoJSON)</div>
@@ -3849,6 +3881,10 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
       </div>
 
       <div class="tab-content active" id="tab-full">
+        <div class="insight-card">
+          <div class="label">${currentLang === "ar" ? "النتيجة الإجمالية" : "Overall Score"}</div>
+          <div class="value" style="color:${qolScoreTextColor(urbanScore)}">${urbanScore} / 100</div>
+        </div>
         <div class="insight-card">
           <div class="label">${currentLang === "ar" ? "إجمالي السكان" : "Total Population"}</div>
           <div class="value">${stats.total_population ? parseInt(stats.total_population).toLocaleString() : "N/A"}</div>
@@ -3911,6 +3947,7 @@ function renderUrbanDensityResults(stats, inputs, geojsonData, nameKey) {
   `;
   translateLabels();
   wireTabSwitching();
+  lastAnalysisScore = urbanScore;
   autoSaveCurrentAnalysis();
 }
 
@@ -4119,6 +4156,7 @@ function renderNDVIResults(stats, inputs) {
   `;
   translateLabels();
   wireTabSwitching();
+  lastAnalysisScore = ndviScore;
   autoSaveCurrentAnalysis();
 }
 
@@ -4275,6 +4313,7 @@ function renderHeatIndexResults(stats, inputs) {
   `;
   translateLabels();
   wireTabSwitching();
+  lastAnalysisScore = heatScore;
   autoSaveCurrentAnalysis();
 }
 
@@ -4813,6 +4852,7 @@ function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
   `;
   translateLabels();
   wireTabSwitching();
+  lastAnalysisScore = overallScore !== null ? Math.round(overallScore) : null;
   autoSaveCurrentAnalysis();
 }
 
