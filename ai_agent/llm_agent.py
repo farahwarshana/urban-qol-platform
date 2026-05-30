@@ -726,6 +726,25 @@ _SERVICE_SYSTEM_PROMPTS = {
     ),
 }
 
+_SERVICE_SYSTEM_PROMPTS["expansion"] = (
+    "You are analysing multi-criteria urban expansion suitability results.\n"
+    "The composite score (0-100) represents a weighted combination of several QoL analysis layers "
+    "(e.g. transit coverage, vegetation, crime, air quality, facility accessibility). "
+    "Higher scores indicate areas better suited for future urban expansion or development investment.\n"
+    "Key considerations:\n"
+    "- Top expansion zones are spatial clusters of high-composite-score cells, ranked best to least.\n"
+    "- Per-layer scores within each zone reveal which dimensions drive or limit suitability.\n"
+    "- Score standard deviation: high stdev = uneven spatial distribution; low stdev = homogeneous area.\n"
+    "- Recommend which zone is most suitable and why, referencing per-layer scores.\n"
+    "- Warn where a zone scores well overall but has a critical weakness (e.g. low transit coverage).\n"
+    "- Relate findings to urban growth policy: greenfield vs. brownfield, TOD principles, "
+    "informal settlement risk, infrastructure readiness, and equity of distribution.\n"
+    "For map_highlights, use property 'qol_score' on the weighted grid cells. "
+    "Best expansion cells: annotation_type='best_cells', op='gt'. "
+    "Low-suitability gaps: annotation_type='gap_zone', op='lt'.\n"
+    + _GLOBAL_STANDARDS + _REGIONAL_CONTEXT_INSTRUCTION + _ANALYSIS_INSTRUCTIONS
+)
+
 _GENERIC_SERVICE_PROMPT = (
     "You are analysing urban quality-of-life metrics for an urban area anywhere in the world.\n"
     "Infer the likely region from available data clues, apply relevant local context, "

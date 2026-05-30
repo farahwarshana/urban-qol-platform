@@ -947,6 +947,44 @@ async function runExpansionAnalysis() {
     lastResultBlob    = result.weighted_grid;
     gridLayer         = null;  // clear any old grid
 
+    // Build AI context for expansion
+    const _wScores = result.weighted_grid.features.map(f => f.properties.qol_score).filter(s => s != null);
+    const _wAvg  = _wScores.length ? Math.round(_wScores.reduce((a,b)=>a+b,0)/_wScores.length) : null;
+    const _wBest = _wScores.length ? Math.max(..._wScores) : null;
+    const _wWorst= _wScores.length ? Math.min(..._wScores) : null;
+    const _ss    = result.score_stats || {};
+    lastAnalysisContext = {
+      service:       'expansion',
+      service_label: 'Future Expansion Suitability',
+      inputs: {
+        layer_count: _expansionCandidates.length,
+        layers: _expansionCandidates.map(a => {
+          const w = weightMap[String(a.id)] ?? 0;
+          const totalW2 = Object.values(weightMap).reduce((s,v)=>s+v,0)||1;
+          return `${a.title || a.type} (weight ${Math.round(w/totalW2*100)}%)`;
+        }).join(', '),
+      },
+      full_area: {
+        total_cells:       result.weighted_grid.features.length,
+        cell_size_m:       result.weighted_grid.cell_size_m || '?',
+        avg_composite_score: _wAvg,
+        best_cell_score:   _wBest,
+        worst_cell_score:  _wWorst,
+        score_mean:        _ss.mean,
+        score_max:         _ss.max,
+        score_stdev:       _ss.stdev,
+        top_areas_found:   result.top_areas.length,
+        top_areas: result.top_areas.map((a,i) => ({
+          rank: i+1, score: a.score, cell_count: a.cell_count,
+          layer_scores: (a.layer_avg_scores||[]).map((s,li) => ({
+            layer: (_expansionCandidates[li]||{}).title || `Layer ${li+1}`,
+            score: s,
+          })),
+        })),
+      },
+    };
+    _lastAIContextKey = null;  // force refresh when user visits AI tab
+
     renderExpansionResults(result, _expansionCandidates, weightMap);
 
   } catch (err) {
