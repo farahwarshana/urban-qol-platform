@@ -65,6 +65,8 @@ from grid_analysis import (
     grid_from_vegetation,
     grid_from_traffic,
     grid_from_informal_settlement,
+    combine_grids_weighted,
+    extract_top_areas,
 )
 from ai_routes import router as ai_router
 
@@ -1371,6 +1373,47 @@ def get_analyses(username: str):
             }
             for row in result
         ]
+    # ─────────────────────── Expansion ──────────────────────────────────────────
+
+class ExpansionLayer(BaseModel):
+    analysis_id: int
+    weight: float = 1.0
+    grid_geojson: dict  # pre-computed grid GeoJSON from frontend
+
+
+class ExpansionRequest(BaseModel):
+    layers: list[ExpansionLayer]
+    top_n: int = 3
+
+
+@app.post("/expansion/combine", tags=["Expansion"])
+def expansion_combine(req: ExpansionRequest):
+    """
+    Combine multiple pre-computed QoL grids into a weighted expansion suitability map
+    and return the weighted grid plus top N recommended areas.
+    """
+    if not req.layers:
+        raise HTTPException(status_code=400, detail="At least one layer is required.")
+
+    grids_with_weights = []
+    for layer in req.layers:
+        gj = layer.grid_geojson
+        if not isinstance(gj, dict) or gj.get("type") != "FeatureCollection":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Layer {layer.analysis_id}: grid_geojson must be a GeoJSON FeatureCollection."
+            )
+        grids_with_weights.append((gj, max(0.0, layer.weight)))
+
+    weighted_grid = combine_grids_weighted(grids_with_weights)
+    top_areas     = extract_top_areas(weighted_grid, top_n=req.top_n)
+
+    return {
+        "weighted_grid": weighted_grid,
+        "top_areas":     top_areas,
+    }
+
+
     # -------------------- endpoint (online url)-----------------
 @app.get("/", tags=["Frontend"])
 def root():
