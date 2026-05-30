@@ -33,6 +33,83 @@ function captureResultFile(response) {
   lastResultFile = response.headers.get("X-Result-File") || "";
 }
 
+// ── Project state ──────────────────────────────────────────────
+let currentProjectId = null;
+let currentProjectName = null;
+let _pendingRunKey = null;
+
+async function loadProjects() {
+  const username = localStorage.getItem('username');
+  if (!username) return;
+  try {
+    const res = await fetch(`${API_BASE_URL}/projects?username=${username}`);
+    const projects = await res.json();
+    const sel = document.getElementById('projectSelect');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— No project —</option>' +
+      projects.map(p => `<option value="${p.id}" data-name="${p.name}">${p.name}</option>`).join('');
+    // Re-select current project if set
+    if (currentProjectId) sel.value = currentProjectId;
+  } catch (e) { console.warn('Could not load projects', e); }
+}
+
+function showProjectModal(key) {
+  _pendingRunKey = key;
+  loadProjects();
+  const modal = document.getElementById('projectModal');
+  modal.style.display = 'flex';
+  document.getElementById('newProjectName').value = '';
+  document.getElementById('newProjectDesc').value = '';
+}
+
+function hideProjectModal() {
+  document.getElementById('projectModal').style.display = 'none';
+}
+
+async function confirmProjectAndRun() {
+  const username = localStorage.getItem('username');
+  const sel = document.getElementById('projectSelect');
+  const newName = document.getElementById('newProjectName').value.trim();
+  const newDesc = document.getElementById('newProjectDesc').value.trim();
+
+  if (newName) {
+    // Create new project and use it
+    try {
+      const res = await fetch(`${API_BASE_URL}/projects?username=${username}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, description: newDesc || null })
+      });
+      const proj = await res.json();
+      currentProjectId = proj.id;
+      currentProjectName = proj.name;
+    } catch (e) { console.warn('Could not create project', e); }
+  } else if (sel.value) {
+    currentProjectId = parseInt(sel.value);
+    const selectedOption = sel.options[sel.selectedIndex];
+    currentProjectName = selectedOption.dataset.name || selectedOption.text;
+  } else {
+    currentProjectId = null;
+    currentProjectName = null;
+  }
+
+  hideProjectModal();
+  _dispatchRun(_pendingRunKey);
+}
+
+function skipProjectAndRun() {
+  currentProjectId = null;
+  currentProjectName = null;
+  hideProjectModal();
+  _dispatchRun(_pendingRunKey);
+}
+
+function _dispatchRun(key) {
+  _pendingRunKey = null;
+  _runAnalysisCore(key);
+}
+// ──────────────────────────────────────────────────────────────
+
 
 // ------------------saveAnalysisToProfile--------------------
 
@@ -82,12 +159,9 @@ function autoSaveCurrentAnalysis() {
   area: '',
   score: score,
   status: status,
-
- preview_image:
-  lastPreviewImage,
-
-result_file:
-  lastResultFile
+  preview_image: lastPreviewImage,
+  result_file: lastResultFile,
+  project_id: currentProjectId || null
 })
 
   }).catch(e => console.warn('Could not save analysis:', e));
@@ -533,52 +607,529 @@ function clearMap() {
   _lastAIAnnotatedGeoJSON = null;
 }
 /* ---------- Special panel: Future Expansion Suitability ---------- */
-function renderExpansionPanel(service) {
-  clearMap();
 
-  // Provide checkboxes for combining multiple previous analyses.
-  const otherKeys = Object.keys(SERVICES).filter(k => k !== "expansion");
-  const checkboxes = otherKeys.map(k => `
-    <div class="form-check" style="margin: 4px 0;">
-      <input class="form-check-input" type="checkbox" value="${k}" id="chk-${k}" />
-      <label class="form-check-label" for="chk-${k}">${SERVICES[k].title}</label>
-    </div>
-  `).join("");
+// Holds the analyses loaded for expansion (after project/history selection)
+let _expansionCandidates = [];   // [{id, type, title, result_file, score, project_name}]
+let _expansionGridCache  = {};   // analysisId → grid GeoJSON
+
+async function renderExpansionPanel(service) {
+  clearMap();
+  gridLayer   = null;
+  resultLayer = null;
+  lastResultService = null;
+  lastResultBlob    = null;
+
+  const username = localStorage.getItem('username');
+  if (!username) {
+    analysisPanel.innerHTML = `<p class="text-danger">Please log in to use this feature.</p>`;
+    return;
+  }
+
+  // Load user history + projects
+  let allAnalyses = [], projects = [];
+  try {
+    const [aRes, pRes] = await Promise.all([
+      fetch(`${API_BASE_URL}/analyses?username=${username}`),
+      fetch(`${API_BASE_URL}/projects?username=${username}`)
+    ]);
+    allAnalyses = await aRes.json();
+    projects    = await pRes.json();
+  } catch (e) { console.warn('Expansion: could not load history', e); }
+
+  // Filter to analyses that have a result_file (can regenerate grid)
+  const eligible = allAnalyses.filter(a => a.result_file && a.type !== 'expansion');
+
+  _expansionCandidates = [];
+  _expansionGridCache  = {};
+
+  const projectOpts = projects.map(p =>
+    `<option value="${p.id}">${p.name}</option>`
+  ).join('');
+
+  const typeLabels = {
+    'ndvi': 'NDVI', 'heat-index': 'Heat Index', 'crime': 'Crime Density',
+    'urban-density': 'Urban Density', 'public-transport': 'Public Transport',
+    'vegetation': 'Vegetation Density', 'traffic': 'Traffic Analysis',
+    'informal-settlement': 'Informal Settlement', 'air-quality': 'Air Quality',
+    'facility-accessibility': 'Facility Accessibility',
+    'facility_Accessibility_index': 'Facility Accessibility'
+  };
+
+  const unassigned = eligible.filter(a => !a.project_id);
+
+  const unassignedRows = unassigned.length
+    ? unassigned.map(a => `
+        <div class="expansion-history-row" data-id="${a.id}" data-type="${a.type}" data-title="${a.title || typeLabels[a.type] || a.type}" data-file="${a.result_file || ''}">
+          <input type="checkbox" class="exp-chk" id="exp-${a.id}" value="${a.id}" />
+          <label for="exp-${a.id}" style="flex:1;margin:0;cursor:pointer;">
+            <span style="font-weight:600;">${a.title || typeLabels[a.type] || a.type}</span>
+            <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">${a.created_at ? a.created_at.slice(0,10) : ''}</span>
+          </label>
+          <span class="badge" style="background:${a.score >= 75 ? '#27ae60' : a.score >= 40 ? '#f0a500' : '#e74c3c'};color:#fff;border-radius:4px;padding:2px 7px;font-size:11px;">${a.score ?? '—'}</span>
+        </div>`).join('')
+    : `<p class="text-muted" style="font-size:12px;">No unassigned analyses found.</p>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">${service.title}</h3>
-      <p class="panel-desc">${service.desc}</p>
+      <h3 class="panel-title">Future Expansion Suitability</h3>
+      <p class="panel-desc">Select analyses to combine and assign importance weights.</p>
 
-      <label class="text-muted" style="font-size:12px; text-transform:uppercase;">
-        Combine analyses
-      </label>
-      <div class="mt-2">${checkboxes}</div>
-
-      <div class="form-group mt-3">
-        <label for="weights">Weights (comma list)</label>
-        <input type="text" id="weights" placeholder="0.3, 0.5, 0.2" />
+      <!-- Step 1: Source -->
+      <div style="margin-bottom:14px;">
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em;">Step 1 — Pick a source</label>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button id="exp-src-project" class="btn btn-ghost btn-sm" style="flex:1;border:1px solid var(--accent);" onclick="_expansionSwitchSource('project')">By Project</button>
+          <button id="exp-src-history" class="btn btn-ghost btn-sm" style="flex:1;" onclick="_expansionSwitchSource('history')">From History</button>
+        </div>
       </div>
 
-      <button class="btn btn-primary btn-block btn-lg mt-3"
-              onclick="runAnalysis('expansion')">
+      <!-- Project source -->
+      <div id="exp-source-project">
+        <div class="form-group">
+          <label style="font-size:12px;">Select project</label>
+          <select id="exp-project-sel" style="width:100%;background:var(--input-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;">
+            <option value="">— choose a project —</option>
+            ${projectOpts}
+          </select>
+        </div>
+        <div id="exp-project-analyses" style="margin-top:8px;"></div>
+      </div>
+
+      <!-- History source -->
+      <div id="exp-source-history" style="display:none;">
+        <label style="font-size:12px;color:var(--text-muted);">Unassigned analyses</label>
+        <div style="max-height:200px;overflow-y:auto;margin-top:4px;" id="exp-history-list">
+          ${unassignedRows}
+        </div>
+      </div>
+
+      <!-- Step 2: Weights (populated dynamically) -->
+      <div id="exp-weights-section" style="margin-top:16px;display:none;">
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em;">Step 2 — Assign weights</label>
+        <p style="font-size:11px;color:var(--text-muted);margin:4px 0 8px;">Drag sliders to set importance (they auto-normalise).</p>
+        <div id="exp-weight-sliders"></div>
+      </div>
+
+      <button id="exp-run-btn" class="btn btn-primary btn-block btn-lg mt-3" style="display:none;"
+              onclick="runExpansionAnalysis()">
         ▶ Compute Best Expansion Areas
       </button>
     </div>
   `;
 
-  // Attach event listeners after HTML is rendered
-  attachFileInputListeners();
+  // Wire project selector
+  const projSel = document.getElementById('exp-project-sel');
+  if (projSel) {
+    projSel.addEventListener('change', async () => {
+      const pid = projSel.value;
+      const container = document.getElementById('exp-project-analyses');
+      if (!pid) { container.innerHTML = ''; _refreshExpansionWeights([]); return; }
+
+      const inProject = eligible.filter(a => String(a.project_id) === String(pid));
+      if (!inProject.length) {
+        container.innerHTML = `<p class="text-muted" style="font-size:12px;">No eligible analyses in this project.</p>`;
+        _refreshExpansionWeights([]);
+        return;
+      }
+
+      const typeLabels2 = {
+        'ndvi': 'NDVI', 'heat-index': 'Heat Index', 'crime': 'Crime Density',
+        'urban-density': 'Urban Density', 'public-transport': 'Public Transport',
+        'vegetation': 'Vegetation Density', 'traffic': 'Traffic Analysis',
+        'informal-settlement': 'Informal Settlement', 'air-quality': 'Air Quality',
+        'facility-accessibility': 'Facility Accessibility',
+        'facility_Accessibility_index': 'Facility Accessibility'
+      };
+      container.innerHTML = inProject.map(a => `
+        <div class="expansion-history-row" data-id="${a.id}" data-type="${a.type}" data-title="${a.title || typeLabels2[a.type] || a.type}" data-file="${a.result_file || ''}">
+          <input type="checkbox" class="exp-chk" id="exp-${a.id}" value="${a.id}" checked />
+          <label for="exp-${a.id}" style="flex:1;margin:0;cursor:pointer;">
+            <span style="font-weight:600;">${a.title || typeLabels2[a.type] || a.type}</span>
+            <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">${a.type}</span>
+          </label>
+          <span class="badge" style="background:${a.score >= 75 ? '#27ae60' : a.score >= 40 ? '#f0a500' : '#e74c3c'};color:#fff;border-radius:4px;padding:2px 7px;font-size:11px;">${a.score ?? '—'}</span>
+        </div>`).join('');
+
+      _refreshExpansionWeights(inProject);
+      container.querySelectorAll('.exp-chk').forEach(chk => {
+        chk.addEventListener('change', () => {
+          const sel = Array.from(container.querySelectorAll('.exp-chk:checked')).map(c => {
+            const row = c.closest('.expansion-history-row');
+            return eligible.find(a => String(a.id) === c.value);
+          }).filter(Boolean);
+          _refreshExpansionWeights(sel);
+        });
+      });
+    });
+  }
+
+  // Wire history checkboxes
+  const histList = document.getElementById('exp-history-list');
+  if (histList) {
+    histList.addEventListener('change', () => {
+      const sel = Array.from(histList.querySelectorAll('.exp-chk:checked')).map(c => {
+        return eligible.find(a => String(a.id) === c.value);
+      }).filter(Boolean);
+      _refreshExpansionWeights(sel);
+    });
+  }
+
+  _expansionSwitchSource('project');
+}
+
+function _expansionSwitchSource(src) {
+  document.getElementById('exp-source-project').style.display = src === 'project' ? '' : 'none';
+  document.getElementById('exp-source-history').style.display = src === 'history' ? '' : 'none';
+  document.getElementById('exp-src-project').style.borderColor = src === 'project' ? 'var(--accent)' : '';
+  document.getElementById('exp-src-history').style.borderColor = src === 'history' ? 'var(--accent)' : '';
+  // Reset weights when switching
+  _refreshExpansionWeights([]);
+}
+
+function _refreshExpansionWeights(selectedAnalyses) {
+  _expansionCandidates = selectedAnalyses;
+  const section   = document.getElementById('exp-weights-section');
+  const runBtn    = document.getElementById('exp-run-btn');
+  const slidersEl = document.getElementById('exp-weight-sliders');
+
+  if (!selectedAnalyses.length) {
+    if (section)  section.style.display  = 'none';
+    if (runBtn)   runBtn.style.display   = 'none';
+    return;
+  }
+
+  section.style.display = '';
+  runBtn.style.display  = '';
+
+  const defaultW = Math.round(100 / selectedAnalyses.length);
+  slidersEl.innerHTML = selectedAnalyses.map((a, i) => `
+    <div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+        <span style="font-weight:600;">${a.title || a.type}</span>
+        <span id="exp-w-val-${a.id}"><strong>${defaultW}</strong>%</span>
+      </div>
+      <input type="range" class="exp-weight-slider" id="exp-w-${a.id}"
+             data-analysis-id="${a.id}"
+             min="0" max="100" value="${defaultW}"
+             style="width:100%;accent-color:var(--accent);" />
+    </div>`).join('');
+
+  slidersEl.querySelectorAll('.exp-weight-slider').forEach(sl => {
+    sl.addEventListener('input', () => {
+      document.getElementById(`exp-w-val-${sl.dataset.analysisId}`).innerHTML =
+        `<strong>${sl.value}</strong>%`;
+    });
+  });
+}
+
+
+/* ============================================================
+   EXPANSION — run and render
+   ============================================================ */
+
+// Maps analysis type → grid endpoint + form field name
+const _EXPANSION_GRID_ENDPOINT = {
+  'ndvi':                      { url: '/calculate-grid/ndvi',                 field: 'geotiff', isRaster: true },
+  'heat-index':                { url: '/calculate-grid/heat-index',            field: 'geotiff', isRaster: true },
+  'air-quality':               { url: '/calculate-grid/air-quality',           field: 'geotiff', isRaster: true },
+  'crime':                     { url: '/calculate-grid/crime',                 field: 'geojson', isRaster: false },
+  'urban-density':             { url: '/calculate-grid/urban-density',         field: 'geojson', isRaster: false },
+  'public-transport':          { url: '/calculate-grid/public-transport',      field: 'geojson', isRaster: false },
+  'vegetation':                { url: '/calculate-grid/vegetation',            field: 'geojson', isRaster: false },
+  'traffic':                   { url: '/calculate-grid/traffic',               field: 'geojson', isRaster: false },
+  'informal-settlement':       { url: '/calculate-grid/informal-settlement',   field: 'geojson', isRaster: false },
+  'facility-accessibility':    { url: '/calculate-grid/facility-accessibility',field: 'geojson', isRaster: false },
+  'facility_Accessibility_index': { url: '/calculate-grid/facility-accessibility', field: 'geojson', isRaster: false },
+};
+
+async function runExpansionAnalysis() {
+  if (!_expansionCandidates || !_expansionCandidates.length) {
+    alert('Please select at least one analysis first.');
+    return;
+  }
+
+  // Collect weights from sliders
+  const weightMap = {};
+  document.querySelectorAll('.exp-weight-slider').forEach(sl => {
+    weightMap[sl.dataset.analysisId] = parseFloat(sl.value) || 0;
+  });
+
+  const totalW = Object.values(weightMap).reduce((s, v) => s + v, 0);
+  if (totalW === 0) {
+    alert('All weights are zero. Please assign at least one non-zero weight.');
+    return;
+  }
+
+  // Show loading state
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Expansion — Processing</h3>
+      <p class="panel-desc">Fetching grids and computing weighted suitability map…</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p id="exp-progress" class="text-muted mt-2" style="font-size:12px;">Loading analysis grids…</p>
+      </div>
+    </div>`;
+
+  const progressEl = () => document.getElementById('exp-progress');
+
+  try {
+    // Fetch grid GeoJSON for each selected analysis
+    const layers = [];
+    for (let i = 0; i < _expansionCandidates.length; i++) {
+      const a    = _expansionCandidates[i];
+      const w    = weightMap[String(a.id)] ?? 1;
+      const cfg  = _EXPANSION_GRID_ENDPOINT[a.type];
+
+      if (progressEl()) progressEl().textContent = `Loading grid ${i+1}/${_expansionCandidates.length}: ${a.title || a.type}…`;
+
+      // Check cache
+      if (_expansionGridCache[a.id]) {
+        layers.push({ analysis_id: a.id, weight: w, grid_geojson: _expansionGridCache[a.id] });
+        continue;
+      }
+
+      if (!cfg || !a.result_file) {
+        console.warn(`Expansion: no grid config or result_file for analysis ${a.id} (${a.type})`);
+        continue;
+      }
+
+      // Fetch the stored result file
+      const fileRes = await fetch(`${API_BASE_URL}/${a.result_file}`);
+      if (!fileRes.ok) {
+        console.warn(`Expansion: could not fetch result file for ${a.id}`);
+        continue;
+      }
+
+      // Send to grid endpoint
+      const formData = new FormData();
+      if (cfg.isRaster) {
+        const buf  = await fileRes.arrayBuffer();
+        formData.append(cfg.field, new File([buf], 'result.tif', { type: 'image/tiff' }));
+      } else {
+        const gj   = await fileRes.json();
+        formData.append(cfg.field, new File([JSON.stringify(gj)], 'result.geojson', { type: 'application/json' }));
+      }
+
+      const gridRes = await fetch(`${API_BASE_URL}${cfg.url}`, { method: 'POST', body: formData });
+      if (!gridRes.ok) {
+        console.warn(`Expansion: grid endpoint failed for ${a.id}`);
+        continue;
+      }
+
+      const gridGeoJSON = await gridRes.json();
+      _expansionGridCache[a.id] = gridGeoJSON;
+      layers.push({ analysis_id: a.id, weight: w, grid_geojson: gridGeoJSON });
+    }
+
+    if (!layers.length) {
+      throw new Error('No grids could be loaded. Check that result files are accessible.');
+    }
+
+    if (progressEl()) progressEl().textContent = 'Combining grids and finding best areas…';
+
+    const combineRes = await fetch(`${API_BASE_URL}/expansion/combine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layers, top_n: 3 })
+    });
+
+    if (!combineRes.ok) {
+      const err = await combineRes.json();
+      throw new Error(err.detail || 'Combination failed');
+    }
+
+    const result = await combineRes.json();
+
+    // Store for grid tab
+    lastResultService = 'expansion';
+    lastResultBlob    = result.weighted_grid;
+    gridLayer         = null;  // clear any old grid
+
+    renderExpansionResults(result, _expansionCandidates, weightMap);
+
+  } catch (err) {
+    console.error('Expansion error:', err);
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">${err.message}</p>
+        <button class="btn btn-ghost btn-block mt-3" onclick="renderServicePanel('expansion')">← Back</button>
+      </div>`;
+  }
+}
+
+function renderExpansionResults(result, candidates, weightMap) {
+  const { weighted_grid, top_areas } = result;
+
+  const totalW      = Object.values(weightMap).reduce((s,v) => s+v, 0) || 1;
+  const scores      = weighted_grid.features.map(f => f.properties.qol_score).filter(s => s != null);
+  const avgScore    = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : null;
+  const bestScore   = scores.length ? Math.max(...scores) : null;
+  const cellCount   = weighted_grid.features.length;
+  const cellSizeM   = weighted_grid.cell_size_m || '?';
+  const cellLabel   = cellSizeM >= 1000 ? `${(cellSizeM/1000).toFixed(1)} km` : `${cellSizeM} m`;
+
+  // Layer weight summary for raw tab
+  const layerSummaryHtml = candidates.map(a => {
+    const w    = weightMap[String(a.id)] || 0;
+    const pct  = Math.round((w / totalW) * 100);
+    return `
+      <div class="insight-card">
+        <div class="label">${a.title || a.type}</div>
+        <div class="value">${pct}%
+          <div style="height:4px;background:var(--border-color);border-radius:2px;margin-top:4px;">
+            <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:2px;"></div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Top areas for full tab
+  const topAreasHtml = (top_areas && top_areas.length)
+    ? top_areas.map((area, i) => {
+        const rank    = ['#f1c40f','#95a5a6','#cd7f32'][i] || '#888';
+        const medal   = ['1st','2nd','3rd'][i] || `${i+1}th`;
+        const cat     = perfCategory(area.score);
+        return `
+          <div style="border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:rgba(255,255,255,0.03);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="background:${rank};color:#111;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${i+1}</span>
+              <strong style="font-size:14px;">${medal} Best Area</strong>
+              <span style="margin-left:auto;font-size:13px;font-weight:700;color:${cat.color};">${area.score}/100</span>
+            </div>
+            <div class="insight-card" style="margin-bottom:4px;">
+              <div class="label">Cells in cluster</div><div class="value">${area.cell_count}</div>
+            </div>
+            <div class="insight-card">
+              <div class="label">Centroid</div>
+              <div class="value" style="font-size:11px;">${area.centroid[1].toFixed(5)}°N, ${area.centroid[0].toFixed(5)}°E</div>
+            </div>
+          </div>`;
+      }).join('')
+    : `<p class="text-muted">No high-scoring clusters found. Try including more analyses or lowering weight thresholds.</p>`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Expansion Suitability — Results</h3>
+      <p class="panel-desc">Weighted composite of ${candidates.length} analysis layer${candidates.length !== 1 ? 's' : ''}.</p>
+
+      ${tabsHtml()}
+
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted" style="font-size:11px;">Weight allocation across selected analyses.</p>
+        ${layerSummaryHtml}
+        <div class="insight-card mt-2">
+          <div class="label">Total cells</div><div class="value">${cellCount.toLocaleString()}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Cell size</div><div class="value">${cellLabel}</div>
+        </div>
+      </div>
+
+      <div class="tab-content active" id="tab-full">
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Top 3 recommended expansion areas based on composite score.</p>
+        ${avgScore != null ? `<div class="insight-card">
+          <div class="label">Composite avg score</div>
+          <div class="value">${avgScore}/100</div>
+        </div>` : ''}
+        ${bestScore != null ? `<div class="insight-card">
+          <div class="label">Best cell score</div>
+          <div class="value" style="color:#27ae60;">${bestScore}/100</div>
+        </div>` : ''}
+        ${topAreasHtml}
+        <button class="btn btn-ghost btn-block" style="margin-top:10px;font-size:12px;" onclick="_downloadExpansionGeoJSON()">
+          <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download Weighted Grid GeoJSON
+        </button>
+      </div>
+
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Click this tab to view the weighted cell grid on the map.</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">AI analysis for expansion results coming soon.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
+      </div>
+
+      <button class="btn btn-ghost btn-block mt-3" onclick="renderServicePanel('expansion')">
+        ← Back to inputs
+      </button>
+    </div>
+  `;
+
+  // Render full-area map: weighted grid + top area boundaries
+  clearMap();
+  gridLayer = null;  // will be built on-demand when grid tab is clicked
+  _renderExpansionMap(weighted_grid, top_areas);
+
+  wireTabSwitching();
+}
+
+function _renderExpansionMap(weighted_grid, top_areas) {
+  // Weighted grid cells (background)
+  resultLayer = L.geoJSON(weighted_grid, {
+    style: f => ({
+      fillColor:   qolScoreColor(f.properties.qol_score),
+      fillOpacity: 0.65,
+      color:       'rgba(0,0,0,0.1)',
+      weight:      0.4,
+    }),
+    onEachFeature: (f, layer) => {
+      layer.bindPopup(`<strong>Score:</strong> ${f.properties.qol_score}/100`);
+    },
+  }).addTo(map);
+
+  // Top area boundaries
+  if (top_areas && top_areas.length) {
+    const colors = ['#f1c40f','#95a5a6','#cd7f32'];
+    top_areas.forEach((area, i) => {
+      const color = colors[i] || '#888';
+      L.geoJSON({ type: 'Feature', geometry: area.boundary }, {
+        style: {
+          color,
+          weight:      3,
+          fill:        true,
+          fillColor:   color,
+          fillOpacity: 0.08,
+          dashArray:   '8,4',
+        },
+      }).bindPopup(`
+        <strong>${['1st','2nd','3rd'][i] || `#${i+1}`} Best Area</strong><br>
+        Score: <strong>${area.score}/100</strong><br>
+        Cells: ${area.cell_count}
+      `).addTo(map);
+    });
+
+    // Fit to extent of all top areas + grid
+    try {
+      const b = resultLayer.getBounds();
+      if (b && b.isValid()) map.fitBounds(b, { padding: [50,50] });
+    } catch(e){}
+  }
+}
+
+function _downloadExpansionGeoJSON() {
+  if (!lastResultBlob) return;
+  downloadGeoJSON(lastResultBlob, 'expansion_weighted_grid.geojson');
 }
 
 
 /* ============================================================
    3. RUN ANALYSIS — switches the panel to the Results view
    ============================================================ */
-// function runAnalysis(key) {
-//   const service = SERVICES[key];  ضيفت بدالها السطر الجاي
 
+// Public entry point: shows project modal first, then runs
 function runAnalysis(key) {
+  showProjectModal(key);
+}
+
+function _runAnalysisCore(key) {
   document.getElementById('analysisPanel').dataset.saved = '';
 
   if (key === "facility_Accessibility_index") {
@@ -4439,6 +4990,47 @@ function wireTabSwitching() {
         if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
         if (aiLayer     && map.hasLayer(aiLayer))     map.removeLayer(aiLayer);
 
+        // Expansion: weighted grid is already in lastResultBlob — no backend round-trip needed
+        if (lastResultService === "expansion" && lastResultBlob) {
+          if (!gridLayer) {
+            gridLayer = L.geoJSON(lastResultBlob, {
+              style: f => ({
+                fillColor:   qolScoreColor(f.properties.qol_score),
+                fillOpacity: 0.75,
+                color:       'rgba(0,0,0,0.15)',
+                weight:      0.5,
+              }),
+              onEachFeature: (f, layer) => {
+                layer.bindPopup(`<strong>Composite Score:</strong> ${f.properties.qol_score}/100`);
+              },
+            });
+          }
+          if (!map.hasLayer(gridLayer)) gridLayer.addTo(map);
+          try {
+            const b = gridLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [50,50] });
+          } catch(e){}
+          const gridTabContent = analysisPanel.querySelector('#tab-grid');
+          if (gridTabContent && gridTabContent.textContent.includes('Click this tab')) {
+            const _sc = lastResultBlob.features.map(f => f.properties.qol_score).filter(s => s != null);
+            const _avg = _sc.length ? Math.round(_sc.reduce((a,b)=>a+b,0)/_sc.length) : null;
+            const _best = _sc.length ? Math.max(..._sc) : null;
+            const _worst = _sc.length ? Math.min(..._sc) : null;
+            const _csm  = lastResultBlob.cell_size_m || '?';
+            const _cl   = _csm >= 1000 ? `${(_csm/1000).toFixed(1)} km` : `${_csm} m`;
+            gridTabContent.innerHTML = `
+              <div class="insight-card"><div class="label">Total cells</div><div class="value">${lastResultBlob.features.length.toLocaleString()}</div></div>
+              <div class="insight-card"><div class="label">Cell size</div><div class="value">${_cl}</div></div>
+              ${_avg  != null ? `<div class="insight-card"><div class="label">Avg composite score</div><div class="value">${_avg}/100</div></div>` : ''}
+              ${_best != null ? `<div class="insight-card"><div class="label">Best cell</div><div class="value" style="color:#27ae60;">${_best}/100</div></div>` : ''}
+              ${_worst!= null ? `<div class="insight-card"><div class="label">Worst cell</div><div class="value" style="color:#e74c3c;">${_worst}/100</div></div>` : ''}
+              <p style="font-size:11px;color:var(--text-muted);margin-top:8px;">Click any cell to see its composite score.</p>
+              ${window.qolGradientRow ? window.qolGradientRow() : ''}
+            `;
+          }
+          return;
+        }
+
         // If grid layer already loaded, just show it
         if (gridLayer) {
           if (!map.hasLayer(gridLayer)) gridLayer.addTo(map);
@@ -6194,6 +6786,9 @@ function toggleAnnotate() {
       grid: () => qolGradientRow(),
     },
   };
+
+  // Expose qolGradientRow for use outside this IIFE
+  window.qolGradientRow = qolGradientRow;
 
   // ── public API ──────────────────────────────────────────────
   window.updateLegend = function (service, tab) {

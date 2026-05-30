@@ -298,6 +298,35 @@
   <!-- jsPDF for PDF export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+  <!-- Project selector modal -->
+  <div id="projectModal" style="display:none; position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background:#1a1d27; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px 32px; width:380px; max-width:95vw;">
+      <h3 style="margin:0 0 6px; font-size:16px; color:#e8eaf0;">Assign to Project</h3>
+      <p style="margin:0 0 18px; font-size:13px; color:#7a7f94;">Group this analysis under a project for easy access in history.</p>
+
+      <label style="font-size:12px; color:#7a7f94; text-transform:uppercase; letter-spacing:.05em;">Select existing project</label>
+      <select id="projectSelect" style="width:100%; margin:6px 0 14px; padding:9px 12px; background:#0f1117; border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:#e8eaf0; font-size:14px;">
+        <option value="">— No project —</option>
+      </select>
+
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+        <div style="flex:1; height:1px; background:rgba(255,255,255,0.08);"></div>
+        <span style="font-size:12px; color:#7a7f94;">or create new</span>
+        <div style="flex:1; height:1px; background:rgba(255,255,255,0.08);"></div>
+      </div>
+
+      <input id="newProjectName" type="text" placeholder="Project name (e.g. Cairo 2026)"
+        style="width:100%; padding:9px 12px; background:#0f1117; border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:#e8eaf0; font-size:14px; margin-bottom:10px;" />
+      <input id="newProjectDesc" type="text" placeholder="Short description (optional)"
+        style="width:100%; padding:9px 12px; background:#0f1117; border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:#e8eaf0; font-size:14px; margin-bottom:18px;" />
+
+      <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <button onclick="skipProjectAndRun()" style="padding:9px 18px; background:transparent; border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#7a7f94; cursor:pointer; font-size:13px;">Skip</button>
+        <button onclick="confirmProjectAndRun()" style="padding:9px 20px; background:#00d4aa; border:none; border-radius:8px; color:#0f1117; font-weight:600; cursor:pointer; font-size:13px;">Confirm &amp; Run</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Shared (navbar, logout, etc.) -->
   <script src="js/app.js"></script>
   <!-- Dashboard-specific logic (services, tabs, chatbot) -->

@@ -65,6 +65,8 @@ from grid_analysis import (
     grid_from_vegetation,
     grid_from_traffic,
     grid_from_informal_settlement,
+    combine_grids_weighted,
+    extract_top_areas,
 )
 from ai_routes import router as ai_router
 
@@ -1061,11 +1063,24 @@ def init_db():
             )
         """))
 
+        # Projects table
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(100) NOT NULL,
+                name VARCHAR(200) NOT NULL,
+                description VARCHAR(500),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(username, name)
+            )
+        """))
+
         # Analyses table
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS analyses (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(100) NOT NULL,
+                project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
                 type VARCHAR(100),
                 title VARCHAR(200),
                 area VARCHAR(200),
@@ -1073,6 +1088,11 @@ def init_db():
                 status VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        """))
+
+        # Add project_id column if upgrading existing DB
+        conn.execute(text("""
+            ALTER TABLE analyses ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL
         """))
 
         conn.commit()
@@ -1197,11 +1217,11 @@ def create_token(data: dict):
 def register(user: UserRegister):
     with engine.connect() as conn:
         existing = conn.execute(
-            text("SELECT id FROM users WHERE email = :email"),
-            {"email": user.email}
+            text("SELECT id FROM users WHERE email = :email OR username = :username"),
+            {"email": user.email, "username": user.username}
         ).fetchone()
         if existing:
-            raise HTTPException(status_code=400, detail="Email already registered")
+            raise HTTPException(status_code=400, detail="Email or username already registered")
     
     hashed_password = hash_password(user.password)
     names = user.full_name.strip().split() if user.full_name else [user.username]
@@ -1250,8 +1270,41 @@ class AnalysisRecord(BaseModel):
     status: str
 
     preview_image: str | None = None
-
     result_file: str | None = None
+    project_id: int | None = None
+
+
+class ProjectRecord(BaseModel):
+    name: str
+    description: str | None = None
+
+
+@app.post("/projects", tags=["User"])
+def create_project(project: ProjectRecord, username: str):
+    with engine.begin() as conn:
+        result = conn.execute(text("""
+            INSERT INTO projects (username, name, description)
+            VALUES (:username, :name, :description)
+            ON CONFLICT (username, name) DO UPDATE SET description = EXCLUDED.description
+            RETURNING id, name, description, created_at
+        """), {
+            "username": username,
+            "name": project.name,
+            "description": project.description
+        })
+        row = result.fetchone()
+        return {"id": row.id, "name": row.name, "description": row.description, "created_at": str(row.created_at)}
+
+
+@app.get("/projects", tags=["User"])
+def get_projects(username: str):
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT id, name, description, created_at FROM projects WHERE username = :username ORDER BY created_at DESC"),
+            {"username": username}
+        ).fetchall()
+        return [{"id": r.id, "name": r.name, "description": r.description, "created_at": str(r.created_at)} for r in rows]
+
 
 @app.post("/analyses", tags=["User"])
 def save_analysis(analysis: AnalysisRecord, username: str):
@@ -1261,6 +1314,7 @@ def save_analysis(analysis: AnalysisRecord, username: str):
         conn.execute(text("""
             INSERT INTO analyses (
                 username,
+                project_id,
                 type,
                 title,
                 area,
@@ -1271,6 +1325,7 @@ def save_analysis(analysis: AnalysisRecord, username: str):
             )
             VALUES (
                 :username,
+                :project_id,
                 :type,
                 :title,
                 :area,
@@ -1281,6 +1336,7 @@ def save_analysis(analysis: AnalysisRecord, username: str):
             )
         """), {
             "username": username,
+            "project_id": analysis.project_id,
             "type": analysis.type,
             "title": analysis.title,
             "area": analysis.area,
@@ -1297,7 +1353,13 @@ def save_analysis(analysis: AnalysisRecord, username: str):
 def get_analyses(username: str):
     with engine.connect() as conn:
         result = conn.execute(
-            text("SELECT * FROM analyses WHERE username = :username ORDER BY created_at DESC"),
+            text("""
+                SELECT a.*, p.name AS project_name
+                FROM analyses a
+                LEFT JOIN projects p ON a.project_id = p.id
+                WHERE a.username = :username
+                ORDER BY a.created_at DESC
+            """),
             {"username": username}
         ).fetchall()
 
@@ -1311,10 +1373,53 @@ def get_analyses(username: str):
                 "status": row.status,
                 "created_at": str(row.created_at),
                 "preview_image": row.preview_image,
-                "result_file": row.result_file
+                "result_file": row.result_file,
+                "project_id": row.project_id,
+                "project_name": row.project_name
             }
             for row in result
         ]
+    # ─────────────────────── Expansion ──────────────────────────────────────────
+
+class ExpansionLayer(BaseModel):
+    analysis_id: int
+    weight: float = 1.0
+    grid_geojson: dict  # pre-computed grid GeoJSON from frontend
+
+
+class ExpansionRequest(BaseModel):
+    layers: list[ExpansionLayer]
+    top_n: int = 3
+
+
+@app.post("/expansion/combine", tags=["Expansion"])
+def expansion_combine(req: ExpansionRequest):
+    """
+    Combine multiple pre-computed QoL grids into a weighted expansion suitability map
+    and return the weighted grid plus top N recommended areas.
+    """
+    if not req.layers:
+        raise HTTPException(status_code=400, detail="At least one layer is required.")
+
+    grids_with_weights = []
+    for layer in req.layers:
+        gj = layer.grid_geojson
+        if not isinstance(gj, dict) or gj.get("type") != "FeatureCollection":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Layer {layer.analysis_id}: grid_geojson must be a GeoJSON FeatureCollection."
+            )
+        grids_with_weights.append((gj, max(0.0, layer.weight)))
+
+    weighted_grid = combine_grids_weighted(grids_with_weights)
+    top_areas     = extract_top_areas(weighted_grid, top_n=req.top_n)
+
+    return {
+        "weighted_grid": weighted_grid,
+        "top_areas":     top_areas,
+    }
+
+
     # -------------------- endpoint (online url)-----------------
 @app.get("/", tags=["Frontend"])
 def root():

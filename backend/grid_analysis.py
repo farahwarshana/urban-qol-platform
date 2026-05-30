@@ -1024,3 +1024,194 @@ def grid_from_vegetation(geojson_path):
         "features":    features,
         "cell_size_m": cell_size_m,
     }
+
+
+# ── Expansion: combine multiple grids into a weighted composite ───────────────
+
+def combine_grids_weighted(grids_with_weights: list) -> dict:
+    """
+    Combine multiple QoL grid GeoJSONs into a single weighted composite grid.
+
+    Parameters
+    ----------
+    grids_with_weights : list of (geojson_dict, weight) tuples
+        Weights are normalised internally so they don't need to sum to 1.
+
+    Returns
+    -------
+    dict — FeatureCollection with weighted_score / qol_score (0-100).
+    """
+    if not grids_with_weights:
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
+
+    total_weight = sum(w for _, w in grids_with_weights)
+    if total_weight == 0:
+        total_weight = 1.0
+    norm_weights = [w / total_weight for _, w in grids_with_weights]
+    grids        = [g for g, _ in grids_with_weights]
+
+    # Union bounding box of all source grids
+    all_minx = all_miny = float("inf")
+    all_maxx = all_maxy = float("-inf")
+    for gj in grids:
+        for feat in gj.get("features", []):
+            geom = feat.get("geometry", {})
+            if geom.get("type") == "Polygon":
+                coords = geom["coordinates"][0]
+                xs = [c[0] for c in coords]
+                ys = [c[1] for c in coords]
+                all_minx = min(all_minx, min(xs))
+                all_miny = min(all_miny, min(ys))
+                all_maxx = max(all_maxx, max(xs))
+                all_maxy = max(all_maxy, max(ys))
+
+    if all_minx == float("inf"):
+        return {"type": "FeatureCollection", "features": [], "cell_size_m": 0}
+
+    union_bounds = (all_minx, all_miny, all_maxx, all_maxy)
+    common_gdf, cell_size_m = _build_grid_cells(union_bounds)
+
+    # Build centroid lookup arrays per source grid for fast nearest-cell matching
+    layer_lookups = []
+    for gj in grids:
+        cx_arr, cy_arr, score_arr = [], [], []
+        for feat in gj.get("features", []):
+            p     = feat.get("properties", {})
+            score = p.get("qol_score")
+            if score is None:
+                continue
+            geom = feat.get("geometry", {})
+            if geom.get("type") == "Polygon":
+                coords = geom["coordinates"][0]
+                xs = [c[0] for c in coords]
+                ys = [c[1] for c in coords]
+                cx_arr.append((min(xs) + max(xs)) / 2)
+                cy_arr.append((min(ys) + max(ys)) / 2)
+                score_arr.append(float(score))
+        if cx_arr:
+            layer_lookups.append((np.array(cx_arr), np.array(cy_arr), np.array(score_arr)))
+        else:
+            layer_lookups.append(None)
+
+    # Search radius: 2× the largest source cell size converted to degrees
+    max_source_cell_m = max((gj.get("cell_size_m") or cell_size_m) for gj in grids)
+    search_deg = (max_source_cell_m * 2) / 111_000
+
+    features = []
+    for _, row in common_gdf.iterrows():
+        geom = row.geometry
+        cx   = geom.centroid.x
+        cy   = geom.centroid.y
+
+        weighted_sum   = 0.0
+        covered_weight = 0.0
+        layer_scores   = []
+
+        for i, lookup in enumerate(layer_lookups):
+            if lookup is None:
+                layer_scores.append(None)
+                continue
+            cx_arr, cy_arr, score_arr = lookup
+            dists       = np.sqrt((cx_arr - cx) ** 2 + (cy_arr - cy) ** 2)
+            nearest_idx = int(np.argmin(dists))
+            if dists[nearest_idx] <= search_deg:
+                sc = score_arr[nearest_idx]
+                weighted_sum   += norm_weights[i] * sc
+                covered_weight += norm_weights[i]
+                layer_scores.append(round(float(sc), 1))
+            else:
+                layer_scores.append(None)
+
+        if covered_weight < 0.01:
+            continue
+
+        final_score = round(weighted_sum / covered_weight)
+        final_score = max(0, min(100, final_score))
+
+        features.append({
+            "type": "Feature",
+            "geometry": geom.__geo_interface__,
+            "properties": {
+                "weighted_score": final_score,
+                "qol_score":      final_score,
+                "layer_scores":   layer_scores,
+            },
+        })
+
+    return {
+        "type":        "FeatureCollection",
+        "features":    features,
+        "cell_size_m": cell_size_m,
+    }
+
+
+def extract_top_areas(weighted_grid: dict, top_n: int = 3) -> list:
+    """
+    From a weighted composite grid return the top N contiguous high-scoring
+    clusters, each as a dict with boundary, score, cell_count, centroid.
+    """
+    from shapely.geometry import shape
+
+    features = weighted_grid.get("features", [])
+    if not features:
+        return []
+
+    scores = np.array([f["properties"].get("weighted_score", 0) for f in features])
+
+    threshold = max(float(np.percentile(scores, 75)), 60.0)
+    high_feats = [f for f in features if (f["properties"].get("weighted_score") or 0) >= threshold]
+    if not high_feats:
+        threshold  = float(np.percentile(scores, 66))
+        high_feats = [f for f in features if (f["properties"].get("weighted_score") or 0) >= threshold]
+    if not high_feats:
+        return []
+
+    cell_size_m  = weighted_grid.get("cell_size_m", 200)
+    cell_size_deg = cell_size_m / 111_000 * 1.5
+
+    geoms    = [shape(f["geometry"]) for f in high_feats]
+    s_arr    = [f["properties"].get("weighted_score", 0) for f in high_feats]
+    n        = len(geoms)
+    parent   = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        parent[find(x)] = find(y)
+
+    centroids = [(g.centroid.x, g.centroid.y) for g in geoms]
+    for i in range(n):
+        for j in range(i + 1, n):
+            dx = centroids[i][0] - centroids[j][0]
+            dy = centroids[i][1] - centroids[j][1]
+            if (dx * dx + dy * dy) ** 0.5 <= cell_size_deg:
+                union(i, j)
+
+    clusters: dict = {}
+    for i in range(n):
+        root = find(i)
+        clusters.setdefault(root, []).append(i)
+
+    def cluster_avg(idxs):
+        return sum(s_arr[i] for i in idxs) / len(idxs)
+
+    ranked = sorted(clusters.values(), key=cluster_avg, reverse=True)[:top_n]
+
+    results = []
+    for idxs in ranked:
+        cluster_geoms = [geoms[i] for i in idxs]
+        avg_score     = cluster_avg(idxs)
+        merged        = unary_union(cluster_geoms).convex_hull
+        c             = merged.centroid
+        results.append({
+            "boundary":   merged.__geo_interface__,
+            "score":      round(avg_score, 1),
+            "cell_count": len(idxs),
+            "centroid":   [round(c.x, 6), round(c.y, 6)],
+        })
+
+    return results
