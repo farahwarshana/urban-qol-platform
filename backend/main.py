@@ -274,11 +274,12 @@ def calculate_crime_density_endpoint(
         return JSONResponse(
             content=geojson_data,
             headers={
+                "X-Result-File": result_file_header(output_path),
                 "X-Crime-Count":   str(total_crimes),
                 "X-Area-Count":    str(area_count),
                 "X-Avg-Density":   str(round(avg_density, 2)),
                 "X-Max-Density":   str(round(max_density, 2)),
-                "X-Result-File": f"outputs/urban_density/urban_density_{job_id}.geojson",
+            
             },
         )
 
@@ -715,6 +716,7 @@ def calculate_vegetation_density_endpoint(
         return JSONResponse(
             content=geojson_data,
             headers={
+                "X-Result-File":       result_file_header(output_path),
                 "X-Vegetation-Pct":    str(result["vegetation_pct"]),
                 "X-Benchmark-Gap":     str(result["benchmark_gap"]),
                 "X-Passes-Benchmark":  str(result["passes_benchmark"]).lower(),
@@ -831,9 +833,6 @@ def calculate_traffic_endpoint(
             "density_class":        result["density_class"],
             "high_congestion_pct":  result["high_congestion_pct"],
         }
-
-        with open(str(output_path), "w", encoding="utf-8") as f:
-            json.dump(combined, f)
 
         headers = {
             "X-Result-File":           result_file_header(output_path),

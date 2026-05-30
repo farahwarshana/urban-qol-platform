@@ -1549,9 +1549,11 @@ async function runCrimeAnalysis() {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-    }
+  const errorData = await response.json();
+  throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+}
+
+lastResultFile = response.headers.get("X-Result-File") || "";
 
     // Get crime density stats from response headers
     const crimeCount = response.headers.get("X-Crime-Count");
@@ -2031,10 +2033,12 @@ async function runPublicTransportAnalysis() {
 
     const response = await fetch(url, { method: "POST", body: formData });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-    }
+if (!response.ok) {
+  const errorData = await response.json();
+  throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+}
+
+lastResultFile = response.headers.get("X-Result-File") || "";
 
     captureResultFile(response);
     const coveragePct             = response.headers.get("X-Coverage-Pct");
@@ -2395,6 +2399,7 @@ async function runVegetationAnalysis() {
       const err = await response.json();
       throw new Error(err.detail || `HTTP ${response.status}`);
     }
+    lastResultFile = response.headers.get("X-Result-File") || "";
 
     const vegetationPct   = parseFloat(response.headers.get("X-Vegetation-Pct") || "0");
     const benchmarkGap    = parseFloat(response.headers.get("X-Benchmark-Gap")  || "0");
@@ -2739,9 +2744,11 @@ async function runTrafficAnalysis() {
     const response = await fetch(url, { method: "POST", body: formData });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-    }
+  const errorData = await response.json();
+  throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+}
+
+lastResultFile = response.headers.get("X-Result-File") || "";
 
     captureResultFile(response);
     // ── Summary headers ──────────────────────────────────────────────────────

@@ -808,19 +808,29 @@ async function loadAnalysisDetails() {
 
     if (!geojsonRes.ok) throw new Error(`HTTP ${geojsonRes.status}`);
 
-    const geojson = await geojsonRes.json();
-    const features = geojson.features || [];
+const geojson = await geojsonRes.json();
+console.log("first feature:", geojson.features[0]?.properties);
+const features = geojson.features || [];
+console.log("total:", geojson.features.length);
+console.log("network:", geojson.features.filter(f => f.properties.service === "traffic-network").length);
+console.log("hierarchy:", geojson.features.filter(f => f.properties.hierarchy !== undefined).length);
 
-    // Render on map
-    const layer = L.geoJSON(geojson, {
-      style:        f => config.styleFeature(f),
-      pointToLayer: config.pointToLayer
-        ? (f, ll) => config.pointToLayer(f, ll)
-        : undefined,
-      onEachFeature: (f, l) => {
-        const popup = config.popupFn(f);
-        if (popup) l.bindPopup(popup);
-      }
+ // Render on map
+const layer = L.geoJSON(geojson, {
+  filter: f => {
+    if (analysis.type === "traffic") {
+      return f.properties.congestion === undefined && f.properties.type !== "hotspot";
+    }
+    return true;
+  },
+  style:        f => config.styleFeature(f),
+  pointToLayer: config.pointToLayer
+    ? (f, ll) => config.pointToLayer(f, ll)
+    : undefined,
+  onEachFeature: (f, l) => {
+    const popup = config.popupFn(f);
+    if (popup) l.bindPopup(popup);
+  }
     }).addTo(map);
 
     try {
