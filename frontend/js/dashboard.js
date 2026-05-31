@@ -9931,21 +9931,22 @@ window.onclick = function(event) {
 // دالة مشاركة الواتساب
 function shareWhatsApp() {
   const url = encodeURIComponent(window.location.href);
-  const text = encodeURIComponent("شوف مشروع تحليل جودة الحياة الحضرية في الملز:");
+  const text = encodeURIComponent("شوف مشروع تحليل جودة الحياة الحضرية في ملاز:");
   window.open(`https://api.whatsapp.com/send?text=${text}%20${url}`, "_blank");
 }
 
 // دالة مشاركة التليجرام
 function shareTelegram() {
   const url = encodeURIComponent(window.location.href);
-  const text = encodeURIComponent("مشروع تحليل جودة الحياة الحضرية - الملز");
+  const text = encodeURIComponent("شوف مشروع تحليل جودة الحياة الحضرية في ملاز:");
   window.open(`https://t.me/share/url?url=${url}&text=${text}`, "_blank");
 }
 
 // دالة مشاركة الفيسبوك
 function shareFacebook() {
   const url = encodeURIComponent(window.location.href);
-  window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, "_blank");
+  const text = encodeURIComponent("شوف مشروع تحليل جودة الحياة الحضرية في ملاز:");
+  window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${text}`, "_blank");
 }
 
 // دالة نسخ الرابط
