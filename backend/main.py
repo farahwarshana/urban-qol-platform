@@ -1390,6 +1390,24 @@ def save_analysis(analysis: AnalysisRecord, username: str):
     return {"message": "Analysis saved successfully"}
 
 
+class AnalysisTitleUpdate(BaseModel):
+    title: str
+
+@app.patch("/analyses/{analysis_id}", tags=["User"])
+def update_analysis(analysis_id: int, username: str, body: AnalysisTitleUpdate):
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="title is required")
+    with engine.begin() as conn:
+        result = conn.execute(
+            text("UPDATE analyses SET title = :title WHERE id = :id AND username = :username RETURNING id"),
+            {"title": title, "id": analysis_id, "username": username}
+        )
+        if not result.fetchone():
+            raise HTTPException(status_code=404, detail="Analysis not found or not owned by user")
+    return {"message": "Analysis updated"}
+
+
 @app.delete("/analyses/{analysis_id}", tags=["User"])
 def delete_analysis(analysis_id: int, username: str):
     with engine.begin() as conn:
@@ -1412,6 +1430,24 @@ def delete_project(project_id: int, username: str):
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Project not found or not owned by user")
     return {"message": "Project deleted"}
+
+
+@app.patch("/projects/{project_id}", tags=["User"])
+def update_project(project_id: int, username: str, project: ProjectRecord):
+    with engine.begin() as conn:
+        result = conn.execute(
+            text("""
+                UPDATE projects
+                SET name = :name, description = :description
+                WHERE id = :id AND username = :username
+                RETURNING id, name, description
+            """),
+            {"id": project_id, "username": username, "name": project.name, "description": project.description}
+        )
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Project not found or not owned by user")
+    return {"id": row.id, "name": row.name, "description": row.description}
 
 
 @app.get("/analyses", tags=["User"])
