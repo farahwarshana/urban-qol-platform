@@ -1284,10 +1284,11 @@ const translations = {
   }
 };
 
-let currentLang = "en";
+let currentLang = localStorage.getItem("lang") || "en";
 
 function toggleLang() {
   currentLang = currentLang === "en" ? "ar" : "en";
+  localStorage.setItem("lang", currentLang);
   applyLang();
 }
 

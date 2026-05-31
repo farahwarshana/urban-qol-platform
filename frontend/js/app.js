@@ -155,6 +155,12 @@ function sharePortal()
 window.location.href = "mailto:?subject=Urban Quality of Life Platform&body=Check out this platform!";
 }
 
+/* ---------- LANGUAGE DIRECTION RESTORE ---------- */
+(function initLang() {
+  const lang = localStorage.getItem("lang") || "en";
+  if (lang === "ar") document.documentElement.dir = "rtl";
+})();
+
 /* ---------- DARK / LIGHT THEME TOGGLE ---------- */
 (function initTheme() {
   const saved = localStorage.getItem("theme") || "dark";
