@@ -215,6 +215,22 @@ let _isRaster     = false;
 let _gridLoaded   = false;
 let _currentMapLayer = "full";
 
+// ── Colour helpers (must be before ANALYSIS_CONFIG) ───────────────────────────
+function vegPctColor(pct) {
+  const p = Math.max(0, Math.min(100, pct));
+  if (p >= 50) { const t=(p-50)/50; return `rgba(${Math.round((1-t)*80+t*30)},${Math.round((1-t)*180+t*160)},50,0.85)`; }
+  if (p >= 30) { const t=(p-30)/20; return `rgba(${Math.round((1-t)*230+t*80)},${Math.round((1-t)*200+t*180)},0,0.85)`; }
+  const t=p/30; return `rgba(${Math.round((1-t)*200+t*230)},${Math.round((1-t)*40+t*160)},0,0.85)`;
+}
+function irregularityColor(score) {
+  if (score==null||score===undefined) return "rgba(150,150,150,0.3)";
+  const s=Math.max(0,Math.min(100,score));
+  if (s<=33) { const t=s/33; return `rgba(${Math.round((1-t)*46+t*240)},${Math.round((1-t)*180+t*200)},${Math.round((1-t)*50)},0.72)`; }
+  if (s<=66) { const t=(s-33)/33; return `rgba(${Math.round((1-t)*240+t*220)},${Math.round((1-t)*200+t*60)},0,0.72)`; }
+  const t=(s-66)/34; return `rgba(${Math.round((1-t)*220+t*180)},${Math.round((1-t)*60+t*20)},0,0.72)`;
+}
+const FACILITY_ZONE_COLORS = ["#198754","#52b788","#ffc107","#fd7e14","#dc3545","#9b2335","#6f42c1","#343a40"];
+
 // ── Type configuration ────────────────────────────────────────────────────────
 const ANALYSIS_CONFIG = {
 
@@ -469,58 +485,68 @@ const ANALYSIS_CONFIG = {
     title:"Public Transport Coverage", dataFormat:"GeoJSON", isRaster:false,
     gridField:"geojson",
     legend:[
-      { color:"#198754", label:"Well Covered",  range:"> 80%" },
-      { color:"#52b788", label:"Good Coverage", range:"60 – 80%" },
-      { color:"#ffc107", label:"Moderate",      range:"40 – 60%" },
-      { color:"#fd7e14", label:"Limited",       range:"20 – 40%" },
-      { color:"#e74c3c", label:"Underserved",   range:"< 20%" }
+      { color:"#4cc2ff", label:"Within walking distance", range:"Covered zones" },
+      { color:"#e74c3c", label:"Outside walking distance", range:"Uncovered zones" }
     ],
+    // Coverage zones only — boundary and station features are handled separately as inputLayer
+    filterFeature(f) { const l=f.properties.layer; return l!=="boundary"&&l!=="station"; },
     styleFeature(f) {
-      const p = f.properties;
-      if (p.type === "station" || p.layer === "station") return { fillColor:"#4cc2ff", fillOpacity:0.9, color:"#1a8fc1", weight:2 };
-      if (p.layer === "boundary") return { fillColor:"transparent", fillOpacity:0, color:"#f0a500", weight:2.5, dashArray:"6,3" };
-      const cov = p.coverage_pct || 0;
-      let color = "#e74c3c";
-      if (cov > 80) color = "#198754";
-      else if (cov > 60) color = "#52b788";
-      else if (cov > 40) color = "#ffc107";
-      else if (cov > 20) color = "#fd7e14";
-      return { fillColor:color, fillOpacity:0.55, color:"#333", weight:1 };
-    },
-    pointToLayer(f, latlng) {
-      return L.circleMarker(latlng, { radius:6, fillColor:"#4cc2ff", color:"#1a8fc1", weight:2, fillOpacity:0.9 });
+      const isCovered = f.properties.type==="covered";
+      return { fillColor:isCovered?"#4cc2ff":"#e74c3c", fillOpacity:isCovered?0.45:0.25,
+               color:isCovered?"#1a8fc1":"#c0392b", weight:1.5, dashArray:isCovered?null:"5,4" };
     },
     popupFn(f) {
-      const p = f.properties;
-      if (p.type === "station") return `<strong>Station</strong><br>${p.name||"Transit Stop"}`;
-      return `<strong>${p.name||"Zone"}</strong><br>Coverage: ${(p.coverage_pct||0).toFixed(1)}%`;
+      const label = f.properties.type==="covered" ? "Within walking distance" : "Outside walking distance";
+      return `<strong>${label}</strong>`;
+    },
+    // inputLayer: boundary (orange dashed) + stations (blue circles)
+    buildInputLayer(geojson) {
+      const boundaryFeats = { type:"FeatureCollection", features: geojson.features.filter(f=>f.properties.layer==="boundary") };
+      const stationFeats  = { type:"FeatureCollection", features: geojson.features.filter(f=>f.properties.layer==="station") };
+      const layers = [];
+      if (boundaryFeats.features.length) {
+        layers.push(L.geoJSON(boundaryFeats, {
+          style:() => ({ color:"#f0a500", weight:2, fillOpacity:0, dashArray:"6,3" }),
+          onEachFeature:(f,l) => l.bindPopup(`<strong>Area boundary</strong>`)
+        }));
+      }
+      if (stationFeats.features.length) {
+        layers.push(L.geoJSON(stationFeats, {
+          pointToLayer:(f,ll) => L.circleMarker(ll, { radius:6, fillColor:"#1a8fc1", color:"#0d5f8a", weight:1.5, fillOpacity:1 }),
+          onEachFeature:(f,l) => l.bindPopup(`<strong>${f.properties.name||"Transit Station"}</strong>`)
+        }));
+      }
+      return layers.length ? L.layerGroup(layers) : null;
     },
     buildFullArea(features) {
-      const stations = features.filter(f => f.properties.type==="station"||f.properties.layer==="station").length;
-      const zones    = features.filter(f => f.properties.coverage_pct != null);
-      const avg      = zones.length ? zones.reduce((s,f)=>s+(f.properties.coverage_pct||0),0)/zones.length : 0;
-      const score    = Math.min(100, Math.round(avg));
-      const insight  = avg >= 70 ? `Good transit coverage — most of the area is within walking distance of a station.`
+      const covFeats = features.filter(f=>f.properties.type==="covered");
+      const uncFeats = features.filter(f=>f.properties.type==="uncovered");
+      const stations = features.filter(f=>f.properties.layer==="station").length;
+      // coverage_pct is on the overall result — derive from covered/total area ratio
+      const covPct = features.filter(f=>f.properties.coverage_pct!=null);
+      const avg = covPct.length ? covPct.reduce((s,f)=>s+(f.properties.coverage_pct||0),0)/covPct.length : 0;
+      const usedScore = Math.min(100, Math.round(avg));
+      const insight = avg >= 70 ? `Good transit coverage — most of the area is within walking distance of a station.`
         : avg >= 40 ? `Moderate coverage — ${(100-avg).toFixed(1)}% of the area lacks walkable transit access.`
         : `Low coverage — ${(100-avg).toFixed(1)}% of the area is underserved by transit.`;
       return { html: `
         <div class="stats-grid">
-          ${sb("Overall Score",     `<span style="color:${scoreColor(score)}">${score} / 100</span>`)}
-          ${sb("Avg Coverage",      avg.toFixed(1) + "%")}
-          ${sb("Transit Stations",  stations.toString())}
-          ${sb("Coverage Zones",    zones.length.toString())}
-          ${sb("Total Features",    features.length.toString())}
+          ${sb("Overall Score",   `<span style="color:${scoreColor(usedScore)}">${usedScore} / 100</span>`)}
+          ${sb("Avg Coverage",    avg.toFixed(1)+"%")}
+          ${sb("Transit Stations", stations.toString())}
+          ${sb("Covered Zones",   covFeats.length.toString())}
+          ${sb("Uncovered Zones", uncFeats.length.toString())}
         </div>
         <div class="key-insight">💡 ${insight}</div>
-      `, score };
+      `, score: usedScore };
     },
     buildRaw(features) {
-      const stations = features.filter(f => f.properties.type==="station"||f.properties.layer==="station").length;
+      const stations = features.filter(f=>f.properties.layer==="station").length;
       return `
-        ${sb("Total Features",  features.length.toString())}
-        ${sb("Station Points",  stations.toString())}
-        ${sb("Format",          "GeoJSON")}
-        ${sb("Geometry Types",  [...new Set(features.map(f=>f.geometry?.type))].join(", "))}
+        ${sb("Total Features", features.length.toString())}
+        ${sb("Station Points", stations.toString())}
+        ${sb("Format",         "GeoJSON")}
+        ${sb("Geometry Types", [...new Set(features.map(f=>f.geometry?.type))].join(", "))}
       `;
     },
     recommendations(score) {
@@ -536,37 +562,37 @@ const ANALYSIS_CONFIG = {
     legend:[
       { color:"#e74c3c", label:"Primary Roads",   range:"High capacity" },
       { color:"#f39c12", label:"Secondary Roads", range:"Medium capacity" },
-      { color:"#3498db", label:"Local Roads",     range:"Low capacity" },
-      { color:"#95a5a6", label:"Other",           range:"Unclassified" }
+      { color:"#3498db", label:"Local Roads",     range:"Low capacity" }
     ],
+    // Only render traffic-network features (not hotspot outlines)
+    filterFeature(f) { return f.properties.service==="traffic-network" || !f.properties.service; },
     styleFeature(f) {
-      const h = f.properties.hierarchy||f.properties.road_type||"";
-      if (h==="primary")   return { color:"#e74c3c", weight:3, fillOpacity:0 };
-      if (h==="secondary") return { color:"#f39c12", weight:2, fillOpacity:0 };
-      if (h==="local")     return { color:"#3498db", weight:1.5, fillOpacity:0 };
-      return { color:"#95a5a6", weight:1, fillOpacity:0 };
+      const h = f.properties.hierarchy||"local";
+      return { color: h==="primary"?"#e74c3c":h==="secondary"?"#f39c12":"#3498db",
+               weight: h==="primary"?3.5:h==="secondary"?2:1,
+               opacity: h==="primary"?0.95:h==="secondary"?0.80:0.55 };
     },
     popupFn(f) {
       const p = f.properties;
-      return `<strong>${p.name||p.road_name||"Road"}</strong><br>
-              Type: ${p.hierarchy||p.road_type||"—"}<br>
-              Length: ${p.length_m ? (p.length_m/1000).toFixed(2)+" km" : "—"}`;
+      return `<strong>${(p.hierarchy||"local").charAt(0).toUpperCase()+(p.hierarchy||"local").slice(1)} road</strong><br>
+              Length: ${p.length_m!=null?(p.length_m/1000).toFixed(2)+" km":"—"}<br>
+              Intersections: ${p.max_degree||"—"} connections`;
     },
     buildFullArea(features) {
-      const primary   = features.filter(f => (f.properties.hierarchy||f.properties.road_type)==="primary").length;
-      const secondary = features.filter(f => (f.properties.hierarchy||f.properties.road_type)==="secondary").length;
-      const local     = features.filter(f => (f.properties.hierarchy||f.properties.road_type)==="local").length;
-      const totalLen  = features.reduce((s,f) => s+(f.properties.length_m||0), 0);
-      const score = 60; // traffic has complex scoring; use saved score
+      const net = features.filter(f=>f.properties.service==="traffic-network"||!f.properties.service);
+      const primary   = net.filter(f=>f.properties.hierarchy==="primary").length;
+      const secondary = net.filter(f=>f.properties.hierarchy==="secondary").length;
+      const local     = net.filter(f=>f.properties.hierarchy==="local").length;
+      const totalLen  = net.reduce((s,f)=>s+(f.properties.length_m||0),0);
       return { html: `
         <div class="stats-grid">
           ${sb("Primary Roads",   primary.toString())}
           ${sb("Secondary Roads", secondary.toString())}
           ${sb("Local Roads",     local.toString())}
-          ${sb("Total Segments",  features.length.toString())}
-          ${totalLen > 0 ? sb("Total Length", (totalLen/1000).toFixed(1)+" km") : ""}
+          ${sb("Total Segments",  net.length.toString())}
+          ${totalLen>0?sb("Total Length",(totalLen/1000).toFixed(1)+" km"):""}
         </div>
-      `, score, useDbScore: true };
+      `, score:null, useDbScore:true };
     },
     buildRaw(features) {
       return `
@@ -586,31 +612,33 @@ const ANALYSIS_CONFIG = {
     title:"Vegetation Density", dataFormat:"GeoJSON", isRaster:false,
     gridField:"geojson",
     legend:[
-      { color:"#27ae60", label:"Dense (≥ 60%)",   range:"Passes standard" },
-      { color:"#f39c12", label:"Moderate (30–60%)", range:"At standard" },
-      { color:"#e74c3c", label:"Sparse (< 30%)",   range:"Below standard" }
+      { color:"rgba(30,160,50,0.85)",   label:"Dense Vegetation",    range:"≥ 50%" },
+      { color:"rgba(80,180,0,0.85)",    label:"Good Coverage",       range:"30 – 50%" },
+      { color:"rgba(230,200,0,0.85)",   label:"Moderate",            range:"15 – 30%" },
+      { color:"rgba(200,40,0,0.85)",    label:"Sparse / Bare",       range:"< 15%" }
     ],
     styleFeature(f) {
-      const v = f.properties.vegetation_pct || 0;
-      const color = v >= 60 ? "#27ae60" : v >= 30 ? "#f39c12" : "#e74c3c";
-      return { fillColor:color, fillOpacity:0.6, color:"#333", weight:1 };
+      return { fillColor:vegPctColor(f.properties.vegetation_pct??0), fillOpacity:0.65,
+               color:"rgba(0,0,0,0.2)", weight:0.8 };
     },
     popupFn(f) {
-      const p = f.properties;
-      return `<strong>${p.name||"Area"}</strong><br>
-              Vegetation: ${(p.vegetation_pct||0).toFixed(1)}%<br>
-              Status: ${p.passes_30pct ? "✓ Passes" : "✗ Below standard"}`;
+      const p=f.properties;
+      const pct = p.vegetation_pct!=null?p.vegetation_pct.toFixed(1)+"%":"—";
+      const tag = p.passes_30pct?"✓ Passes 30% standard":"✗ Below 30% standard";
+      return `<strong>Vegetation:</strong> ${pct}<br>
+              <strong>QoL Score:</strong> ${p.qol_score??"—"}/100<br>
+              <span style="font-size:11px;">${tag}</span>`;
     },
     buildFullArea(features) {
-      const vegPcts = features.map(f => f.properties.vegetation_pct||0).filter(v => v >= 0);
+      const vegPcts = features.map(f=>f.properties.vegetation_pct??0);
       const avg = vegPcts.length ? vegPcts.reduce((a,b)=>a+b,0)/vegPcts.length : 0;
-      const pass = features.filter(f => f.properties.passes_30pct).length;
-      const score = Math.min(100, Math.round((avg / 30) * 100));
-      const gap = avg - 30;
-      const gapHtml = gap >= 0
+      const pass = features.filter(f=>f.properties.passes_30pct).length;
+      const score = Math.min(100, Math.round((avg/30)*100));
+      const gap = avg-30;
+      const gapHtml = gap>=0
         ? `<span style="color:#2ecc71">▲ ${gap.toFixed(1)}% above 30% standard</span>`
         : `<span style="color:#e74c3c">▼ ${Math.abs(gap).toFixed(1)}% below 30% standard</span>`;
-      const insight = avg >= 30 ? `Coverage meets the urban greenery standard. Green space is healthy.`
+      const insight = avg>=30 ? `Coverage meets the urban greenery standard.`
         : `Coverage is ${avg.toFixed(1)}% — ${Math.abs(gap).toFixed(1)}% below the 30% benchmark.`;
       return { html: `
         <div class="stats-grid">
@@ -623,11 +651,7 @@ const ANALYSIS_CONFIG = {
       `, score };
     },
     buildRaw(features) {
-      return `
-        ${sb("Total Zones", features.length.toString())}
-        ${sb("Format",      "GeoJSON")}
-        ${sb("Geometry",    features[0]?.geometry?.type||"—")}
-      `;
+      return `${sb("Total Zones",features.length.toString())}${sb("Format","GeoJSON")}${sb("Geometry",features[0]?.geometry?.type||"—")}`;
     },
     recommendations(score) {
       if (score >= 75) return ["Vegetation coverage meets the urban greenery standard.", "Monitor for seasonal changes.", "Focus on connectivity between green spaces."];
@@ -640,47 +664,47 @@ const ANALYSIS_CONFIG = {
     title:"Informal Settlement Analysis", dataFormat:"GeoJSON", isRaster:false,
     gridField:"geojson",
     legend:[
-      { color:"#e74c3c", label:"Informal Settlement", range:"Detected area" },
-      { color:"#27ae60", label:"Formal Area",         range:"Planned area" },
-      { color:"#f39c12", label:"Mixed / Transition",  range:"Transition zone" }
+      { color:"rgba(46,180,50,0.72)",  label:"Planned (0–33)",  range:"Low irregularity" },
+      { color:"rgba(240,200,0,0.72)",  label:"Mixed (34–66)",   range:"Medium irregularity" },
+      { color:"rgba(220,60,0,0.72)",   label:"Informal (67–100)", range:"High irregularity" },
+      { color:"#e74c3c",               label:"Hotspot Zone",    range:"Dashed outline" }
     ],
     styleFeature(f) {
-      const t = f.properties.settlement_type || f.properties.type || "";
-      if (t === "informal" || t === "slum") return { fillColor:"#e74c3c", fillOpacity:0.6, color:"#333", weight:1 };
-      if (t === "formal" || t === "planned") return { fillColor:"#27ae60", fillOpacity:0.5, color:"#333", weight:1 };
-      return { fillColor:"#f39c12", fillOpacity:0.5, color:"#333", weight:1 };
+      const p = f.properties;
+      if (p.type==="high_irregularity_zone") {
+        return { fillColor:"transparent", fillOpacity:0, color:"#e74c3c", weight:2.5, dashArray:"5,4" };
+      }
+      return { fillColor:irregularityColor(p.irregularity_score), fillOpacity:0.7,
+               color:"rgba(0,0,0,0.18)", weight:0.7 };
     },
     popupFn(f) {
-      const p = f.properties;
-      return `<strong>${p.name||"Zone"}</strong><br>
-              Type: ${p.settlement_type||p.type||"—"}<br>
-              QoL Score: ${p.qol_score||"—"}`;
+      const p=f.properties;
+      if (p.type==="high_irregularity_zone") return `<strong>High Irregularity Zone</strong><br>Potential informal settlement area`;
+      return `<strong>Irregularity Score:</strong> ${p.irregularity_score??""}/100<br>
+              <strong>Classification:</strong> ${p.classification||"—"}<br>
+              <strong>QoL Score:</strong> ${p.qol_score!=null?p.qol_score+"/100":"—"}<br>
+              <strong>Built-up Ratio:</strong> ${((p.buildup_ratio||0)*100).toFixed(1)}%`;
     },
     buildFullArea(features) {
-      const total    = features.length;
-      const informal = features.filter(f => (f.properties.settlement_type||f.properties.type||"").includes("informal") || (f.properties.settlement_type||f.properties.type||"").includes("slum")).length;
-      const infPct   = total > 0 ? ((informal/total)*100).toFixed(1) : "—";
-      const qolScores= features.map(f => f.properties.qol_score||f.properties.overall_qol||f.properties.score).filter(s => s != null && !isNaN(s));
-      const avgQol   = qolScores.length ? Math.round(qolScores.reduce((a,b)=>a+b,0)/qolScores.length) : null;
-      const score    = avgQol ?? (100 - parseFloat(infPct));
-      const insight  = informal > 0
-        ? `${infPct}% of analyzed areas show informal settlement patterns.`
-        : `No significant informal settlement patterns detected.`;
+      const cells = features.filter(f=>f.properties.type!=="high_irregularity_zone");
+      const qolScores = cells.map(f=>f.properties.qol_score).filter(s=>s!=null&&!isNaN(s));
+      const avgQol = qolScores.length ? Math.round(qolScores.reduce((a,b)=>a+b,0)/qolScores.length) : null;
+      const hotspots = features.filter(f=>f.properties.type==="high_irregularity_zone").length;
+      const hiPct = cells.filter(f=>(f.properties.irregularity_score??0)>66).length;
+      const insight = hiPct>0 ? `${hiPct} zones show high irregularity patterns typical of informal settlement.`
+        : `No significant high-irregularity zones detected.`;
       return { html: `
         <div class="stats-grid">
-          ${avgQol != null ? sb("Avg QoL Score", `<span style="color:${scoreColor(avgQol)}">${avgQol} / 100</span>`) : ""}
-          ${sb("Total Zones",    total.toString())}
-          ${sb("Informal Zones", `${informal} (${infPct}%)`)}
+          ${avgQol!=null?sb("Avg QoL Score",`<span style="color:${scoreColor(avgQol)}">${avgQol} / 100</span>`):""}
+          ${sb("Grid Cells",         cells.length.toString())}
+          ${sb("High Irregularity",  hiPct.toString())}
+          ${sb("Hotspot Outlines",   hotspots.toString())}
         </div>
         <div class="key-insight">💡 ${insight}</div>
-      `, score: avgQol ?? Math.max(0, Math.round(100-parseFloat(infPct))), useDbScore: true };
+      `, score:avgQol??null, useDbScore:true };
     },
     buildRaw(features) {
-      return `
-        ${sb("Total Features", features.length.toString())}
-        ${sb("Format",         "GeoJSON")}
-        ${sb("Geometry",       features[0]?.geometry?.type||"—")}
-      `;
+      return `${sb("Total Features",features.length.toString())}${sb("Format","GeoJSON")}${sb("Geometry",features[0]?.geometry?.type||"—")}`;
     },
     recommendations(score) {
       if (score >= 75) return ["Informal settlement footprint is manageable.", "Continue monitoring peri-urban growth.", "Strengthen land registration processes."];
@@ -693,53 +717,105 @@ const ANALYSIS_CONFIG = {
     title:"Facility Accessibility", dataFormat:"GeoJSON", isRaster:false,
     gridField:"geojson",
     legend:[
-      { color:"#27ae60", label:"Well Accessible", range:"≤ 5 min walk" },
-      { color:"#f39c12", label:"Moderate",        range:"5 – 10 min" },
-      { color:"#e74c3c", label:"Poor Access",     range:"> 10 min" }
+      { color:FACILITY_ZONE_COLORS[0], label:"≤ 5 min walk",  range:"Best access" },
+      { color:FACILITY_ZONE_COLORS[1], label:"≤ 10 min walk", range:"Good access" },
+      { color:FACILITY_ZONE_COLORS[2], label:"≤ 15 min walk", range:"Moderate" },
+      { color:"#e74c3c",               label:"Uncovered",      range:"Outside range" }
     ],
+    // Zone polygons only — boundary and facility points handled in inputLayer
+    filterFeature(f) { return f.properties.layer!=="boundary"; },
     styleFeature(f) {
-      const p = f.properties;
-      if (p.type === "facility") return { fillColor:"#4cc2ff", fillOpacity:0.9, color:"#1a8fc1", weight:2 };
-      const cov = p.coverage_pct || p.accessibility_score || 0;
-      let color = "#e74c3c";
-      if (cov > 70) color = "#27ae60";
-      else if (cov > 40) color = "#f39c12";
-      return { fillColor:color, fillOpacity:0.55, color:"#333", weight:1 };
+      const p=f.properties;
+      if (p.type==="uncovered"||p.category==="uncovered") {
+        return { color:"#e74c3c", fillColor:"#e74c3c", fillOpacity:0.18, weight:1, dashArray:"4,3" };
+      }
+      // Sort all time values ascending; color by index
+      const t=p.time_min;
+      const color=FACILITY_ZONE_COLORS[0]; // will be overridden per-feature via onEachFeature
+      return { color, fillColor:color, fillOpacity:0.4, weight:1.5 };
     },
-    pointToLayer(f, latlng) {
-      return L.circleMarker(latlng, { radius:7, fillColor:"#4cc2ff", color:"#1a8fc1", weight:2, fillOpacity:0.9 });
+    // Override per-feature since styleFeature can't access all features for sorting
+    buildLayer(geojson) {
+      const allTimes=[...new Set(geojson.features.map(f=>f.properties.time_min).filter(x=>x!=null))].sort((a,b)=>a-b);
+      const zoneFeats=geojson.features.filter(f=>f.properties.layer!=="boundary");
+      // Sort: boundary first (already excluded), uncovered, then zones largest-time first (so smallest renders on top)
+      const sorted=[...zoneFeats].sort((a,b)=>{
+        const ra=(a.properties.type==="uncovered"||a.properties.category==="uncovered")?0:1+allTimes.indexOf(b.properties.time_min??999);
+        const rb=(b.properties.type==="uncovered"||b.properties.category==="uncovered")?0:1+allTimes.indexOf(a.properties.time_min??999);
+        return ra-rb;
+      });
+      return L.geoJSON({type:"FeatureCollection",features:sorted},{
+        style(f){
+          const p=f.properties;
+          if(p.type==="uncovered"||p.category==="uncovered")
+            return {color:"#e74c3c",fillColor:"#e74c3c",fillOpacity:0.18,weight:1,dashArray:"4,3"};
+          const idx=allTimes.indexOf(p.time_min);
+          const color=FACILITY_ZONE_COLORS[idx]??"#888";
+          const opacity=Math.max(0.20,0.45-idx*0.05);
+          return {color,fillColor:color,fillOpacity:opacity,weight:1.5};
+        },
+        onEachFeature(f,l){
+          const p=f.properties;
+          if(p.type==="uncovered"||p.category==="uncovered"){
+            l.bindPopup("<strong style='color:#e74c3c'>Outside walking range</strong><br>No facility reachable within the maximum walk time.");
+            return;
+          }
+          const idx=allTimes.indexOf(p.time_min);
+          const color=FACILITY_ZONE_COLORS[idx]??"#888";
+          l.bindPopup(`<strong style="color:${color}">Within ${p.time_min} min walk</strong><br>Radius: ${p.radius_m} m<br>Facilities: ${p.facility_count}`);
+        }
+      });
     },
-    popupFn(f) {
-      const p = f.properties;
-      if (p.type === "facility") return `<strong>Facility</strong><br>${p.name||"—"}`;
-      return `<strong>${p.name||"Zone"}</strong><br>Coverage: ${(p.coverage_pct||p.accessibility_score||0).toFixed(1)}%`;
+    buildInputLayer(geojson) {
+      const boundaryFeats={type:"FeatureCollection",features:geojson.features.filter(f=>f.properties.layer==="boundary")};
+      const facilityFeats={type:"FeatureCollection",features:geojson.features.filter(f=>f.properties.type==="facility")};
+      const layers=[];
+      if(boundaryFeats.features.length) layers.push(L.geoJSON(boundaryFeats,{
+        style:()=>({color:"#f0a500",weight:2,fillOpacity:0,dashArray:"6,3"}),
+        onEachFeature:(f,l)=>l.bindPopup("<strong>Area of interest boundary</strong>")
+      }));
+      if(facilityFeats.features.length) layers.push(L.geoJSON(facilityFeats,{
+        pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5,fillColor:"#4cc2ff",color:"#1a8fc1",weight:1.5,opacity:1,fillOpacity:0.9}),
+        onEachFeature:(f,l)=>l.bindPopup(`<strong>Facility</strong><br>${f.properties.name||"—"}`)
+      }));
+      return layers.length?L.layerGroup(layers):null;
     },
     buildFullArea(features) {
-      const facilities = features.filter(f => f.properties.type==="facility").length;
-      const zones      = features.filter(f => f.properties.coverage_pct != null || f.properties.accessibility_score != null);
-      const avgCov     = zones.length ? zones.reduce((s,f)=>s+(f.properties.coverage_pct||f.properties.accessibility_score||0),0)/zones.length : 0;
-      const score      = Math.min(100, Math.round(avgCov));
-      const insight    = avgCov >= 70 ? `Good facility accessibility — most areas are within reach.`
-        : avgCov >= 40 ? `Moderate accessibility — some zones lack nearby facilities.`
-        : `Low accessibility — significant portions of the area are underserved.`;
+      const allTimes=[...new Set(features.map(f=>f.properties.time_min).filter(x=>x!=null))].sort((a,b)=>a-b);
+      // facility points are not stored in the result GeoJSON — read from facility_count on zone features
+      const zoneWithCount=features.find(f=>f.properties.facility_count!=null);
+      const facilities=zoneWithCount?zoneWithCount.properties.facility_count:0;
+      const lastT=allTimes[allTimes.length-1];
+      // Find the outermost zone coverage pct
+      const lastZone=features.find(f=>f.properties.time_min===lastT&&f.properties.coverage_pct!=null);
+      const covPct=lastZone?.properties?.coverage_pct??null;
+      const uncovPct=covPct!=null?(100-covPct).toFixed(1):null;
+      const zoneCards=allTimes.map((t,i)=>{
+        const feat=features.find(f=>f.properties.time_min===t&&f.properties.coverage_pct!=null);
+        const pct=feat?.properties?.coverage_pct;
+        if(pct==null) return "";
+        return sb(`% area within ${t}-min walk`,`<span style="color:${FACILITY_ZONE_COLORS[i]??'#888'}">${pct.toFixed(1)}%</span>`);
+      }).join("");
+      const insight = covPct!=null
+        ? covPct>70 ? `${covPct.toFixed(1)}% of the area is accessible — good facility distribution.`
+        : covPct>40 ? `Moderate accessibility — ${uncovPct}% of the area is outside walking range.`
+        : `Facility coverage is limited — only ${covPct.toFixed(1)}% of the area is within walking range.`
+        : `Facility accessibility analysis completed. Review zone map for spatial coverage.`;
       return { html: `
         <div class="stats-grid">
-          ${sb("Overall Score",   `<span style="color:${scoreColor(score)}">${score} / 100</span>`)}
-          ${sb("Avg Coverage",    avgCov.toFixed(1)+"%")}
-          ${sb("Facilities",      facilities.toString())}
-          ${sb("Analysis Zones",  zones.length.toString())}
+          ${covPct!=null?sb("Total Coverage",`<span style="color:${scoreColor(Math.round(covPct))}">${covPct.toFixed(1)}%</span>`):""}
+          ${sb("Facilities Found", facilities.toString())}
+          ${zoneCards}
+          ${covPct!=null?sb("Uncovered",`<span style="color:#e74c3c">${uncovPct}%</span>`):""}
         </div>
         <div class="key-insight">💡 ${insight}</div>
-      `, score };
+      `, score:covPct!=null?Math.min(100,Math.round(covPct)):null, useDbScore:true };
     },
     buildRaw(features) {
-      const facilities = features.filter(f => f.properties.type==="facility").length;
-      return `
-        ${sb("Total Features",  features.length.toString())}
-        ${sb("Facility Points", facilities.toString())}
-        ${sb("Format",          "GeoJSON")}
-        ${sb("Geometry Types",  [...new Set(features.map(f=>f.geometry?.type))].join(", "))}
-      `;
+      const zoneWithCount=features.find(f=>f.properties.facility_count!=null);
+      const facilities=zoneWithCount?zoneWithCount.properties.facility_count:0;
+      const allTimes=[...new Set(features.map(f=>f.properties.time_min).filter(x=>x!=null))].sort((a,b)=>a-b);
+      return `${sb("Total Features",features.length.toString())}${sb("Facility Points",facilities.toString())}${sb("Time Intervals",allTimes.join(", ")+" min")}${sb("Format","GeoJSON")}`;
     },
     recommendations(score) {
       if (score >= 75) return ["Good facility distribution across the area.", "Monitor access equity across income groups.", "Maintain and expand facility coverage."];
@@ -752,57 +828,61 @@ const ANALYSIS_CONFIG = {
     title:"Urban / Population Density", dataFormat:"GeoJSON", isRaster:false,
     gridField:"geojson",
     legend:[
-      { color:"#ffffcc", label:"Very Low Density",  range:"< 1,000 /km²" },
-      { color:"#a1dab4", label:"Low Density",        range:"1,000 – 5,000 /km²" },
-      { color:"#41b6c4", label:"Medium Density",     range:"5,000 – 15,000 /km²" },
-      { color:"#2c7fb8", label:"High Density",       range:"15,000 – 30,000 /km²" },
-      { color:"#253494", label:"Very High Density",  range:"> 30,000 /km²" }
+      { color:"#add8e6", label:"Very Low",  range:"< 500 /km²" },
+      { color:"#87ceeb", label:"Low",       range:"500 – 2,000 /km²" },
+      { color:"#4682b4", label:"Medium",    range:"2,000 – 5,000 /km²" },
+      { color:"#4169e1", label:"High",      range:"5,000 – 10,000 /km²" },
+      { color:"#000080", label:"Very High", range:"> 10,000 /km²" }
     ],
     styleFeature(f) {
-      const d = f.properties.density || f.properties.pop_density || 0;
-      let color = "#ffffcc";
-      if (d > 1000)  color = "#a1dab4";
-      if (d > 5000)  color = "#41b6c4";
-      if (d > 15000) color = "#2c7fb8";
-      if (d > 30000) color = "#253494";
-      return { fillColor:color, fillOpacity:0.65, color:"#333", weight:1 };
+      const d = f.properties.urban_density || f.properties.density || f.properties.pop_density || 0;
+      let color="#add8e6";
+      if(d>100) color="#87ceeb";
+      if(d>500) color="#4682b4";
+      if(d>1000) color="#4169e1";
+      if(d>2000) color="#000080";
+      return { fillColor:color, fillOpacity:0.6, color:"#333", weight:1 };
     },
     popupFn(f) {
-      const p = f.properties;
-      const den = p.density||p.pop_density||0;
-      return `<strong>${p.name||"Zone"}</strong><br>
-              Density: ${den.toLocaleString()} /km²`;
+      const p=f.properties;
+      const namePat=/\b(name|nombre|nom|area|region|district|zone|ward|neighborhood|neighbourhood|locality)\b/i;
+      const nameKey=Object.keys(p).find(k=>namePat.test(k)&&k!=="area_km2")||null;
+      const name=nameKey?p[nameKey]:"Zone";
+      const den=p.urban_density||p.density||p.pop_density||0;
+      return `<strong>${name}</strong><br>
+              Population: ${p[Object.keys(p).find(k=>/^pop/i.test(k))||""]||0}<br>
+              Area: ${(p.area_km2||0).toFixed(2)} km²<br>
+              Density: ${den.toFixed(2)} /km²`;
     },
     buildFullArea(features) {
-      const densities = features.map(f => f.properties.density||f.properties.pop_density||0).filter(v=>v>0);
-      const avg = densities.length ? densities.reduce((a,b)=>a+b,0)/densities.length : 0;
-      const max = densities.length ? Math.max(...densities) : 0;
-      const sorted = [...features].filter(f=>(f.properties.density||f.properties.pop_density)>0)
-        .sort((a,b)=>(b.properties.density||b.properties.pop_density||0)-(a.properties.density||a.properties.pop_density||0));
-      const nameKey = ["name","NAME","district","zone_name"].find(k=>features[0]?.properties?.[k]);
-      const top3 = sorted.slice(0,3).map(f=>`<div style="display:flex;justify-content:space-between;font-size:12px;"><span>${nameKey?f.properties[nameKey]:"Zone"}</span><span style="color:#4cc2ff;font-weight:600;">${(f.properties.density||f.properties.pop_density||0).toLocaleString()}/km²</span></div>`).join("");
-      const insight = avg > 15000 ? `Very high urban density detected — urban services and infrastructure may be under stress.`
-        : avg > 5000 ? `High density area with moderate service demand.`
-        : `Relatively low density — room for urban expansion or densification.`;
-      return { html: `
+      const densities=features.map(f=>f.properties.urban_density||f.properties.density||f.properties.pop_density||0).filter(v=>v>0);
+      const avg=densities.length?densities.reduce((a,b)=>a+b,0)/densities.length:0;
+      const max=densities.length?Math.max(...densities):0;
+      const sorted=[...features].filter(f=>(f.properties.urban_density||f.properties.density||f.properties.pop_density||0)>0)
+        .sort((a,b)=>(b.properties.urban_density||b.properties.density||b.properties.pop_density||0)-(a.properties.urban_density||a.properties.density||a.properties.pop_density||0));
+      const namePat=/\b(name|nombre|nom|area|region|district|zone|ward|neighborhood|neighbourhood|locality)\b/i;
+      const firstProps=features[0]?.properties||{};
+      const nameKey=Object.keys(firstProps).find(k=>namePat.test(k)&&k!=="area_km2")||null;
+      const top3=sorted.slice(0,3).map(f=>{
+        const n=nameKey?f.properties[nameKey]:"Zone";
+        const d=f.properties.urban_density||f.properties.density||f.properties.pop_density||0;
+        return `<div style="display:flex;justify-content:space-between;font-size:12px;"><span>${n}</span><span style="color:#4cc2ff;font-weight:600;">${d.toFixed(0)}/km²</span></div>`;
+      }).join("");
+      const insight=avg>2000?`Very high urban density — services and infrastructure may be under significant stress.`
+        :avg>500?`High density area with moderate service demand.`
+        :`Relatively low density — room for urban growth or infill development.`;
+      return { html:`
         <div class="stats-grid">
-          ${sb("Avg Density",   avg.toFixed(0)+" /km²")}
-          ${sb("Max Density",   max.toFixed(0)+" /km²")}
-          ${sb("Total Zones",   features.length.toString())}
+          ${sb("Avg Density", avg.toFixed(0)+" /km²")}
+          ${sb("Max Density", max.toFixed(0)+" /km²")}
+          ${sb("Total Zones", features.length.toString())}
         </div>
-        ${sorted.length ? `
-          <div class="section-label">Densest Areas</div>
-          <div class="stat-box" style="margin-bottom:0"><div style="margin-top:4px;font-size:13px;">${top3}</div></div>
-        ` : ""}
+        ${sorted.length?`<div class="section-label">Densest Areas</div><div class="stat-box" style="margin-bottom:0"><div style="margin-top:4px;font-size:13px;">${top3}</div></div>`:""}
         <div class="key-insight">💡 ${insight}</div>
-      `, score: null, useDbScore: true };
+      `, score:null, useDbScore:true };
     },
     buildRaw(features) {
-      return `
-        ${sb("Total Features", features.length.toString())}
-        ${sb("Format",         "GeoJSON")}
-        ${sb("Geometry",       features[0]?.geometry?.type||"—")}
-      `;
+      return `${sb("Total Features",features.length.toString())}${sb("Format","GeoJSON")}${sb("Geometry",features[0]?.geometry?.type||"—")}`;
     },
     recommendations(score) {
       if (score >= 75) return ["Density levels are manageable.", "Ensure infrastructure keeps pace with growth.", "Preserve low-density green zones."];
@@ -892,14 +972,24 @@ async function loadRaster(url, config, isRaw) {
 async function loadVector(url, config) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const geojson   = await res.json();
-  const features  = geojson.features || [];
+  const geojson  = await res.json();
+  const features = geojson.features || [];
 
-  const layer = L.geoJSON(geojson, {
-    style:        f => config.styleFeature ? config.styleFeature(f) : { fillColor:"#00d4aa", fillOpacity:0.5, color:"#333", weight:1 },
-    pointToLayer: config.pointToLayer ? (f,ll) => config.pointToLayer(f,ll) : undefined,
-    onEachFeature:(f,l) => { const p = config.popupFn?.(f); if (p) l.bindPopup(p); }
-  });
+  // Some configs provide a custom buildLayer (e.g. facility-accessibility needs
+  // per-feature time sorting that styleFeature alone can't do)
+  let layer;
+  if (config.buildLayer) {
+    layer = config.buildLayer(geojson);
+  } else {
+    const filtered = config.filterFeature
+      ? { type:"FeatureCollection", features: features.filter(f => config.filterFeature(f)) }
+      : geojson;
+    layer = L.geoJSON(filtered, {
+      style:        f => config.styleFeature ? config.styleFeature(f) : { fillColor:"#00d4aa", fillOpacity:0.5, color:"#333", weight:1 },
+      pointToLayer: config.pointToLayer ? (f,ll) => config.pointToLayer(f,ll) : undefined,
+      onEachFeature:(f,l) => { const p = config.popupFn?.(f); if (p) l.bindPopup(p); }
+    });
+  }
 
   return { layer, geojson, features };
 }
@@ -1829,9 +1919,17 @@ async function loadVectorAnalysis(url) {
     const { layer, geojson, features } = await loadVector(url, _config);
     _resultLayer = layer;
     _resultLayer.addTo(_map);
+
+    // Add input layer (boundary + points) on top, if config provides one
+    if (_config.buildInputLayer) {
+      const inputLayer = _config.buildInputLayer(geojson);
+      if (inputLayer) { inputLayer.addTo(_map); _rawLayer = inputLayer; }
+    }
+
     fitLayer(_resultLayer);
     _resultBlob = geojson;
 
+    // Raw tab layer: neutral grey style showing all features
     _rawLayer = L.geoJSON(geojson, {
       style: () => ({ fillColor:"#7a7f94", fillOpacity:0.25, color:"#555", weight:1 }),
       pointToLayer: _config.pointToLayer ? (f,ll) => _config.pointToLayer(f,ll) : undefined,
