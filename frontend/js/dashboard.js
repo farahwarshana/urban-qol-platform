@@ -351,6 +351,44 @@ function applyLang() {
 
   const chatSendBtn = document.querySelector(".chatbot-input .btn-primary");
   if (chatSendBtn) chatSendBtn.textContent = isAr ? "إرسال" : "Send";
+// Share button
+  const shareBtnNew = document.querySelector("button[onclick='toggleShareMenu()']");
+  if (shareBtnNew) shareBtnNew.innerHTML = `<img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/share-rounded.png" alt="share-rounded"/> ${T.share}`;
+
+  // Export button
+  const exportBtn = document.getElementById("export-btn");
+  if (exportBtn) exportBtn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/ios-filled/50/FFFFFF/download--v1.png" alt="download--v1"/> ${T.export}`;
+
+  // Basemap button + dropdown
+  const basemapBtn = document.querySelector("#basemapMenu .btn span:nth-child(2)");
+  if (basemapBtn) basemapBtn.textContent = T.basemap;
+  const basemapLinks = document.querySelectorAll("#basemapMenu .dropdown a");
+  if (basemapLinks[0]) basemapLinks[0].textContent = T.light;
+  if (basemapLinks[1]) basemapLinks[1].textContent = T.dark;
+  if (basemapLinks[2]) basemapLinks[2].textContent = T.voyager;
+
+  // Project modal
+  const projTitle = document.querySelector("#projectModal h3");
+  if (projTitle) projTitle.textContent = T.projectTitle;
+  const projDesc = document.querySelector("#projectModal p");
+  if (projDesc) projDesc.textContent = T.projectDesc;
+  const projSelect = document.querySelector("#projectModal label");
+  if (projSelect) projSelect.textContent = T.selectProject;
+  const skipBtn = document.querySelector("button[onclick='skipProjectAndRun()']");
+  if (skipBtn) skipBtn.textContent = T.skipProject;
+  const confirmBtn = document.querySelector("button[onclick='confirmProjectAndRun()']");
+  if (confirmBtn) confirmBtn.textContent = T.confirmProject;
+  const newProjectName = document.getElementById("newProjectName");
+  if (newProjectName) newProjectName.placeholder = T.projectName;
+  const newProjectDesc = document.getElementById("newProjectDesc");
+  if (newProjectDesc) newProjectDesc.placeholder = T.projectDescPlaceholder;
+  const noProjectOpt = document.querySelector("#projectSelect option[value='']");
+  if (noProjectOpt) noProjectOpt.textContent = T.noProject;
+
+  // Chatbot greeting — أول رسالة بس
+  const firstBotMsg = document.querySelector(".chat-msg.bot");
+  if (firstBotMsg) firstBotMsg.textContent = T.chatGreeting;
+
 }
 
 const TXT = {
@@ -371,6 +409,28 @@ const TXT = {
     urbanDesc: "Estimate population density across an area.",
     uploadBoundary: "Upload boundary data (GeoJSON)",
     populationField: "Population field name",
+    share:        "Share",
+    export:       "Export",
+    basemap:      "Basemap",
+    light:        "☀️ Light",
+    dark:         "🌙 Dark",
+    voyager:      "🗺️ Voyager",
+    measure:      "Measure",
+    annotate:     "Annotate",
+    back:         "← Back to inputs",
+    downloadJson: "Download GeoJSON",
+    downloadCsv:  "Download CSV",
+    downloadTiff: "Download GeoTIFF",
+    skipProject:  "Skip",
+    confirmProject: "Confirm & Run",
+    projectTitle: "Assign to Project",
+    projectDesc:  "Group this analysis under a project for easy access in history.",
+    selectProject: "Select existing project",
+    orCreate:     "or create new",
+    projectName:  "Project name (e.g. Cairo 2026)",
+    projectDescPlaceholder: "Short description (optional)",
+    chatGreeting: "Hi! My name is Hadary and I'm here to help you with your urban analysis.",
+    noProject:    "— No project —",
   },
   ar: {
     urban:        "كثافة السكان",
@@ -389,6 +449,28 @@ const TXT = {
     urbanDesc: "تقدير كثافة السكان داخل المنطقة.",
     uploadBoundary: "رفع حدود المنطقة (GeoJSON)",
     populationField: "اسم حقل السكان",
+    share:        "مشاركة",
+    export:       "تصدير",
+    basemap:      "خريطة الأساس",
+    light:        "☀️ فاتح",
+    dark:         "🌙 داكن",
+    voyager:      "🗺️ فضائي",
+    measure:      "قياس",
+    annotate:     "تعليق",
+    back:         "← رجوع للمدخلات",
+    downloadJson: "تحميل GeoJSON",
+    downloadCsv:  "تحميل CSV",
+    downloadTiff: "تحميل GeoTIFF",
+    skipProject:  "تخطي",
+    confirmProject: "تأكيد وتشغيل",
+    projectTitle: "تعيين لمشروع",
+    projectDesc:  "اربط هذا التحليل بمشروع للوصول إليه بسهولة.",
+    selectProject: "اختر مشروعاً موجوداً",
+    orCreate:     "أو أنشئ مشروعاً جديداً",
+    projectName:  "اسم المشروع (مثلاً: القاهرة 2026)",
+    projectDescPlaceholder: "وصف مختصر (اختياري)",
+    chatGreeting: "أهلاً! أنا حضاري، هنا لمساعدتك في تحليل بياناتك الحضرية.",
+    noProject:    "— بدون مشروع —",
   }
 };
 const SERVICES = {
