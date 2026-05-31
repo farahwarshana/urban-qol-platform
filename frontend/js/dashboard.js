@@ -25,6 +25,7 @@ var API_BASE_URL =
 // --------------------------------
 
 let lastResultFile = "";
+let lastAnalysisName = "";
 
 let lastPreviewImage =
   "images/opening-bg.png";
@@ -58,6 +59,7 @@ function showProjectModal(key) {
   loadProjects();
   const modal = document.getElementById('projectModal');
   modal.style.display = 'flex';
+  document.getElementById('analysisCustomName').value = '';
   document.getElementById('newProjectName').value = '';
   document.getElementById('newProjectDesc').value = '';
 }
@@ -69,6 +71,7 @@ function hideProjectModal() {
 async function confirmProjectAndRun() {
   const username = localStorage.getItem('username');
   const sel = document.getElementById('projectSelect');
+  lastAnalysisName = document.getElementById('analysisCustomName').value.trim();
   const newName = document.getElementById('newProjectName').value.trim();
   const newDesc = document.getElementById('newProjectDesc').value.trim();
 
@@ -98,6 +101,7 @@ async function confirmProjectAndRun() {
 }
 
 function skipProjectAndRun() {
+  lastAnalysisName = document.getElementById('analysisCustomName').value.trim();
   currentProjectId = null;
   currentProjectName = null;
   hideProjectModal();
@@ -124,19 +128,19 @@ function autoSaveCurrentAnalysis() {
   if (lastResultService === 'expansion') return;
 
   const serviceNames = {
-    'ndvi': 'NDVI Analysis',
+    'ndvi': 'NDVI',
     'heat-index': 'Heat Index',
-    'crime': 'Crime Density',
-    'urban-density': 'Urban Density',
+    'crime': 'Safety / Crime Density',
+    'urban-density': 'Population Density',
     'public-transport': 'Public Transport Coverage',
     'vegetation': 'Vegetation Density',
     'traffic': 'Traffic Analysis',
-    'informal-settlement': 'Informal Settlement',
+    'informal-settlement': 'Informal Settlement Analysis',
     'air-quality': 'Air Quality Index',
     'facility-accessibility': 'Facility Accessibility'
   };
 
-  const title = serviceNames[lastResultService] || lastResultService;
+  const title = lastAnalysisName || serviceNames[lastResultService] || lastResultService;
   
   // const panel = document.getElementById('analysisPanel');
   const scoreEl = panel ? panel.querySelector('.insight-card .value') : null;

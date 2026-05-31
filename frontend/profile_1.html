@@ -950,14 +950,19 @@ function renderAnalysisItem(a) {
   const icon = ANALYSIS_ICONS?.[a.type]
     ? `<img src="${ANALYSIS_ICONS[a.type]}" alt="${a.type}">`
     : "📊";
-  const translatedTitle = ANALYSIS_LABELS?.[a.type]?.[currentLang] || a.title;
+  const typeLabel = ANALYSIS_LABELS?.[a.type]?.[currentLang] || a.type;
+  const defaultTitle = ANALYSIS_LABELS?.[a.type]?.en || a.type;
+  const hasCustomName = a.title && a.title !== defaultTitle;
+  const displayTitle = hasCustomName ? a.title : typeLabel;
+  const subtitle = hasCustomName ? typeLabel : '';
   const date = a.created_at ? new Date(a.created_at).toLocaleDateString() : '';
   const time = a.created_at ? new Date(a.created_at).toLocaleTimeString() : '';
   return `
     <div class="analysis-item" onclick="openAnalysisDetails(${a.id}, '${a.type}')">
       <div class="analysis-icon ${a.type}">${icon}</div>
       <div class="analysis-meta">
-        <h4>${translatedTitle}</h4>
+        <h4>${displayTitle}</h4>
+        ${subtitle ? `<span style="font-size:11px; color:#7a7f94; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; display:block;">${subtitle}</span>` : ''}
         <p>
           <span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>

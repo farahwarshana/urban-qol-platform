@@ -300,9 +300,13 @@
 
   <!-- Project selector modal -->
   <div id="projectModal" style="display:none; position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
-    <div style="background:#1a1d27; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px 32px; width:380px; max-width:95vw;">
-      <h3 style="margin:0 0 6px; font-size:16px; color:#e8eaf0;">Assign to Project</h3>
-      <p style="margin:0 0 18px; font-size:13px; color:#7a7f94;">Group this analysis under a project for easy access in history.</p>
+    <div style="background:#1a1d27; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px 32px; width:400px; max-width:95vw;">
+      <h3 style="margin:0 0 6px; font-size:16px; color:#e8eaf0;">Before you run</h3>
+      <p style="margin:0 0 18px; font-size:13px; color:#7a7f94;">Optionally name this analysis and assign it to a project for easy access in history.</p>
+
+      <label style="font-size:12px; color:#7a7f94; text-transform:uppercase; letter-spacing:.05em;">Analysis name (optional)</label>
+      <input id="analysisCustomName" type="text" placeholder="e.g. Downtown Cairo NDVI — Summer 2025"
+        style="width:100%; margin:6px 0 18px; padding:9px 12px; background:#0f1117; border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:#e8eaf0; font-size:14px;" />
 
       <label style="font-size:12px; color:#7a7f94; text-transform:uppercase; letter-spacing:.05em;">Select existing project</label>
       <select id="projectSelect" style="width:100%; margin:6px 0 14px; padding:9px 12px; background:#0f1117; border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:#e8eaf0; font-size:14px;">
@@ -311,7 +315,7 @@
 
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
         <div style="flex:1; height:1px; background:rgba(255,255,255,0.08);"></div>
-        <span style="font-size:12px; color:#7a7f94;">or create new</span>
+        <span style="font-size:12px; color:#7a7f94;">or create new project</span>
         <div style="flex:1; height:1px; background:rgba(255,255,255,0.08);"></div>
       </div>
 

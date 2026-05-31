@@ -75,6 +75,11 @@ const ANALYSIS_LABELS = {
   "informal-settlement": {
     en: "Informal Settlement Analysis",
     ar: "تحليل المناطق العشوائية"
+  },
+
+  "facility-accessibility": {
+    en: "Facility Accessibility",
+    ar: "إمكانية الوصول إلى المرافق"
   }
 
 };
