@@ -3,102 +3,187 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Analysis Details</title>
+  <title>Malaz · Analysis Details</title>
+  <link type="image/png" sizes="16x16" rel="icon" href="https://img.icons8.com/isometric-line/50/ffffff/building.png">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <link rel="stylesheet" href="css/theme.css">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { background:var(--bg); color:var(--text); font-family:'Space Grotesk',sans-serif; min-height:100vh; padding:40px; }
-    .container { max-width:1800px; margin:auto; }
-    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
-    .back-btn { background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:10px 18px; border-radius:10px; cursor:pointer; transition:.2s; font-family:inherit; }
+    body { background:var(--bg); color:var(--text); font-family:'Space Grotesk',sans-serif; min-height:100vh; }
+
+    /* ── Page shell ── */
+    .page { max-width:1600px; margin:0 auto; padding:24px 28px 48px; }
+
+    /* ── Top bar ── */
+    .topbar { display:flex; align-items:center; gap:14px; margin-bottom:20px; }
+    .back-btn { display:flex; align-items:center; gap:6px; padding:8px 16px; background:var(--surface2); border:1px solid var(--border); color:var(--muted); border-radius:10px; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; transition:.15s; flex-shrink:0; }
     .back-btn:hover { border-color:var(--accent); color:var(--accent); }
-    .analysis-title { font-size:34px; font-weight:700; margin-bottom:10px; }
-    .analysis-sub { color:var(--muted); margin-bottom:30px; font-size:15px; }
-    .card { background:rgba(26,29,39,.88); border:1px solid var(--border); border-radius:20px; padding:22px; backdrop-filter:blur(14px); transition:transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
-    .card:hover { transform:translateY(-4px); border-color:rgba(0,212,170,.28); box-shadow:0 10px 30px rgba(0,212,170,.08); }
-    .section-title { font-size:18px; margin-bottom:18px; font-weight:600; }
-    .two-col { display:grid; grid-template-columns:1.3fr .7fr; gap:24px; margin-bottom:24px; }
-    .two-col-equal { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:24px; }
-    #analysisPreview { width:100%; height:500px; border-radius:16px; overflow:hidden; background:#1f2635; }
-    .legend-list { display:flex; flex-direction:column; gap:12px; }
-    .legend-item { display:flex; align-items:center; gap:14px; padding:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); border-radius:12px; }
-    .legend-color { width:36px; height:36px; border-radius:10px; flex-shrink:0; }
-    .legend-label { font-size:14px; color:#d8fffa; font-weight:500; }
-    .legend-range { font-size:12px; color:#94a3b8; margin-top:2px; }
-    .class-item { display:flex; align-items:center; gap:16px; padding:14px; margin-bottom:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); border-radius:14px; }
-    .class-rank { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; }
-    .class-name { font-weight:600; margin-bottom:4px; }
-    .class-range { color:#94a3b8; font-size:13px; }
-    .meta-list { display:flex; flex-direction:column; gap:14px; }
-    .meta-row { display:flex; justify-content:space-between; align-items:flex-start; gap:30px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,.05); }
-    .meta-row span { color:var(--muted); font-size:17px; min-width:160px; }
-    .meta-row strong { color:#d8fffa; font-size:17px; text-align:right; max-width:260px; word-break:break-word; }
-    .score-badge { display:inline-block; padding:4px 12px; border-radius:8px; font-weight:700; font-size:14px; }
-    .score-high { background:rgba(46,204,113,.15); color:#2ecc71; border:1px solid rgba(46,204,113,.3); }
-    .score-mid  { background:rgba(240,165,0,.15);  color:#f0a500; border:1px solid rgba(240,165,0,.3); }
-    .score-low  { background:rgba(231,76,60,.15);  color:#e74c3c; border:1px solid rgba(231,76,60,.3); }
-    .stats { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-    .stat-box { background:var(--surface2); border:1px solid var(--border); border-radius:14px; padding:20px; }
-    .stat-label { color:var(--muted); font-size:13px; margin-bottom:8px; }
-    .stat-value { font-size:28px; font-weight:700; color:var(--accent); }
-    .recommendation { padding:14px; background:rgba(0,212,170,.08); border:1px solid rgba(0,212,170,.18); border-radius:12px; margin-bottom:12px; color:#d8fffa; font-size:14px; line-height:1.5; }
-    .export-btn { margin-top:18px; width:100%; border:none; background:var(--accent); color:#08110f; font-weight:700; padding:14px; border-radius:12px; cursor:pointer; transition:.2s; font-family:inherit; }
-    .export-btn:hover { transform:translateY(-2px); }
-    .error-msg { padding:30px; color:#e74c3c; font-size:15px; }
-    @media(max-width:950px) { body{padding:20px;} .two-col,.two-col-equal{grid-template-columns:1fr;} #analysisPreview{height:320px;} }
+    .page-title { font-size:26px; font-weight:700; line-height:1.2; }
+    .page-sub { font-size:13px; color:var(--muted); margin-top:3px; }
+
+    /* ── Score pill in header ── */
+    .score-pill { display:inline-flex; align-items:center; gap:6px; padding:5px 14px; border-radius:20px; font-size:13px; font-weight:700; flex-shrink:0; margin-left:auto; }
+    .score-pill.high { background:rgba(46,204,113,.15); color:#2ecc71; border:1px solid rgba(46,204,113,.28); }
+    .score-pill.mid  { background:rgba(240,165,0,.15);  color:#f0a500; border:1px solid rgba(240,165,0,.28); }
+    .score-pill.low  { background:rgba(231,76,60,.15);  color:#e74c3c; border:1px solid rgba(231,76,60,.28); }
+
+    /* ── Main layout: map top, content below ── */
+    .map-section { position:relative; border-radius:16px; overflow:hidden; border:1px solid var(--border); margin-bottom:20px; background:var(--surface); }
+    #analysisMap { width:100%; height:460px; }
+
+    /* ── Tab bar sits directly on top of map (inside map-section, absolute) ── */
+    .map-tab-bar {
+      position:absolute; top:12px; left:50%; transform:translateX(-50%);
+      display:flex; gap:4px;
+      background:rgba(15,17,23,.82); backdrop-filter:blur(10px);
+      border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:4px;
+      z-index:500;
+    }
+    .map-tab { padding:7px 16px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; color:var(--muted); transition:.15s; white-space:nowrap; user-select:none; }
+    .map-tab:hover { color:var(--text); }
+    .map-tab.active { background:var(--accent); color:#08110f; }
+
+    /* ── Content row below map ── */
+    .content-row { display:grid; grid-template-columns:1fr 300px; gap:18px; align-items:start; }
+
+    /* ── Card ── */
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; }
+
+    /* ── Insight cards (compact 2-col grid inside tabs) ── */
+    .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+    .stat-box { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:10px; padding:12px 14px; }
+    .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px; }
+    .stat-value { font-size:18px; font-weight:700; color:var(--accent); line-height:1.2; }
+
+    /* ── Key insight / rec boxes ── */
+    .key-insight { background:rgba(76,194,255,.07); border-left:3px solid var(--accent); border-radius:6px; padding:10px 12px; margin:10px 0; font-size:13px; line-height:1.55; color:#d8fffa; }
+    .rec-box { background:rgba(0,212,170,.06); border:1px solid rgba(0,212,170,.13); border-radius:10px; padding:10px 13px; margin-bottom:8px; font-size:13px; line-height:1.55; color:#d8fffa; }
+
+    /* ── Section label inside tab ── */
+    .section-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:14px 0 8px; }
+
+    /* ── Legend (compact horizontal chips inside sidebar) ── */
+    .legend-chip { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; background:rgba(255,255,255,.03); margin-bottom:5px; }
+    .legend-dot { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+    .legend-label { font-size:12px; color:#d8fffa; flex:1; }
+    .legend-range { font-size:11px; color:var(--muted); white-space:nowrap; }
+
+    /* ── Meta list (compact) ── */
+    .meta-list { display:flex; flex-direction:column; gap:0; }
+    .meta-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+    .meta-row:last-child { border-bottom:none; padding-bottom:0; }
+    .meta-key { font-size:12px; color:var(--muted); flex-shrink:0; }
+    .meta-val { font-size:12px; color:#d8fffa; text-align:right; max-width:160px; word-break:break-word; }
+
+    /* ── Export buttons ── */
+    .export-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .exp-btn { padding:9px 10px; border-radius:9px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:var(--text); font-family:inherit; transition:.15s; text-align:center; }
+    .exp-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .exp-btn.accent { background:var(--accent); color:#08110f; border-color:var(--accent); grid-column:span 2; }
+    .exp-btn.accent:hover { opacity:.88; }
+
+    /* ── Loading / error ── */
+    .loading-state { display:flex; flex-direction:column; align-items:center; padding:30px 0; color:var(--muted); font-size:13px; gap:10px; }
+    .spinner { width:26px; height:26px; border:3px solid rgba(0,212,170,.2); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .error-box { padding:16px; color:#e74c3c; font-size:13px; border:1px solid rgba(231,76,60,.22); border-radius:10px; line-height:1.5; }
+
+    /* ── Expansion score display ── */
+    .expansion-score { text-align:center; padding:50px 20px; }
+    .expansion-score .big { font-size:88px; font-weight:800; color:var(--accent); line-height:1; }
+    .expansion-score .sub { font-size:15px; color:#94a3b8; margin-top:8px; }
+
+    /* ── Grid / AI tabs ── */
+    .grid-stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+    .ai-placeholder { text-align:center; padding:26px 10px; }
+    .ai-icon { font-size:28px; margin-bottom:10px; }
+    .ai-badge { display:inline-block; margin-top:12px; padding:4px 12px; border-radius:20px; background:rgba(0,212,170,.1); color:var(--accent); font-size:11px; font-weight:600; border:1px solid rgba(0,212,170,.2); }
+
+    /* ── Sidebar section title ── */
+    .sidebar-title { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px; }
+
+    @media(max-width:960px) {
+      .page { padding:16px; }
+      #analysisMap { height:320px; }
+      .content-row { grid-template-columns:1fr; }
+      .map-tab-bar { position:relative; top:auto; left:auto; transform:none; border-radius:0; border:none; border-bottom:1px solid var(--border); background:var(--surface); backdrop-filter:none; justify-content:center; }
+    }
   </style>
 </head>
 <body>
-<div class="container">
+<div class="page">
 
+  <!-- Top bar -->
   <div class="topbar">
-    <button class="back-btn" onclick="window.location.href='profile_1.html'">← Back</button>
+    <button class="back-btn" onclick="window.location.href='profile_1.html'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+      History
+    </button>
+    <div>
+      <div class="page-title" id="analysisTitle">Loading…</div>
+      <div class="page-sub"   id="analysisMeta"></div>
+    </div>
+    <div class="score-pill mid" id="scorePill" style="display:none;"></div>
   </div>
 
-  <div class="analysis-title" id="analysisTitle">Loading...</div>
-  <div class="analysis-sub"   id="analysisMeta">Loading analysis info...</div>
-
-  <!-- ROW 1: Map + Legend -->
-  <div class="two-col">
-    <div class="card" style="padding:0;overflow:hidden;">
-      <div id="analysisPreview"></div>
-    </div>
-    <div class="card">
-      <div class="section-title" id="legendTitle">Legend</div>
-      <div class="legend-list" id="legendList"></div>
+  <!-- Map with floating tab bar -->
+  <div class="map-section">
+    <div id="analysisMap"></div>
+    <!-- Tab bar floats over the map -->
+    <div class="map-tab-bar" id="mapTabBar" style="display:none;">
+      <div class="map-tab active" data-tab="full"  onclick="selectTab('full')">Full Analysis</div>
+      <div class="map-tab"        data-tab="raw"   onclick="selectTab('raw')">Raw Data</div>
+      <div class="map-tab"        data-tab="grid"  onclick="selectTab('grid')">Grid / Cell</div>
+      <div class="map-tab"        data-tab="ai"    onclick="selectTab('ai')">✦ AI</div>
     </div>
   </div>
 
-  <!-- ROW 2: Classification / Stats + Metadata -->
-  <div class="two-col-equal">
-    <div class="card">
-      <div class="section-title" id="classSummaryTitle">Classification Summary</div>
-      <div id="classSummaryList"></div>
-    </div>
-    <div class="card">
-      <div class="section-title">Metadata</div>
-      <div class="meta-list">
-        <div class="meta-row"><span>Analysis Type</span><strong id="metaType">--</strong></div>
-        <div class="meta-row"><span>Generated At</span><strong id="metaDate">--</strong></div>
-        <div class="meta-row"><span>Data Format</span><strong id="metaFormat">--</strong></div>
-        <div class="meta-row"><span>Score</span><strong id="metaScore">--</strong></div>
-        <div class="meta-row"><span>Status</span><strong id="metaStatus">--</strong></div>
+  <!-- Content row: insights panel + sidebar -->
+  <div class="content-row">
+
+    <!-- Left: tab content panel -->
+    <div class="card" id="tabPanel">
+      <div id="tab-full"  class="tab-pane active"><div class="loading-state"><div class="spinner"></div>Loading…</div></div>
+      <div id="tab-raw"   class="tab-pane" style="display:none;"></div>
+      <div id="tab-grid"  class="tab-pane" style="display:none;"></div>
+      <div id="tab-ai"    class="tab-pane" style="display:none;">
+        <div class="ai-placeholder">
+          <div class="ai-icon">✦</div>
+          <p style="font-size:15px;font-weight:600;margin-bottom:8px;">AI Recommendations</p>
+          <p style="font-size:13px;color:var(--muted);line-height:1.65;">The AI agent analyses result data and returns context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — will appear here automatically once connected.</p>
+          <div class="ai-badge">Coming soon</div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- ROW 3: Statistics + Recommendations -->
-  <div class="two-col-equal">
-    <div class="card">
-      <div class="section-title">Statistics</div>
-      <div class="stats" id="statsGrid"></div>
-    </div>
-    <div class="card">
-      <div class="section-title">Recommendations</div>
-      <div id="recommendationsList"></div>
-      <button class="export-btn" onclick="exportReport()">Export Report</button>
+    <!-- Right: sidebar (legend + metadata + export) -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+
+      <!-- Legend -->
+      <div class="card" id="legendCard" style="display:none;">
+        <div class="sidebar-title">Legend</div>
+        <div id="legendList"></div>
+      </div>
+
+      <!-- Metadata -->
+      <div class="card">
+        <div class="sidebar-title">Analysis Info</div>
+        <div class="meta-list">
+          <div class="meta-row"><span class="meta-key">Type</span><span class="meta-val" id="metaType">—</span></div>
+          <div class="meta-row"><span class="meta-key">Date</span><span class="meta-val" id="metaDate">—</span></div>
+          <div class="meta-row"><span class="meta-key">Format</span><span class="meta-val" id="metaFormat">—</span></div>
+          <div class="meta-row"><span class="meta-key">Score</span><span class="meta-val" id="metaScore">—</span></div>
+          <div class="meta-row"><span class="meta-key">Project</span><span class="meta-val" id="metaProject">—</span></div>
+        </div>
+      </div>
+
+      <!-- Export -->
+      <div class="card" id="exportCard" style="display:none;">
+        <div class="sidebar-title">Export</div>
+        <div class="export-grid" id="exportGrid"></div>
+      </div>
+
     </div>
   </div>
 
@@ -108,49 +193,83 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/georaster"></script>
 <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 
 const API_BASE_URL =
   window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-    ? "http://localhost:8000"
-    : "";
+    ? "http://localhost:8000" : "";
 
 const params     = new URLSearchParams(window.location.search);
 const analysisId = params.get("id");
 
-// ── Per-type configuration ────────────────────────────────────────────────────
-// Each entry has: title, dataFormat, legend[], classTitle,
-//   renderMap(analysis, map)  — loads data onto map, returns stats array
-//   buildStats(features)      — (vector only, called after render)
-//   recommendations(score)    — returns string[]
+// ── State ─────────────────────────────────────────────────────────────────────
+let _map          = null;
+let _resultLayer  = null;  // Full Analysis layer
+let _gridLayer    = null;  // Grid / Cell layer
+let _rawLayer     = null;  // Raw data layer (same file, grey colorFn for raster)
+let _resultBlob   = null;  // ArrayBuffer (raster) or GeoJSON object (vector)
+let _analysis     = null;
+let _config       = null;
+let _isRaster     = false;
+let _gridLoaded   = false;
+let _currentMapLayer = "full";
 
+// ── Type configuration ────────────────────────────────────────────────────────
 const ANALYSIS_CONFIG = {
 
-  // ── RASTER types ────────────────────────────────────────────────────────────
-
   "ndvi": {
-    title: "NDVI Analysis", dataFormat: "GeoTIFF", classTitle: "Vegetation Classes",
-    legend: [
-      { color:"#1a9641", label:"Dense Vegetation",        range:"NDVI > 0.6" },
-      { color:"#a6d96a", label:"Moderate Vegetation",     range:"NDVI 0.4 – 0.6" },
-      { color:"#ffffbf", label:"Sparse Vegetation",       range:"NDVI 0.2 – 0.4" },
-      { color:"#d9a85a", label:"Bare Soil",               range:"NDVI 0 – 0.2" },
-      { color:"#4575b4", label:"Water / No Vegetation",   range:"NDVI < 0" }
+    title:"NDVI Analysis", dataFormat:"GeoTIFF", isRaster:true,
+    gridField:"geotiff",
+    legend:[
+      { color:"#1a9641", label:"Dense Vegetation",      range:"NDVI > 0.6" },
+      { color:"#a6d96a", label:"Moderate Vegetation",   range:"NDVI 0.4 – 0.6" },
+      { color:"#ffffbf", label:"Sparse Vegetation",     range:"NDVI 0.2 – 0.4" },
+      { color:"#d9a85a", label:"Bare Soil",             range:"NDVI 0 – 0.2" },
+      { color:"#4575b4", label:"Water / No Vegetation", range:"NDVI < 0" }
     ],
-    colorFn(v) {
-      if (v === null || v === undefined || isNaN(v)) return null;
-      if (v < 0)   return "rgba(69,117,180,0.8)";
-      if (v < 0.2) return "rgba(217,168,90,0.8)";
-      if (v < 0.4) return "rgba(255,255,191,0.8)";
-      if (v < 0.6) return "rgba(166,217,106,0.8)";
-      return "rgba(26,150,65,0.8)";
+    colorFn(v, min, max) {
+      if (v == null || isNaN(v) || v < -1.5 || v > 1.5) return null;
+      const range = (max - min) || 1;
+      const t = Math.max(0, Math.min(1, (v - min) / range));
+      let r, g, b;
+      if (t < 0.5) { const s = t / 0.5; r = Math.round(200 - s*20); g = Math.round(20 + s*180); b = 0; }
+      else { const s = (t-0.5)/0.5; r = Math.round(180 - s*180); g = Math.round(200 - s*50); b = 0; }
+      return `rgba(${r},${g},${b},0.9)`;
     },
-    buildInsight(mean) {
-      if (mean === null) return "NDVI analysis completed. Review spatial vegetation distribution.";
-      if (mean >= 0.6) return "Healthy vegetation condition detected. Dense vegetation dominates.";
-      if (mean >= 0.4) return "Moderate vegetation detected. Green coverage exists but may be uneven.";
-      if (mean >= 0.2) return "Sparse vegetation detected. The area may need more green infrastructure.";
-      return "Low vegetation signal. Bare soil, built-up surfaces, or water may dominate.";
+    buildFullArea(georaster) {
+      const min  = georaster.mins?.[0] ?? 0;
+      const max  = georaster.maxs?.[0] ?? 1;
+      const mean = (min + max) / 2;
+      const score = Math.max(0, Math.min(100, Math.round(((mean + 0.2) / 0.8) * 100)));
+      const vegClass = mean >= 0.5 ? { label:"Dense / Healthy Vegetation", color:"#27ae60" }
+        : mean >= 0.2 ? { label:"Moderate Vegetation", color:"#f39c12" }
+        : mean >= 0.0 ? { label:"Sparse / Stressed", color:"#e67e22" }
+        : { label:"Bare Soil / Built-up", color:"#e74c3c" };
+      const insight = mean >= 0.4 ? `Mean NDVI of ${mean.toFixed(3)} indicates healthy and abundant vegetation.`
+        : mean >= 0.2 ? `Moderate vegetation (mean NDVI ${mean.toFixed(3)}). Some zones may need greening.`
+        : `Low mean NDVI (${mean.toFixed(3)}) — the area is mostly bare or built-up.`;
+      return { html: `
+        <div class="stats-grid">
+          ${sb("Overall Score", `<span style="color:${scoreColor(score)}">${score} / 100</span>`)}
+          ${sb("Vegetation Health", `<span style="color:${vegClass.color};font-size:13px;">${vegClass.label}</span>`)}
+          ${sb("Mean NDVI", mean.toFixed(4))}
+          ${sb("Min NDVI",  min.toFixed(4))}
+          ${sb("Max NDVI",  max.toFixed(4))}
+          ${sb("Image Size", `${georaster.width} × ${georaster.height} px`)}
+        </div>
+        <div class="key-insight">💡 ${insight}</div>
+      `, score };
+    },
+    buildRaw(georaster) {
+      return `
+        ${sb("Format", "GeoTIFF (single band)")}
+        ${sb("Size", `${georaster.width} × ${georaster.height} px`)}
+        ${sb("Min Value", (georaster.mins?.[0] ?? "—").toString())}
+        ${sb("Max Value", (georaster.maxs?.[0] ?? "—").toString())}
+        ${sb("Projection", `EPSG:${georaster.projection ?? "—"}`)}
+        ${sb("No-Data",    georaster.noDataValue ?? "None")}
+      `;
     },
     recommendations(score) {
       if (score >= 75) return ["Dense vegetation coverage is healthy.", "Monitor for seasonal changes.", "Consider expanding green corridors."];
@@ -160,45 +279,70 @@ const ANALYSIS_CONFIG = {
   },
 
   "heat-index": {
-    title: "Heat Index Analysis", dataFormat: "GeoTIFF", classTitle: "Temperature Classes",
-    legend: [
-      { color:"#313695", label:"Cool",        range:"< 25 °C" },
-      { color:"#74add1", label:"Mild",         range:"25 – 30 °C" },
-      { color:"#fee090", label:"Warm",         range:"30 – 35 °C" },
-      { color:"#f46d43", label:"Hot",          range:"35 – 40 °C" },
-      { color:"#a50026", label:"Extreme Heat", range:"> 40 °C" }
+    title:"Heat Index Analysis", dataFormat:"GeoTIFF", isRaster:true,
+    gridField:"geotiff",
+    legend:[
+      { color:"#4cc2ff", label:"Cool",          range:"Class 0" },
+      { color:"#8bc34a", label:"Comfortable",   range:"Class 1" },
+      { color:"#f0a500", label:"Caution",       range:"Class 2" },
+      { color:"#e74c3c", label:"Extreme Heat",  range:"Class 3" }
     ],
     colorFn(v) {
-      if (v === null || v === undefined || isNaN(v) || v < -100) return null;
-      if (v < 25) return "rgba(49,54,149,0.8)";
-      if (v < 30) return "rgba(116,173,209,0.8)";
-      if (v < 35) return "rgba(254,224,144,0.8)";
-      if (v < 40) return "rgba(244,109,67,0.8)";
-      return "rgba(165,0,38,0.8)";
+      if (v == null || isNaN(v) || v === -9999) return null;
+      if (v === 0) return "rgba(76,194,255,0.85)";
+      if (v === 1) return "rgba(139,195,74,0.85)";
+      if (v === 2) return "rgba(240,165,0,0.85)";
+      if (v === 3) return "rgba(231,76,60,0.85)";
+      return null;
     },
-    buildInsight(mean) {
-      if (mean === null) return "Heat index analysis completed.";
-      if (mean >= 40) return "Extreme heat detected across the area. Urban heat island effect is severe.";
-      if (mean >= 35) return "High surface temperatures detected. Heat stress risk is elevated.";
-      if (mean >= 30) return "Warm surface temperatures with moderate heat stress potential.";
-      return "Relatively cool surface temperatures. Thermal comfort is acceptable.";
+    buildFullArea(georaster) {
+      const min  = georaster.mins?.[0] ?? 0;
+      const max  = georaster.maxs?.[0] ?? 3;
+      const mean = (min + max) / 2;
+      const heatScore = Math.max(0, Math.min(100, Math.round((1 - mean / 3) * 100)));
+      const heatClass = mean < 0.5 ? "Comfortable" : mean < 1.5 ? "Caution" : mean < 2.5 ? "Extreme Caution" : "Danger";
+      const classColor = mean < 0.5 ? "#4cc2ff" : mean < 1.5 ? "#8bc34a" : mean < 2.5 ? "#f0a500" : "#e74c3c";
+      const insight = mean >= 2.5 ? `Dangerous heat conditions dominate this area. Urgent cooling interventions needed.`
+        : mean >= 1.5 ? `High heat stress across significant portions. Green spaces or cool corridors could help.`
+        : mean >= 0.5 ? `Moderate heat detected. Some zones may benefit from shade or cooling infrastructure.`
+        : `Thermal comfort is good across most of the area.`;
+      return { html: `
+        <div class="stats-grid">
+          ${sb("Overall Score",   `<span style="color:${scoreColor(heatScore)}">${heatScore} / 100</span>`)}
+          ${sb("Thermal Class",   `<span style="color:${classColor}">${heatClass}</span>`)}
+          ${sb("Mean Class",      mean.toFixed(2) + " (0=Cool · 3=Extreme)")}
+          ${sb("Image Size",      `${georaster.width} × ${georaster.height} px`)}
+        </div>
+        <div class="key-insight">💡 ${insight}</div>
+      `, score: heatScore };
+    },
+    buildRaw(georaster) {
+      return `
+        ${sb("Format",      "GeoTIFF (classes 0–3)")}
+        ${sb("Size",        `${georaster.width} × ${georaster.height} px`)}
+        ${sb("Min Class",   (georaster.mins?.[0] ?? "—").toString())}
+        ${sb("Max Class",   (georaster.maxs?.[0] ?? "—").toString())}
+        ${sb("Projection",  `EPSG:${georaster.projection ?? "—"}`)}
+        ${sb("No-Data",     georaster.noDataValue ?? "None")}
+      `;
     },
     recommendations(score) {
       if (score >= 75) return ["Thermal conditions are relatively comfortable.", "Monitor during summer peak periods.", "Preserve existing green and water surfaces."];
-      if (score >= 40) return ["Moderate heat stress detected in parts of the area.", "Increase urban tree canopy and green roofs.", "Assess dark-surface coverage and replace with lighter materials."];
-      return ["Severe urban heat island effect detected.", "Urgent intervention needed: trees, water features, reflective surfaces.", "Consider restricting dark paving expansion in hotspot zones."];
+      if (score >= 40) return ["Moderate heat stress detected.", "Increase urban tree canopy and green roofs.", "Assess dark-surface coverage and replace with lighter materials."];
+      return ["Severe urban heat island effect detected.", "Urgent intervention: trees, water features, reflective surfaces.", "Consider restricting dark paving expansion in hotspot zones."];
     }
   },
 
   "air-quality": {
-    title: "Air Quality Analysis", dataFormat: "GeoTIFF", classTitle: "AQI Classes",
-    legend: [
+    title:"Air Quality Analysis", dataFormat:"GeoTIFF", isRaster:true,
+    gridField:"geotiff",
+    legend:[
       { color:"#00e400", label:"Good",            range:"Class 0" },
-      { color:"#ffff00", label:"Moderate",         range:"Class 1" },
+      { color:"#ffff00", label:"Moderate",        range:"Class 1" },
       { color:"#ff7e00", label:"Sensitive Groups", range:"Class 2" },
-      { color:"#ff0000", label:"Unhealthy",        range:"Class 3" },
-      { color:"#8f3f97", label:"Very Unhealthy",   range:"Class 4" },
-      { color:"#7e0023", label:"Hazardous",        range:"Class 5" }
+      { color:"#ff0000", label:"Unhealthy",       range:"Class 3" },
+      { color:"#8f3f97", label:"Very Unhealthy",  range:"Class 4" },
+      { color:"#7e0023", label:"Hazardous",       range:"Class 5" }
     ],
     colorFn(v) {
       const c = Math.round(v);
@@ -211,31 +355,52 @@ const ANALYSIS_CONFIG = {
       if (c === 5) return "rgba(126,0,35,0.8)";
       return null;
     },
-    buildInsight(mean) {
-      if (mean === null) return "Air quality analysis completed.";
-      if (mean >= 4) return "Severe air pollution conditions dominate the analyzed area.";
-      if (mean >= 3) return "Unhealthy air quality patterns detected across major urban zones.";
-      if (mean >= 2) return "Moderate to elevated pollution levels affect sensitive groups.";
-      if (mean >= 1) return "Air quality is generally acceptable with moderate pollution signals.";
-      return "Air quality conditions are mostly good across the area.";
+    buildFullArea(georaster) {
+      const min  = georaster.mins?.[0] ?? 0;
+      const max  = georaster.maxs?.[0] ?? 5;
+      const mean = (min + max) / 2;
+      const aqiScore = Math.max(0, Math.min(100, Math.round((1 - mean / 5) * 100)));
+      const insight = mean >= 3 ? `Severe air quality across the area — avg class ${mean.toFixed(1)}. Immediate action needed.`
+        : mean >= 2 ? `Elevated pollution levels affect sensitive groups.`
+        : mean >= 1 ? `Air quality is acceptable with moderate pollution signals.`
+        : `Air quality is mostly good across the area.`;
+      return { html: `
+        <div class="stats-grid">
+          ${sb("Overall Score", `<span style="color:${scoreColor(aqiScore)}">${aqiScore} / 100</span>`)}
+          ${sb("Mean AQI Class", mean.toFixed(2) + " (0=Good · 5=Hazardous)")}
+          ${sb("Min Class",      (georaster.mins?.[0] ?? "—").toString())}
+          ${sb("Max Class",      (georaster.maxs?.[0] ?? "—").toString())}
+          ${sb("Image Size",     `${georaster.width} × ${georaster.height} px`)}
+        </div>
+        <div class="key-insight">💡 ${insight}</div>
+      `, score: aqiScore };
+    },
+    buildRaw(georaster) {
+      return `
+        ${sb("Format",     "GeoTIFF (AQI classes 0–5)")}
+        ${sb("Size",       `${georaster.width} × ${georaster.height} px`)}
+        ${sb("Min Class",  (georaster.mins?.[0] ?? "—").toString())}
+        ${sb("Max Class",  (georaster.maxs?.[0] ?? "—").toString())}
+        ${sb("Projection", `EPSG:${georaster.projection ?? "—"}`)}
+        ${sb("No-Data",    georaster.noDataValue ?? "None")}
+      `;
     },
     recommendations(score) {
       if (score >= 75) return ["Air quality is largely acceptable.", "Monitor PM2.5 and NO2 levels seasonally.", "Maintain green buffer zones around roads."];
-      if (score >= 40) return ["Moderate pollution detected in some zones.", "Increase monitoring frequency near industrial and traffic corridors.", "Promote public transport to reduce vehicle emissions."];
-      return ["Poor air quality across significant portions of the area.", "Identify and restrict major emission sources.", "Establish clean-air zones and enforce emission standards."];
+      if (score >= 40) return ["Moderate pollution detected in some zones.", "Increase monitoring near industrial and traffic corridors.", "Promote public transport to reduce vehicle emissions."];
+      return ["Poor air quality across significant portions.", "Identify and restrict major emission sources.", "Establish clean-air zones and enforce emission standards."];
     }
   },
 
-  // ── VECTOR types ─────────────────────────────────────────────────────────────
-
   "crime": {
-    title: "Crime Density Analysis", dataFormat: "GeoJSON", classTitle: "Crime Density Classes",
-    legend: [
-      { color:"#2ecc71", label:"Safe",      range:"0 – 5 crimes/km²" },
-      { color:"#f1c40f", label:"Low Risk",  range:"5 – 10 crimes/km²" },
-      { color:"#e67e22", label:"Moderate",  range:"10 – 15 crimes/km²" },
-      { color:"#e74c3c", label:"High Risk", range:"15 – 20 crimes/km²" },
-      { color:"#891508", label:"Hotspot",   range:"> 20 crimes/km²" }
+    title:"Crime Density Analysis", dataFormat:"GeoJSON", isRaster:false,
+    gridField:"geojson",
+    legend:[
+      { color:"#2ecc71", label:"Safe",      range:"0 – 5 /km²" },
+      { color:"#f1c40f", label:"Low Risk",  range:"5 – 10 /km²" },
+      { color:"#e67e22", label:"Moderate",  range:"10 – 15 /km²" },
+      { color:"#e74c3c", label:"High Risk", range:"15 – 20 /km²" },
+      { color:"#891508", label:"Hotspot",   range:"> 20 /km²" }
     ],
     styleFeature(f) {
       const d = f.properties.crime_density || 0;
@@ -244,41 +409,71 @@ const ANALYSIS_CONFIG = {
       if (d > 10) color = "#e67e22";
       if (d > 15) color = "#e74c3c";
       if (d > 20) color = "#891508";
-      return { fillColor: color, fillOpacity: 0.65, color: "#333", weight: 1 };
+      return { fillColor:color, fillOpacity:0.65, color:"#333", weight:1 };
     },
     popupFn(f) {
       const p = f.properties;
-      return `<strong>${p.NBHD_NAME || p.name || "Area"}</strong><br>
-              Crime Count: ${p.crime_count || 0}<br>
-              Density: ${(p.crime_density || 0).toFixed(2)} /km²`;
+      return `<strong>${p.NBHD_NAME||p.name||"Area"}</strong><br>
+              Crime Count: ${p.crime_count||0}<br>
+              Density: ${(p.crime_density||0).toFixed(2)} /km²`;
     },
-    buildStats(features) {
-      const densities = features.map(f => f.properties.crime_density || 0).filter(v => v > 0);
-      const avg = densities.length ? (densities.reduce((a,b)=>a+b,0)/densities.length).toFixed(2) : "--";
-      const max = densities.length ? Math.max(...densities).toFixed(2) : "--";
+    buildFullArea(features) {
+      const densities = features.map(f => f.properties.crime_density||0).filter(v => v > 0);
+      const avg = densities.length ? (densities.reduce((a,b)=>a+b,0)/densities.length) : 0;
+      const max = densities.length ? Math.max(...densities) : 0;
       const hotspots = features.filter(f => (f.properties.crime_density||0) > 20).length;
-      return [
-        { label:"Avg Crime Density", value: avg + " /km²" },
-        { label:"Max Crime Density", value: max + " /km²" },
-        { label:"Hotspot Areas",     value: hotspots },
-        { label:"Total Areas",       value: features.length }
-      ];
+      const safetyScore = max > 0 ? Math.max(0, Math.round(100 - Math.min(100, (avg/max)*100))) : 50;
+      const sorted = [...features]
+        .filter(f => f.properties.crime_density != null)
+        .sort((a,b) => (b.properties.crime_density||0) - (a.properties.crime_density||0));
+      const nameKey = ["NBHD_NAME","name","NAME","district"].find(k => features[0]?.properties?.[k]);
+      const getName = f => nameKey ? f.properties[nameKey] : "Area";
+      const top3unsafe = sorted.slice(0,3).map(f => `<div style="display:flex;justify-content:space-between;font-size:12px;"><span>${getName(f)}</span><span style="color:#e74c3c;font-weight:600;">${(f.properties.crime_density||0).toFixed(2)}/km²</span></div>`).join("");
+      const top3safe   = sorted.slice(-3).reverse().map(f => `<div style="display:flex;justify-content:space-between;font-size:12px;"><span>${getName(f)}</span><span style="color:#2ecc71;font-weight:600;">${(f.properties.crime_density||0).toFixed(2)}/km²</span></div>`).join("");
+      const insight = max > 0 && max/Math.max(avg,0.01) > 5
+        ? `Crime is heavily concentrated in a few hotspot zones — the rest is relatively safe.`
+        : `Crime incidents are spread across the area with no single dominant hotspot.`;
+      return { html: `
+        <div class="stats-grid">
+          ${sb("Overall Score",      `<span style="color:${scoreColor(safetyScore)}">${safetyScore} / 100</span>`)}
+          ${sb("Avg Crime Density",  avg.toFixed(2) + " /km²")}
+          ${sb("Max Crime Density",  max.toFixed(2) + " /km²")}
+          ${sb("Hotspot Areas",      hotspots.toString())}
+          ${sb("Areas Analyzed",     features.length.toString())}
+        </div>
+        ${sorted.length ? `
+          <div class="section-label">Area Breakdown</div>
+          <div class="stat-box" style="margin-bottom:8px;"><div class="stat-label" style="color:#e74c3c;">Top Unsafe Areas</div><div style="margin-top:6px;font-size:13px;">${top3unsafe}</div></div>
+          <div class="stat-box"><div class="stat-label" style="color:#2ecc71;">Top Safe Areas</div><div style="margin-top:6px;font-size:13px;">${top3safe}</div></div>
+        ` : ""}
+        <div class="key-insight">💡 ${insight}</div>
+      `, score: safetyScore };
+    },
+    buildRaw(features) {
+      const total = features.reduce((s,f) => s + (f.properties.crime_count||0), 0);
+      return `
+        ${sb("Total Features",  features.length.toString())}
+        ${sb("Total Incidents", total.toLocaleString())}
+        ${sb("Format",          "GeoJSON")}
+        ${sb("Geometry",        features[0]?.geometry?.type || "—")}
+      `;
     },
     recommendations(score) {
-      if (score >= 75) return ["Crime density is relatively low across the area.", "Maintain current policing and surveillance strategies.", "Continue community engagement programs."];
+      if (score >= 75) return ["Crime density is relatively low.", "Maintain current policing and surveillance strategies.", "Continue community engagement programs."];
       if (score >= 40) return ["Moderate crime density detected in several zones.", "Increase patrol frequency in medium-risk areas.", "Install additional street lighting in risk zones."];
       return ["High crime density detected. Immediate action needed.", "Deploy targeted policing in identified hotspots.", "Coordinate with local authorities for community safety programs."];
     }
   },
 
   "public-transport": {
-    title: "Public Transport Coverage", dataFormat: "GeoJSON", classTitle: "Coverage Classes",
-    legend: [
-      { color:"#198754", label:"Well Covered",    range:"> 80% coverage" },
-      { color:"#52b788", label:"Good Coverage",   range:"60 – 80%" },
-      { color:"#ffc107", label:"Moderate",        range:"40 – 60%" },
-      { color:"#fd7e14", label:"Limited",         range:"20 – 40%" },
-      { color:"#e74c3c", label:"Underserved",     range:"< 20%" }
+    title:"Public Transport Coverage", dataFormat:"GeoJSON", isRaster:false,
+    gridField:"geojson",
+    legend:[
+      { color:"#198754", label:"Well Covered",  range:"> 80%" },
+      { color:"#52b788", label:"Good Coverage", range:"60 – 80%" },
+      { color:"#ffc107", label:"Moderate",      range:"40 – 60%" },
+      { color:"#fd7e14", label:"Limited",       range:"20 – 40%" },
+      { color:"#e74c3c", label:"Underserved",   range:"< 20%" }
     ],
     styleFeature(f) {
       const p = f.properties;
@@ -290,514 +485,1391 @@ const ANALYSIS_CONFIG = {
       else if (cov > 60) color = "#52b788";
       else if (cov > 40) color = "#ffc107";
       else if (cov > 20) color = "#fd7e14";
-      return { fillColor: color, fillOpacity: 0.55, color: "#333", weight: 1 };
+      return { fillColor:color, fillOpacity:0.55, color:"#333", weight:1 };
     },
     pointToLayer(f, latlng) {
       return L.circleMarker(latlng, { radius:6, fillColor:"#4cc2ff", color:"#1a8fc1", weight:2, fillOpacity:0.9 });
     },
     popupFn(f) {
       const p = f.properties;
-      if (p.type === "station") return `<strong>Station</strong><br>${p.name || "Transit Stop"}`;
-      return `<strong>${p.name || "Zone"}</strong><br>Coverage: ${(p.coverage_pct||0).toFixed(1)}%`;
+      if (p.type === "station") return `<strong>Station</strong><br>${p.name||"Transit Stop"}`;
+      return `<strong>${p.name||"Zone"}</strong><br>Coverage: ${(p.coverage_pct||0).toFixed(1)}%`;
     },
-    buildStats(features) {
-      const stations = features.filter(f => f.properties.type === "station" || f.properties.layer === "station").length;
+    buildFullArea(features) {
+      const stations = features.filter(f => f.properties.type==="station"||f.properties.layer==="station").length;
       const zones    = features.filter(f => f.properties.coverage_pct != null);
-      const avg      = zones.length ? (zones.reduce((s,f)=>s+(f.properties.coverage_pct||0),0)/zones.length).toFixed(1) : "--";
-      return [
-        { label:"Transit Stations", value: stations },
-        { label:"Avg Coverage",     value: avg + "%" },
-        { label:"Coverage Zones",   value: zones.length },
-        { label:"Total Features",   value: features.length }
-      ];
+      const avg      = zones.length ? zones.reduce((s,f)=>s+(f.properties.coverage_pct||0),0)/zones.length : 0;
+      const score    = Math.min(100, Math.round(avg));
+      const insight  = avg >= 70 ? `Good transit coverage — most of the area is within walking distance of a station.`
+        : avg >= 40 ? `Moderate coverage — ${(100-avg).toFixed(1)}% of the area lacks walkable transit access.`
+        : `Low coverage — ${(100-avg).toFixed(1)}% of the area is underserved by transit.`;
+      return { html: `
+        <div class="stats-grid">
+          ${sb("Overall Score",     `<span style="color:${scoreColor(score)}">${score} / 100</span>`)}
+          ${sb("Avg Coverage",      avg.toFixed(1) + "%")}
+          ${sb("Transit Stations",  stations.toString())}
+          ${sb("Coverage Zones",    zones.length.toString())}
+          ${sb("Total Features",    features.length.toString())}
+        </div>
+        <div class="key-insight">💡 ${insight}</div>
+      `, score };
+    },
+    buildRaw(features) {
+      const stations = features.filter(f => f.properties.type==="station"||f.properties.layer==="station").length;
+      return `
+        ${sb("Total Features",  features.length.toString())}
+        ${sb("Station Points",  stations.toString())}
+        ${sb("Format",          "GeoJSON")}
+        ${sb("Geometry Types",  [...new Set(features.map(f=>f.geometry?.type))].join(", "))}
+      `;
     },
     recommendations(score) {
-      if (score >= 75) return ["Strong transit coverage across the area.", "Focus on frequency and reliability improvements.", "Extend coverage to peri-urban fringes."];
+      if (score >= 75) return ["Strong transit coverage.", "Focus on frequency and reliability improvements.", "Extend coverage to peri-urban fringes."];
       if (score >= 40) return ["Moderate coverage with notable gaps.", "Prioritise new stops in low-coverage zones.", "Improve pedestrian access to existing stations."];
       return ["Poor transit coverage. Major investment needed.", "Plan new transit corridors for underserved areas.", "Introduce feeder services to connect gaps."];
     }
   },
 
   "traffic": {
-    title: "Traffic Analysis", dataFormat: "GeoJSON", classTitle: "Road Hierarchy Classes",
-    legend: [
+    title:"Traffic Analysis", dataFormat:"GeoJSON", isRaster:false,
+    gridField:"geojson",
+    legend:[
       { color:"#e74c3c", label:"Primary Roads",   range:"High capacity" },
       { color:"#f39c12", label:"Secondary Roads", range:"Medium capacity" },
       { color:"#3498db", label:"Local Roads",     range:"Low capacity" },
       { color:"#95a5a6", label:"Other",           range:"Unclassified" }
     ],
     styleFeature(f) {
-      const h = f.properties.hierarchy || f.properties.road_type || "";
-      if (h === "primary")   return { color:"#e74c3c", weight:3, fillOpacity:0 };
-      if (h === "secondary") return { color:"#f39c12", weight:2, fillOpacity:0 };
-      if (h === "local")     return { color:"#3498db", weight:1.5, fillOpacity:0 };
+      const h = f.properties.hierarchy||f.properties.road_type||"";
+      if (h==="primary")   return { color:"#e74c3c", weight:3, fillOpacity:0 };
+      if (h==="secondary") return { color:"#f39c12", weight:2, fillOpacity:0 };
+      if (h==="local")     return { color:"#3498db", weight:1.5, fillOpacity:0 };
       return { color:"#95a5a6", weight:1, fillOpacity:0 };
     },
     popupFn(f) {
       const p = f.properties;
-      return `<strong>${p.name || p.road_name || "Road"}</strong><br>
-              Type: ${p.hierarchy || p.road_type || "—"}<br>
+      return `<strong>${p.name||p.road_name||"Road"}</strong><br>
+              Type: ${p.hierarchy||p.road_type||"—"}<br>
               Length: ${p.length_m ? (p.length_m/1000).toFixed(2)+" km" : "—"}`;
     },
-    buildStats(features) {
-      const primary   = features.filter(f => (f.properties.hierarchy||f.properties.road_type) === "primary").length;
-      const secondary = features.filter(f => (f.properties.hierarchy||f.properties.road_type) === "secondary").length;
-      const local     = features.filter(f => (f.properties.hierarchy||f.properties.road_type) === "local").length;
-      return [
-        { label:"Primary Roads",   value: primary },
-        { label:"Secondary Roads", value: secondary },
-        { label:"Local Roads",     value: local },
-        { label:"Total Segments",  value: features.length }
-      ];
+    buildFullArea(features) {
+      const primary   = features.filter(f => (f.properties.hierarchy||f.properties.road_type)==="primary").length;
+      const secondary = features.filter(f => (f.properties.hierarchy||f.properties.road_type)==="secondary").length;
+      const local     = features.filter(f => (f.properties.hierarchy||f.properties.road_type)==="local").length;
+      const totalLen  = features.reduce((s,f) => s+(f.properties.length_m||0), 0);
+      const score = 60; // traffic has complex scoring; use saved score
+      return { html: `
+        <div class="stats-grid">
+          ${sb("Primary Roads",   primary.toString())}
+          ${sb("Secondary Roads", secondary.toString())}
+          ${sb("Local Roads",     local.toString())}
+          ${sb("Total Segments",  features.length.toString())}
+          ${totalLen > 0 ? sb("Total Length", (totalLen/1000).toFixed(1)+" km") : ""}
+        </div>
+      `, score, useDbScore: true };
+    },
+    buildRaw(features) {
+      return `
+        ${sb("Total Segments", features.length.toString())}
+        ${sb("Format",         "GeoJSON")}
+        ${sb("Geometry",       features[0]?.geometry?.type||"—")}
+      `;
     },
     recommendations(score) {
-      if (score >= 75) return ["Road network connectivity is strong.", "Monitor congestion at peak hours.", "Consider demand-responsive transit in low-traffic areas."];
-      if (score >= 40) return ["Moderate traffic pressure detected.", "Improve signal coordination on secondary corridors.", "Invest in alternative transport modes."];
-      return ["High traffic pressure across key corridors.", "Urgent road capacity or demand management needed.", "Evaluate new road links or public transport investment."];
+      if (score >= 75) return ["Road network is well-connected.", "Monitor key intersections for congestion.", "Maintain road hierarchy balance."];
+      if (score >= 40) return ["Moderate traffic stress detected.", "Prioritize intersection improvements.", "Consider dedicated bus lanes on primary corridors."];
+      return ["High traffic congestion detected.", "Urgent road network expansion or management needed.", "Implement traffic demand management strategies."];
     }
   },
 
   "vegetation": {
-    title: "Vegetation Density Analysis", dataFormat: "GeoJSON", classTitle: "Vegetation Classes",
-    legend: [
-      { color:"#1a9641", label:"High Vegetation",     range:"> 60%" },
-      { color:"#a6d96a", label:"Moderate Vegetation", range:"30 – 60%" },
-      { color:"#ffffbf", label:"Low Vegetation",      range:"10 – 30%" },
-      { color:"#d9a85a", label:"Very Low",            range:"< 10%" }
+    title:"Vegetation Density", dataFormat:"GeoJSON", isRaster:false,
+    gridField:"geojson",
+    legend:[
+      { color:"#27ae60", label:"Dense (≥ 60%)",   range:"Passes standard" },
+      { color:"#f39c12", label:"Moderate (30–60%)", range:"At standard" },
+      { color:"#e74c3c", label:"Sparse (< 30%)",   range:"Below standard" }
     ],
     styleFeature(f) {
       const v = f.properties.vegetation_pct || 0;
-      let color = "#d9a85a";
-      if (v > 60) color = "#1a9641";
-      else if (v > 30) color = "#a6d96a";
-      else if (v > 10) color = "#ffffbf";
-      return { fillColor: color, fillOpacity: 0.7, color: "rgba(0,0,0,0.15)", weight: 0.5 };
+      const color = v >= 60 ? "#27ae60" : v >= 30 ? "#f39c12" : "#e74c3c";
+      return { fillColor:color, fillOpacity:0.6, color:"#333", weight:1 };
     },
     popupFn(f) {
       const p = f.properties;
-      return `<strong>Vegetation: ${(p.vegetation_pct||0).toFixed(1)}%</strong><br>
-              QoL Score: ${p.qol_score ?? "—"}/100<br>
-              Passes 30% benchmark: ${p.passes_30pct ? "Yes" : "No"}`;
+      return `<strong>${p.name||"Area"}</strong><br>
+              Vegetation: ${(p.vegetation_pct||0).toFixed(1)}%<br>
+              Status: ${p.passes_30pct ? "✓ Passes" : "✗ Below standard"}`;
     },
-    buildStats(features) {
-      const vegPcts = features.map(f => f.properties.vegetation_pct || 0);
-      const avg = vegPcts.length ? (vegPcts.reduce((a,b)=>a+b,0)/vegPcts.length).toFixed(1) : "--";
-      const passing = features.filter(f => f.properties.passes_30pct).length;
-      return [
-        { label:"Avg Vegetation %", value: avg + "%" },
-        { label:"Cells ≥ 30%",      value: passing },
-        { label:"Total Cells",      value: features.length }
-      ];
+    buildFullArea(features) {
+      const vegPcts = features.map(f => f.properties.vegetation_pct||0).filter(v => v >= 0);
+      const avg = vegPcts.length ? vegPcts.reduce((a,b)=>a+b,0)/vegPcts.length : 0;
+      const pass = features.filter(f => f.properties.passes_30pct).length;
+      const score = Math.min(100, Math.round((avg / 30) * 100));
+      const gap = avg - 30;
+      const gapHtml = gap >= 0
+        ? `<span style="color:#2ecc71">▲ ${gap.toFixed(1)}% above 30% standard</span>`
+        : `<span style="color:#e74c3c">▼ ${Math.abs(gap).toFixed(1)}% below 30% standard</span>`;
+      const insight = avg >= 30 ? `Coverage meets the urban greenery standard. Green space is healthy.`
+        : `Coverage is ${avg.toFixed(1)}% — ${Math.abs(gap).toFixed(1)}% below the 30% benchmark.`;
+      return { html: `
+        <div class="stats-grid">
+          ${sb("Overall Score",    `<span style="color:${scoreColor(score)}">${score} / 100</span>`)}
+          ${sb("Avg Coverage",     avg.toFixed(1)+"%")}
+          ${sb("vs. 30% Standard", gapHtml)}
+          ${sb("Zones Passing",    `${pass} / ${features.length}`)}
+        </div>
+        <div class="key-insight">💡 ${insight}</div>
+      `, score };
+    },
+    buildRaw(features) {
+      return `
+        ${sb("Total Zones", features.length.toString())}
+        ${sb("Format",      "GeoJSON")}
+        ${sb("Geometry",    features[0]?.geometry?.type||"—")}
+      `;
     },
     recommendations(score) {
-      if (score >= 75) return ["Vegetation coverage is healthy across the area.", "Protect existing green spaces from development.", "Maintain diverse urban tree species."];
-      if (score >= 40) return ["Moderate vegetation with room for improvement.", "Target low-vegetation cells for planting initiatives.", "Integrate greenery into new development plans."];
-      return ["Critical vegetation deficit detected.", "Launch urgent urban greening program.", "Prioritise street trees and park expansion in bare zones."];
+      if (score >= 75) return ["Vegetation coverage meets the urban greenery standard.", "Monitor for seasonal changes.", "Focus on connectivity between green spaces."];
+      if (score >= 40) return ["Moderate vegetation — some areas below the 30% benchmark.", "Prioritize planting in low-coverage cells.", "Explore rooftop and vertical greening solutions."];
+      return ["Critical vegetation deficit detected.", "Initiate urgent urban greening programs.", "Partner with municipality on tree-planting and park creation targets."];
     }
   },
 
   "informal-settlement": {
-    title: "Informal Settlement Analysis", dataFormat: "GeoJSON", classTitle: "Irregularity Classes",
-    legend: [
-      { color:"#2ecc71", label:"Planned (0–33)",   range:"Low irregularity" },
-      { color:"#f39c12", label:"Mixed (34–66)",    range:"Medium irregularity" },
-      { color:"#e74c3c", label:"Informal (67–100)",range:"High irregularity" }
+    title:"Informal Settlement Analysis", dataFormat:"GeoJSON", isRaster:false,
+    gridField:"geojson",
+    legend:[
+      { color:"#e74c3c", label:"Informal Settlement", range:"Detected area" },
+      { color:"#27ae60", label:"Formal Area",         range:"Planned area" },
+      { color:"#f39c12", label:"Mixed / Transition",  range:"Transition zone" }
     ],
     styleFeature(f) {
-      const p = f.properties;
-      if (p.type === "high_irregularity_zone") return { fillColor:"transparent", fillOpacity:0, color:"#e74c3c", weight:2.5, dashArray:"5,4" };
-      const s = p.irregularity_score ?? 0;
-      let color = "#2ecc71";
-      if (s > 66) color = "#e74c3c";
-      else if (s > 33) color = "#f39c12";
-      return { fillColor: color, fillOpacity: 0.7, color: "rgba(0,0,0,0.18)", weight: 0.7 };
+      const t = f.properties.settlement_type || f.properties.type || "";
+      if (t === "informal" || t === "slum") return { fillColor:"#e74c3c", fillOpacity:0.6, color:"#333", weight:1 };
+      if (t === "formal" || t === "planned") return { fillColor:"#27ae60", fillOpacity:0.5, color:"#333", weight:1 };
+      return { fillColor:"#f39c12", fillOpacity:0.5, color:"#333", weight:1 };
     },
     popupFn(f) {
       const p = f.properties;
-      if (p.type === "high_irregularity_zone") return "<strong>High Irregularity Zone</strong><br>Potential informal settlement area";
-      return `<strong>Irregularity: ${p.irregularity_score ?? "—"}/100</strong><br>
-              Classification: ${p.classification || "—"}<br>
-              QoL Score: ${p.qol_score ?? "—"}/100`;
+      return `<strong>${p.name||"Zone"}</strong><br>
+              Type: ${p.settlement_type||p.type||"—"}<br>
+              QoL Score: ${p.qol_score||"—"}`;
     },
-    buildStats(features) {
-      const cells  = features.filter(f => f.properties.type !== "high_irregularity_zone");
-      const scores = cells.map(f => f.properties.irregularity_score ?? 0);
-      const avg    = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : "--";
-      const high   = cells.filter(f => (f.properties.irregularity_score??0) > 66).length;
-      const zones  = features.filter(f => f.properties.type === "high_irregularity_zone").length;
-      return [
-        { label:"Avg Irregularity Score", value: avg + "/100" },
-        { label:"High-Irregularity Cells",value: high },
-        { label:"Informal Hotspot Zones", value: zones },
-        { label:"Total Cells",            value: cells.length }
-      ];
+    buildFullArea(features) {
+      const total    = features.length;
+      const informal = features.filter(f => (f.properties.settlement_type||f.properties.type||"").includes("informal") || (f.properties.settlement_type||f.properties.type||"").includes("slum")).length;
+      const infPct   = total > 0 ? ((informal/total)*100).toFixed(1) : "—";
+      const qolScores= features.map(f => f.properties.qol_score||f.properties.overall_qol||f.properties.score).filter(s => s != null && !isNaN(s));
+      const avgQol   = qolScores.length ? Math.round(qolScores.reduce((a,b)=>a+b,0)/qolScores.length) : null;
+      const score    = avgQol ?? (100 - parseFloat(infPct));
+      const insight  = informal > 0
+        ? `${infPct}% of analyzed areas show informal settlement patterns.`
+        : `No significant informal settlement patterns detected.`;
+      return { html: `
+        <div class="stats-grid">
+          ${avgQol != null ? sb("Avg QoL Score", `<span style="color:${scoreColor(avgQol)}">${avgQol} / 100</span>`) : ""}
+          ${sb("Total Zones",    total.toString())}
+          ${sb("Informal Zones", `${informal} (${infPct}%)`)}
+        </div>
+        <div class="key-insight">💡 ${insight}</div>
+      `, score: avgQol ?? Math.max(0, Math.round(100-parseFloat(infPct))), useDbScore: true };
+    },
+    buildRaw(features) {
+      return `
+        ${sb("Total Features", features.length.toString())}
+        ${sb("Format",         "GeoJSON")}
+        ${sb("Geometry",       features[0]?.geometry?.type||"—")}
+      `;
     },
     recommendations(score) {
-      if (score >= 75) return ["Area is mostly planned and regular.", "Monitor edges of formal zones for informal expansion.", "Use results as baseline for future land-use planning."];
-      if (score >= 40) return ["Mixed settlement patterns detected. Some zones need attention.", "Focus urban upgrading programs on high-irregularity clusters.", "Compare with population density to prioritise interventions."];
-      return ["High informality patterns dominate. Priority urban planning needed.", "Initiate community-based upgrading programs in hotspot zones.", "Coordinate with housing authorities for legalisation and infrastructure support."];
+      if (score >= 75) return ["Informal settlement footprint is manageable.", "Continue monitoring peri-urban growth.", "Strengthen land registration processes."];
+      if (score >= 40) return ["Moderate informal settlement detected.", "Prioritize infrastructure upgrades in transition zones.", "Implement community land-titling programs."];
+      return ["Significant informal settlement coverage detected.", "Urgent: engage urban planning authorities.", "Plan regularization, basic services, and risk mapping."];
     }
   },
 
   "facility-accessibility": {
-    title: "Facility Accessibility", dataFormat: "GeoJSON", classTitle: "Walk-Time Classes",
-    legend: [
-      { color:"#198754", label:"≤ 5 min walk",  range:"Excellent access" },
-      { color:"#52b788", label:"≤ 10 min walk", range:"Good access" },
-      { color:"#ffc107", label:"≤ 15 min walk", range:"Acceptable access" },
-      { color:"#fd7e14", label:"≤ 20 min walk", range:"Limited access" },
-      { color:"#e74c3c", label:"No Access",      range:"Outside walking range" }
+    title:"Facility Accessibility", dataFormat:"GeoJSON", isRaster:false,
+    gridField:"geojson",
+    legend:[
+      { color:"#27ae60", label:"Well Accessible", range:"≤ 5 min walk" },
+      { color:"#f39c12", label:"Moderate",        range:"5 – 10 min" },
+      { color:"#e74c3c", label:"Poor Access",     range:"> 10 min" }
     ],
     styleFeature(f) {
       const p = f.properties;
-      if (p.type === "uncovered" || p.category === "uncovered") return { fillColor:"#e74c3c", fillOpacity:0.18, color:"#e74c3c", weight:1, dashArray:"4,3" };
-      if (p.layer === "boundary") return { fillColor:"transparent", fillOpacity:0, color:"#f0a500", weight:2.5, dashArray:"6,3" };
-      const colors = { 5:"#198754", 10:"#52b788", 15:"#ffc107", 20:"#fd7e14" };
-      const opacity = { 5:0.45, 10:0.38, 15:0.30, 20:0.22 };
-      const color = colors[p.time_min] || "#888";
-      return { fillColor: color, fillOpacity: opacity[p.time_min] || 0.2, color, weight:1.5 };
+      if (p.type === "facility") return { fillColor:"#4cc2ff", fillOpacity:0.9, color:"#1a8fc1", weight:2 };
+      const cov = p.coverage_pct || p.accessibility_score || 0;
+      let color = "#e74c3c";
+      if (cov > 70) color = "#27ae60";
+      else if (cov > 40) color = "#f39c12";
+      return { fillColor:color, fillOpacity:0.55, color:"#333", weight:1 };
     },
     pointToLayer(f, latlng) {
-      return L.circleMarker(latlng, { radius:5, fillColor:"#4cc2ff", color:"#1a8fc1", weight:1.5, fillOpacity:0.9 });
+      return L.circleMarker(latlng, { radius:7, fillColor:"#4cc2ff", color:"#1a8fc1", weight:2, fillOpacity:0.9 });
     },
     popupFn(f) {
       const p = f.properties;
-      if (p.type === "uncovered" || p.category === "uncovered") return "<strong style='color:#e74c3c'>Outside walking range</strong>";
-      if (p.layer === "boundary") return "<strong>Area of Interest</strong>";
-      return `<strong>Within ${p.time_min} min walk</strong><br>Radius: ${p.radius_m} m<br>Facilities: ${p.facility_count}`;
+      if (p.type === "facility") return `<strong>Facility</strong><br>${p.name||"—"}`;
+      return `<strong>${p.name||"Zone"}</strong><br>Coverage: ${(p.coverage_pct||p.accessibility_score||0).toFixed(1)}%`;
     },
-    buildStats(features) {
-      const uncovered = features.filter(f => f.properties.type === "uncovered" || f.properties.category === "uncovered").length;
-      const within5   = features.filter(f => f.properties.time_min === 5).length;
-      const within15  = features.filter(f => f.properties.time_min != null && f.properties.time_min <= 15).length;
-      return [
-        { label:"Zones within 5 min",  value: within5 },
-        { label:"Zones within 15 min", value: within15 },
-        { label:"Uncovered Zones",     value: uncovered },
-        { label:"Total Features",      value: features.length }
-      ];
+    buildFullArea(features) {
+      const facilities = features.filter(f => f.properties.type==="facility").length;
+      const zones      = features.filter(f => f.properties.coverage_pct != null || f.properties.accessibility_score != null);
+      const avgCov     = zones.length ? zones.reduce((s,f)=>s+(f.properties.coverage_pct||f.properties.accessibility_score||0),0)/zones.length : 0;
+      const score      = Math.min(100, Math.round(avgCov));
+      const insight    = avgCov >= 70 ? `Good facility accessibility — most areas are within reach.`
+        : avgCov >= 40 ? `Moderate accessibility — some zones lack nearby facilities.`
+        : `Low accessibility — significant portions of the area are underserved.`;
+      return { html: `
+        <div class="stats-grid">
+          ${sb("Overall Score",   `<span style="color:${scoreColor(score)}">${score} / 100</span>`)}
+          ${sb("Avg Coverage",    avgCov.toFixed(1)+"%")}
+          ${sb("Facilities",      facilities.toString())}
+          ${sb("Analysis Zones",  zones.length.toString())}
+        </div>
+        <div class="key-insight">💡 ${insight}</div>
+      `, score };
+    },
+    buildRaw(features) {
+      const facilities = features.filter(f => f.properties.type==="facility").length;
+      return `
+        ${sb("Total Features",  features.length.toString())}
+        ${sb("Facility Points", facilities.toString())}
+        ${sb("Format",          "GeoJSON")}
+        ${sb("Geometry Types",  [...new Set(features.map(f=>f.geometry?.type))].join(", "))}
+      `;
     },
     recommendations(score) {
-      if (score >= 75) return ["Excellent facility accessibility across the area.", "Maintain current facility distribution.", "Focus on quality and capacity of existing facilities."];
-      if (score >= 40) return ["Moderate facility accessibility. Some gaps remain.", "Prioritise new facilities in uncovered high-density zones.", "Consider mobile or pop-up services for hard-to-reach areas."];
-      return ["Low facility accessibility. Large portions are underserved.", "Plan new facility locations based on population distribution.", "Use grid analysis to identify the worst accessibility cells."];
+      if (score >= 75) return ["Good facility distribution across the area.", "Monitor access equity across income groups.", "Maintain and expand facility coverage."];
+      if (score >= 40) return ["Moderate accessibility gaps exist.", "Prioritize new facilities in low-access zones.", "Improve pedestrian connectivity to existing facilities."];
+      return ["Critical accessibility gaps detected.", "Urgent: plan new facilities in underserved zones.", "Coordinate with local authorities on service delivery."];
     }
   },
 
   "urban-density": {
-    title: "Urban Density Analysis", dataFormat: "GeoJSON", classTitle: "Density Classes",
-    legend: [
-      { color:"#ffffcc", label:"Very Low",  range:"< 500 /km²" },
-      { color:"#a1dab4", label:"Low",       range:"500 – 2000 /km²" },
-      { color:"#41b6c4", label:"Moderate",  range:"2000 – 5000 /km²" },
-      { color:"#2c7fb8", label:"High",      range:"5000 – 10000 /km²" },
-      { color:"#253494", label:"Very High", range:"> 10000 /km²" }
+    title:"Urban / Population Density", dataFormat:"GeoJSON", isRaster:false,
+    gridField:"geojson",
+    legend:[
+      { color:"#ffffcc", label:"Very Low Density",  range:"< 1,000 /km²" },
+      { color:"#a1dab4", label:"Low Density",        range:"1,000 – 5,000 /km²" },
+      { color:"#41b6c4", label:"Medium Density",     range:"5,000 – 15,000 /km²" },
+      { color:"#2c7fb8", label:"High Density",       range:"15,000 – 30,000 /km²" },
+      { color:"#253494", label:"Very High Density",  range:"> 30,000 /km²" }
     ],
     styleFeature(f) {
-      const d = f.properties.urban_density || 0;
+      const d = f.properties.density || f.properties.pop_density || 0;
       let color = "#ffffcc";
-      if (d > 500)   color = "#a1dab4";
-      if (d > 2000)  color = "#41b6c4";
-      if (d > 5000)  color = "#2c7fb8";
-      if (d > 10000) color = "#253494";
-      return { fillColor: color, fillOpacity: 0.65, color: "#333", weight: 1 };
+      if (d > 1000)  color = "#a1dab4";
+      if (d > 5000)  color = "#41b6c4";
+      if (d > 15000) color = "#2c7fb8";
+      if (d > 30000) color = "#253494";
+      return { fillColor:color, fillOpacity:0.65, color:"#333", weight:1 };
     },
     popupFn(f) {
       const p = f.properties;
-      const density = p.urban_density != null ? Number(p.urban_density).toFixed(1) : "—";
-      const area    = p.area_km2      != null ? Number(p.area_km2).toFixed(2)      : "—";
-      return `<strong>${p.NBHD_NAME || p.name || p.ADM3_EN || "Area"}</strong><br>
-              Density: ${density} /km²<br>Area: ${area} km²`;
+      const den = p.density||p.pop_density||0;
+      return `<strong>${p.name||"Zone"}</strong><br>
+              Density: ${den.toLocaleString()} /km²`;
     },
-    buildStats(features) {
-      const densities = features.map(f => f.properties.urban_density || 0).filter(v => v > 0);
-      const avg  = densities.length ? (densities.reduce((a,b)=>a+b,0)/densities.length).toFixed(1) : "--";
-      const max  = densities.length ? Math.max(...densities).toFixed(1) : "--";
-      const high = features.filter(f => (f.properties.urban_density||0) > 5000).length;
-      return [
-        { label:"Avg Density",        value: avg + " /km²" },
-        { label:"Max Density",        value: max + " /km²" },
-        { label:"High-Density Zones", value: high },
-        { label:"Total Areas",        value: features.length }
-      ];
+    buildFullArea(features) {
+      const densities = features.map(f => f.properties.density||f.properties.pop_density||0).filter(v=>v>0);
+      const avg = densities.length ? densities.reduce((a,b)=>a+b,0)/densities.length : 0;
+      const max = densities.length ? Math.max(...densities) : 0;
+      const sorted = [...features].filter(f=>(f.properties.density||f.properties.pop_density)>0)
+        .sort((a,b)=>(b.properties.density||b.properties.pop_density||0)-(a.properties.density||a.properties.pop_density||0));
+      const nameKey = ["name","NAME","district","zone_name"].find(k=>features[0]?.properties?.[k]);
+      const top3 = sorted.slice(0,3).map(f=>`<div style="display:flex;justify-content:space-between;font-size:12px;"><span>${nameKey?f.properties[nameKey]:"Zone"}</span><span style="color:#4cc2ff;font-weight:600;">${(f.properties.density||f.properties.pop_density||0).toLocaleString()}/km²</span></div>`).join("");
+      const insight = avg > 15000 ? `Very high urban density detected — urban services and infrastructure may be under stress.`
+        : avg > 5000 ? `High density area with moderate service demand.`
+        : `Relatively low density — room for urban expansion or densification.`;
+      return { html: `
+        <div class="stats-grid">
+          ${sb("Avg Density",   avg.toFixed(0)+" /km²")}
+          ${sb("Max Density",   max.toFixed(0)+" /km²")}
+          ${sb("Total Zones",   features.length.toString())}
+        </div>
+        ${sorted.length ? `
+          <div class="section-label">Densest Areas</div>
+          <div class="stat-box" style="margin-bottom:0"><div style="margin-top:4px;font-size:13px;">${top3}</div></div>
+        ` : ""}
+        <div class="key-insight">💡 ${insight}</div>
+      `, score: null, useDbScore: true };
+    },
+    buildRaw(features) {
+      return `
+        ${sb("Total Features", features.length.toString())}
+        ${sb("Format",         "GeoJSON")}
+        ${sb("Geometry",       features[0]?.geometry?.type||"—")}
+      `;
     },
     recommendations(score) {
-      if (score >= 75) return ["Urban density distribution appears well-balanced.", "Monitor high-density cores to prevent overcrowding.", "Invest in vertical development in low-density peripheries."];
-      if (score >= 40) return ["Moderate density with notable variation across zones.", "Improve infrastructure in high-density clusters.", "Encourage mixed-use development to redistribute population load."];
-      return ["High density concentration detected. Urban stress risk is elevated.", "Prioritise new housing and service expansion to low-density areas.", "Plan transport corridors to connect underserved zones."];
-    }
-  },
-
-  // ── EXPANSION — no spatial result file, show score card only ────────────────
-  "expansion": {
-    title: "Urban Expansion Analysis", dataFormat: "Report", classTitle: "Expansion Suitability",
-    legend: [
-      { color:"#2ecc71", label:"High Suitability",    range:"Score > 70" },
-      { color:"#f1c40f", label:"Moderate Suitability",range:"Score 40 – 70" },
-      { color:"#e74c3c", label:"Low Suitability",     range:"Score < 40" }
-    ],
-    recommendations(score) {
-      if (score >= 70) return ["High expansion suitability detected.", "Prioritise areas with infrastructure access and low flood risk.", "Engage urban planners for phased development."];
-      if (score >= 40) return ["Moderate suitability. Some constraints apply.", "Review utility capacity before approving expansion.", "Consider environmental impact assessments."];
-      return ["Low suitability for expansion in this area.", "Explore alternative sites or densification strategies.", "Address underlying constraints before proceeding."];
+      if (score >= 75) return ["Density levels are manageable.", "Ensure infrastructure keeps pace with growth.", "Preserve low-density green zones."];
+      if (score >= 40) return ["Moderate urban density — watch for hotspots.", "Improve mixed-use zoning to distribute density.", "Plan transit-oriented development in dense corridors."];
+      return ["Very high density detected in critical zones.", "Urgent review of urban capacity and infrastructure.", "Implement density caps and green space requirements."];
     }
   }
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function hexToSoftBg(hex) {
-  if (!hex || !hex.startsWith("#")) return "rgba(0,212,170,.12)";
-  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
-  return `rgba(${r},${g},${b},.15)`;
+// sb = stat box (2-col grid cell)
+function sb(label, value) {
+  return `<div class="stat-box"><div class="stat-label">${label}</div><div class="stat-value">${value}</div></div>`;
 }
-
-function scoreClass(status) {
-  if (status === "high") return "score-high";
-  if (status === "mid")  return "score-mid";
+// ic = inline card (full-width, used for list items inside stats-grid)
+function ic(label, value) {
+  return `<div class="stat-box" style="grid-column:span 2;"><div class="stat-label">${label}</div><div class="stat-value" style="font-size:14px;">${value}</div></div>`;
+}
+function scoreColor(s) {
+  if (s == null) return "var(--accent)";
+  if (s >= 75) return "#2ecc71";
+  if (s >= 40) return "#f0a500";
+  return "#e74c3c";
+}
+function scoreClass(s) {
+  if (s === "high") return "score-high";
+  if (s === "mid")  return "score-mid";
   return "score-low";
 }
-
-function renderLegend(config) {
-  document.getElementById("legendList").innerHTML = config.legend.map(item => `
-    <div class="legend-item">
-      <div class="legend-color" style="background:${item.color};"></div>
-      <div><div class="legend-label">${item.label}</div><div class="legend-range">${item.range}</div></div>
-    </div>`).join("");
-}
-
-function renderClassSummary(config) {
-  document.getElementById("classSummaryList").innerHTML = config.legend.map((item, i) => `
-    <div class="class-item">
-      <div class="class-rank" style="background:${hexToSoftBg(item.color)};color:${item.color};">${i+1}</div>
-      <div><div class="class-name">${item.label}</div><div class="class-range">${item.range}</div></div>
-    </div>`).join("");
-}
-
-function renderStats(statsArr) {
-  document.getElementById("statsGrid").innerHTML = statsArr.map(s => `
-    <div class="stat-box">
-      <div class="stat-label">${s.label}</div>
-      <div class="stat-value">${s.value}</div>
-    </div>`).join("");
-}
-
-function renderRecommendations(recs) {
-  document.getElementById("recommendationsList").innerHTML =
-    recs.map(r => `<div class="recommendation">${r}</div>`).join("");
-}
-
 function sanitizeResultFile(path) {
   if (!path || !path.trim()) return null;
   path = path.trim();
-  // Reject absolute Windows or Unix paths stored from another machine
   if (/^[A-Za-z]:[\\\/]/.test(path)) return null;
   if (path.startsWith("/") && !path.startsWith("/outputs")) return null;
-  // Fix double outputs/ prefix
   path = path.replace(/^outputs\/outputs\//, "outputs/");
-  // Must contain a slash (bare filename like "ndvi_result.tif" can't be served)
   if (!path.includes("/")) return null;
-  // Must match expected outputs/ structure
   if (!path.startsWith("outputs/")) return null;
   return path;
 }
 
-function showNoFile(config, analysis) {
-  document.getElementById("analysisPreview").style.cssText =
-    `background:linear-gradient(rgba(0,0,0,.45),rgba(0,0,0,.45)),url(${analysis.preview_image||"images/opening-bg.png"}) center/cover;border-radius:16px;`;
-  document.getElementById("statsGrid").innerHTML =
-    `<div class="stat-box" style="grid-column:1/-1;"><div class="stat-label">Result File</div><div class="stat-value" style="font-size:18px;color:#e74c3c;">Not available</div></div>`;
-  renderRecommendations(["No result file was saved for this analysis.", "Run the analysis again to regenerate the result.", "If the problem persists, check backend output headers."]);
+// ── Map init ──────────────────────────────────────────────────────────────────
+function initMap() {
+  _map = L.map("analysisMap").setView([30.0444, 31.2357], 10);
+  L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { attribution:"Tiles © Esri" }
+  ).addTo(_map);
+  return _map;
 }
 
 // ── Raster loader ─────────────────────────────────────────────────────────────
-
-async function loadRasterMap(analysis, map, config) {
-  const url = `${API_BASE_URL}/${analysis.result_file}`;
+async function loadRaster(url, config, isRaw) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} loading ${url}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
 
-  const buf      = await res.arrayBuffer();
   const georaster = await parseGeoraster(buf);
-
   if (!georaster.projection || georaster.projection === 32767) georaster.projection = 4326;
 
-  const min  = (georaster.mins?.[0]  != null && !isNaN(georaster.mins[0]))  ? georaster.mins[0]  : null;
-  const max  = (georaster.maxs?.[0]  != null && !isNaN(georaster.maxs[0]))  ? georaster.maxs[0]  : null;
-  // Use midpoint of min/max as proxy for mean — always available, avoids iterating all pixels
-  const mean = (min !== null && max !== null) ? (min + max) / 2 : null;
+  const min = (georaster.mins?.[0] != null && !isNaN(georaster.mins[0])) ? georaster.mins[0] : 0;
+  const max = (georaster.maxs?.[0] != null && !isNaN(georaster.maxs[0])) ? georaster.maxs[0] : 1;
 
-  renderStats([
-    { label:"Min Value", value: min  !== null ? Number(min).toFixed(3)  : "--" },
-    { label:"Max Value", value: max  !== null ? Number(max).toFixed(3)  : "--" },
-    { label:"Mean Value",value: mean !== null ? Number(mean).toFixed(3) : "--" },
-    { label:"Raster Size",value: `${georaster.width} × ${georaster.height}` }
-  ]);
-
-  if (config.buildInsight) {
-    const insightEl = document.createElement("div");
-    insightEl.className = "recommendation";
-    insightEl.style.marginBottom = "16px";
-    insightEl.textContent = config.buildInsight(mean);
-    document.getElementById("recommendationsList").prepend(insightEl);
+  let colorFn;
+  if (isRaw) {
+    // Grey gradient for raw view
+    const range = max - min || 1;
+    colorFn = (values) => {
+      const v = values[0];
+      if (v == null || isNaN(v) || v === -9999) return null;
+      const t = Math.max(0, Math.min(1, (v - min) / range));
+      const c = Math.round(t * 200 + 30);
+      return `rgba(${c},${c},${c+20},0.85)`;
+    };
+  } else {
+    colorFn = (values) => config.colorFn(values[0], min, max);
   }
 
   const layer = new GeoRasterLayer({
-    georaster,
-    opacity: 0.85,
-    resolution: 256,
-    debugLevel: 0,
-    pixelValuesToColorFn: values => config.colorFn(values[0], min, max)
+    georaster, opacity:0.85, resolution:256, debugLevel:0,
+    pixelValuesToColorFn: colorFn
   });
 
-  layer.addTo(map);
-  try { map.fitBounds(layer.getBounds()); } catch(e) {}
-  setTimeout(() => map.invalidateSize(), 300);
+  return { layer, georaster, buf };
 }
 
 // ── Vector loader ─────────────────────────────────────────────────────────────
-
-async function loadVectorMap(analysis, map, config) {
-  const url = `${API_BASE_URL}/${analysis.result_file}`;
+async function loadVector(url, config) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} loading ${url}`);
-
-  const geojson  = await res.json();
-  const features = geojson.features || [];
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const geojson   = await res.json();
+  const features  = geojson.features || [];
 
   const layer = L.geoJSON(geojson, {
-    style: f => config.styleFeature ? config.styleFeature(f) : {},
-    pointToLayer: config.pointToLayer ? (f, ll) => config.pointToLayer(f, ll) : undefined,
-    onEachFeature: (f, l) => { const p = config.popupFn ? config.popupFn(f) : null; if (p) l.bindPopup(p); }
-  }).addTo(map);
+    style:        f => config.styleFeature ? config.styleFeature(f) : { fillColor:"#00d4aa", fillOpacity:0.5, color:"#333", weight:1 },
+    pointToLayer: config.pointToLayer ? (f,ll) => config.pointToLayer(f,ll) : undefined,
+    onEachFeature:(f,l) => { const p = config.popupFn?.(f); if (p) l.bindPopup(p); }
+  });
 
-  try { const b = layer.getBounds(); if (b.isValid()) map.fitBounds(b, { padding:[50,50] }); } catch(e) {}
-  setTimeout(() => map.invalidateSize(), 300);
-
-  if (config.buildStats) renderStats(config.buildStats(features));
+  return { layer, geojson, features };
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Tab + map layer (single control) ─────────────────────────────────────────
+let _aiTabFetched = false;
 
+function selectTab(target) {
+  document.querySelectorAll(".map-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === target));
+  document.querySelectorAll(".tab-pane").forEach(p => p.style.display = "none");
+  const pane = document.getElementById("tab-" + target);
+  if (pane) pane.style.display = "block";
+
+  _currentMapLayer = target;
+  [_resultLayer, _gridLayer, _rawLayer].forEach(l => { if (l && _map.hasLayer(l)) _map.removeLayer(l); });
+
+  if (target === "full" && _resultLayer)  { _resultLayer.addTo(_map); fitLayer(_resultLayer); }
+  else if (target === "raw" && _rawLayer) { _rawLayer.addTo(_map);    fitLayer(_rawLayer); }
+  else if (target === "grid") {
+    if (_gridLayer) { _gridLayer.addTo(_map); fitLayer(_gridLayer); }
+    else loadGrid();
+  } else if (target === "ai" && !_aiTabFetched) {
+    _aiTabFetched = true;
+    fetchAIRecommendations();
+  }
+}
+
+function fitLayer(layer) {
+  try { const b = layer.getBounds?.(); if (b && b.isValid()) _map.fitBounds(b, { padding:[40,40] }); } catch(e) {}
+}
+
+// ── Grid / Cell loader ────────────────────────────────────────────────────────
+async function loadGrid() {
+  if (_gridLoaded) return;
+  const pane = document.getElementById("tab-grid");
+  pane.innerHTML = `<div class="loading-state"><div class="spinner"></div>Generating cell grid…</div>`;
+
+  const type = _analysis.type;
+  const url  = `${API_BASE_URL}/${_analysis.result_file}`;
+
+  try {
+    const fileRes = await fetch(url);
+    if (!fileRes.ok) throw new Error(`Could not fetch result file (HTTP ${fileRes.status})`);
+    const blob = await fileRes.blob();
+
+    const fieldName = _config.gridField || (_config.isRaster ? "geotiff" : "geojson");
+    const form = new FormData();
+    form.append(fieldName, blob, _config.isRaster ? "result.tif" : "result.geojson");
+
+    const gridRes = await fetch(`${API_BASE_URL}/calculate-grid/${type}`, { method:"POST", body:form });
+    if (!gridRes.ok) throw new Error(`Grid endpoint returned HTTP ${gridRes.status}`);
+
+    const geojson = await gridRes.json();
+    _gridLoaded = true;
+    window._lastGridGeoJSON = geojson;
+
+    const scores = geojson.features.map(f => f.properties.qol_score).filter(s => s != null && !isNaN(s));
+    const avg    = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : null;
+    const best   = scores.length ? Math.max(...scores) : null;
+    const worst  = scores.length ? Math.min(...scores) : null;
+    const csm    = geojson.cell_size_m || "?";
+    const clabel = csm >= 1000 ? `${(csm/1000).toFixed(1)} km` : `${csm} m`;
+
+    pane.innerHTML = `
+      <div class="stats-grid">
+        ${sb("Total Cells", geojson.features.length.toLocaleString())}
+        ${sb("Cell Size",   clabel)}
+        ${avg  != null ? sb("Avg Score",  `<span style="color:${scoreColor(avg)}">${avg}/100</span>`)  : ""}
+        ${best != null ? sb("Best Cell",  `<span style="color:#27ae60">${best}/100</span>`) : ""}
+        ${worst!= null ? sb("Worst Cell", `<span style="color:#e74c3c">${worst}/100</span>`) : ""}
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Click any cell on the map to see its QoL score.</p>
+      <button class="exp-btn" style="width:100%;" onclick="downloadGridGeoJSON()">⬇ Download Grid GeoJSON</button>
+    `;
+
+    _gridLayer = L.geoJSON(geojson, {
+      style: f => ({ fillColor:gridScoreColor(f.properties.qol_score), fillOpacity:0.7, color:"rgba(0,0,0,0.12)", weight:0.5 }),
+      onEachFeature: (f, layer) => layer.bindPopup(`<strong>Cell QoL Score:</strong> ${f.properties.qol_score ?? "—"}/100`)
+    });
+
+    if (_currentMapLayer === "grid") {
+      [_resultLayer, _rawLayer].forEach(l => { if (l && _map.hasLayer(l)) _map.removeLayer(l); });
+      _gridLayer.addTo(_map);
+      fitLayer(_gridLayer);
+    }
+
+  } catch(err) {
+    console.error("Grid load error:", err);
+    pane.innerHTML = `<div class="error-box">Could not generate grid: ${err.message}</div>`;
+  }
+}
+
+function gridScoreColor(s) {
+  if (s == null) return "#555";
+  if (s >= 75) return "#27ae60";
+  if (s >= 50) return "#f0a500";
+  if (s >= 25) return "#e67e22";
+  return "#e74c3c";
+}
+
+function downloadGridGeoJSON() {
+  const obj = window._lastGridGeoJSON;
+  if (!obj) { alert("Generate the grid first by clicking the Grid / Cell tab."); return; }
+
+  // Inject simplestyle colours matching the grid rendering (same as dashboard)
+  const copy = JSON.parse(JSON.stringify(obj));
+  const type = _analysis.type;
+  copy.features.forEach(f => {
+    const p = f.properties;
+    let fill;
+    if (type === "vegetation") {
+      const v = p.value ?? 0;
+      fill = v >= 50 ? "#27ae60" : v >= 30 ? "#f39c12" : "#e74c3c";
+    } else if (type === "traffic") {
+      const c = p.congestion || "low";
+      fill = c === "high" ? "#e74c3c" : c === "medium" ? "#f39c12" : "#2ecc71";
+    } else if (type === "informal-settlement") {
+      const v = p.value ?? 0;
+      fill = v >= 0.6 ? "#e74c3c" : v >= 0.3 ? "#f39c12" : "#27ae60";
+    } else {
+      const s = p.qol_score ?? 0;
+      fill = s >= 75 ? "#27ae60" : s >= 50 ? "#f0a500" : s >= 25 ? "#e67e22" : "#e74c3c";
+    }
+    p["fill"]           = fill;
+    p["fill-opacity"]   = 0.7;
+    p["stroke"]         = "rgba(0,0,0,0.15)";
+    p["stroke-width"]   = 0.5;
+    p["stroke-opacity"] = 0.5;
+  });
+
+  const blob = new Blob([JSON.stringify(copy, null, 2)], { type:"application/geo+json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${_analysis.type}_grid.geojson`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// ── Export helpers ────────────────────────────────────────────────────────────
+function buildExportButtons(isRaster) {
+  const card = document.getElementById("exportCard");
+  const grid = document.getElementById("exportGrid");
+  card.style.display = "block";
+
+  const fileLabel = isRaster ? "⬇ GeoTIFF" : "⬇ GeoJSON";
+  grid.innerHTML = `
+    <button class="exp-btn accent" onclick="downloadResultFile()">${fileLabel}</button>
+    ${!isRaster ? `<button class="exp-btn" onclick="downloadCSV()">⬇ CSV</button>` : ""}
+    <button class="exp-btn" onclick="downloadGridGeoJSON()" style="grid-column:span 2;">⬇ Grid GeoJSON</button>
+    <button class="exp-btn" onclick="exportTextReport()">📄 Text Report</button>
+    <button class="exp-btn" onclick="exportPDF()">📑 PDF Report</button>
+    <button class="exp-btn" style="grid-column:span 2;" onclick="exportAIPDF()">✦ AI PDF Report</button>
+  `;
+}
+
+// Download the result file from backend — fetch as blob so the browser always
+// saves it (avoids the anchor-href navigation issue in some browsers)
+async function downloadResultFile() {
+  if (!_analysis?.result_file) { alert("No result file available."); return; }
+  try {
+    const res = await fetch(`${API_BASE_URL}/${_analysis.result_file}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf  = await res.arrayBuffer();
+    const type = _isRaster ? "application/octet-stream" : "application/geo+json";
+    const blob = new Blob([buf], { type });
+    const fname = _analysis.result_file.split("/").pop();
+
+    if (!_isRaster && _resultBlob) {
+      // Inject simplestyle colour properties so GIS tools render it correctly
+      downloadStyledGeoJSON(_resultBlob, `${_analysis.type}_result.geojson`);
+      return;
+    }
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch(e) {
+    alert("Download failed: " + e.message);
+  }
+}
+
+// Mirror dashboard's downloadGeoJSON — deep-copy + inject simplestyle fill props
+function downloadStyledGeoJSON(geojson, filename) {
+  const copy = JSON.parse(JSON.stringify(geojson));
+  const type = _analysis.type;
+
+  // Sort features for GIS rendering (same order as dashboard)
+  if (type === "public-transport") {
+    copy.features.sort((a, b) => {
+      const rank = p => (p.layer === "boundary" || p.layer === "station") ? 0
+        : p.type === "uncovered" ? 1 : 2;
+      return rank(a.properties||{}) - rank(b.properties||{});
+    });
+  } else if (type === "facility-accessibility") {
+    const allTimes = [...new Set(copy.features.map(f => f.properties.time_min).filter(x => x != null))].sort((a,b) => b-a);
+    copy.features.sort((a, b) => {
+      const rk = p => p.layer === "boundary" ? 0
+        : (p.type === "uncovered" || p.category === "uncovered") ? 1
+        : p.time_min != null ? 2 + allTimes.indexOf(p.time_min) : 99;
+      return rk(a.properties||{}) - rk(b.properties||{});
+    });
+  }
+
+  // Inject simplestyle fill colours matching each type's legend
+  copy.features.forEach(f => {
+    const p = f.properties || {};
+    let fill = "#888888", fillOpacity = 0.6;
+
+    switch(type) {
+      case "crime": {
+        const d = p.crime_density || 0;
+        fill = d > 20 ? "#891508" : d > 15 ? "#e74c3c" : d > 10 ? "#e67e22" : d > 5 ? "#f1c40f" : "#2ecc71";
+        break;
+      }
+      case "urban-density": {
+        const d = p.density || p.pop_density || 0;
+        fill = d > 30000 ? "#253494" : d > 15000 ? "#2c7fb8" : d > 5000 ? "#41b6c4" : d > 1000 ? "#a1dab4" : "#ffffcc";
+        break;
+      }
+      case "public-transport": {
+        if (p.layer === "boundary" || p.layer === "station") { fill = "#f0a500"; fillOpacity = 0; }
+        else { const cov = p.coverage_pct || 0; fill = cov > 80 ? "#198754" : cov > 60 ? "#52b788" : cov > 40 ? "#ffc107" : cov > 20 ? "#fd7e14" : "#e74c3c"; fillOpacity = 0.55; }
+        break;
+      }
+      case "traffic": {
+        const h = p.hierarchy || p.road_type || "";
+        fill = h === "primary" ? "#e74c3c" : h === "secondary" ? "#f39c12" : h === "local" ? "#3498db" : "#95a5a6";
+        fillOpacity = 0;
+        break;
+      }
+      case "vegetation": {
+        const v = p.vegetation_pct || 0;
+        fill = v >= 60 ? "#27ae60" : v >= 30 ? "#f39c12" : "#e74c3c";
+        break;
+      }
+      case "informal-settlement": {
+        const t = p.settlement_type || p.type || "";
+        fill = t.includes("informal") || t.includes("slum") ? "#e74c3c" : t.includes("formal") ? "#27ae60" : "#f39c12";
+        break;
+      }
+      case "facility-accessibility": {
+        if (p.type === "facility") { fill = "#4cc2ff"; fillOpacity = 0.9; }
+        else { const cov = p.coverage_pct || p.accessibility_score || 0; fill = cov > 70 ? "#27ae60" : cov > 40 ? "#f39c12" : "#e74c3c"; fillOpacity = 0.55; }
+        break;
+      }
+    }
+
+    f.properties["fill"]           = fill;
+    f.properties["fill-opacity"]   = fillOpacity;
+    f.properties["stroke"]         = fill;
+    f.properties["stroke-width"]   = 1;
+    f.properties["stroke-opacity"] = fillOpacity > 0 ? 0.6 : 0;
+  });
+
+  const blob = new Blob([JSON.stringify(copy, null, 2)], { type:"application/geo+json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+function downloadCSV() {
+  if (!_resultBlob?.features?.length) { alert("Result not loaded."); return; }
+  const features = _resultBlob.features;
+  const cols = Object.keys(features[0].properties || {});
+  const rows = [cols.join(",")];
+  features.forEach(f => {
+    rows.push(cols.map(c => {
+      const v = f.properties[c];
+      if (v == null) return "";
+      const s = String(v);
+      return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g,'""')}"` : s;
+    }).join(","));
+  });
+  const blob = new Blob([rows.join("\n")], { type:"text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${_analysis.type}_result_${_analysis.id}.csv`;
+  a.click();
+}
+
+function exportTextReport() {
+  const date = new Date(_analysis.created_at).toLocaleString();
+  const recs  = _config ? _config.recommendations(_analysis.score || 50).map(r => "  • " + r).join("\n") : "  No recommendations available.";
+
+  // Collect stat boxes from the full-area tab
+  const insightLines = Array.from(document.querySelectorAll("#tab-full .stat-box")).map(el => {
+    const label = el.querySelector(".stat-label")?.textContent || "";
+    const value = el.querySelector(".stat-value")?.textContent || "";
+    return `  ${label}: ${value.replace(/\n/g," ").trim()}`;
+  }).join("\n");
+
+  const content = [
+    "URBAN QoL ANALYSIS REPORT",
+    "=".repeat(50),
+    "",
+    `Analysis: ${_analysis.title || _config?.title || _analysis.type}`,
+    `Type:     ${_config?.title || _analysis.type}`,
+    `Date:     ${date}`,
+    `Score:    ${_analysis.score ?? "—"} / 100`,
+    `Status:   ${(_analysis.status || "—").toUpperCase()}`,
+    `Project:  ${_analysis.project_name || "Unassigned"}`,
+    "",
+    "FULL AREA STATISTICS",
+    "-".repeat(30),
+    insightLines,
+    "",
+    "RECOMMENDATIONS",
+    "-".repeat(30),
+    recs,
+    "",
+    `Generated by Urban QoL Platform — ${new Date().toLocaleString()}`
+  ].join("\n");
+
+  const blob = new Blob([content], { type:"text/plain" });
+  const a    = document.createElement("a");
+  a.href     = URL.createObjectURL(blob);
+  a.download = `${_analysis.type}_report_${_analysis.id}.txt`;
+  a.click();
+}
+
+// ── Shared PDF engine (mirrors dashboard's downloadAnalysisPDF exactly) ───────
+function _buildPdfEngine(jsPDF) {
+  const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+  const PW = 210, PH = 297, ML = 14, MR = 14, CW = PW - ML - MR;
+  let y = 0;
+
+  const C = {
+    bg:[15,17,26], panel:[22,26,40], card:[28,33,50],
+    accent:[76,194,255], accentDim:[40,100,140],
+    textMain:[220,225,240], textMuted:[130,140,165],
+    border:[45,52,75], white:[255,255,255],
+  };
+
+  const sf  = rgb => doc.setFillColor(rgb[0],rgb[1],rgb[2]);
+  const sd  = rgb => doc.setDrawColor(rgb[0],rgb[1],rgb[2]);
+  const stc = rgb => doc.setTextColor(rgb[0],rgb[1],rgb[2]);
+  const rct = (x,yw,w,h,s="F") => doc.rect(x,yw,w,h,s);
+
+  function hexToRgb(hex) {
+    if (!hex || hex.length < 7) return C.accent;
+    return [parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)];
+  }
+  function safe(str) {
+    if (!str) return "";
+    return String(str).replace(/💡/g,"[i]").replace(/⚠️?/g,"[!]").replace(/✅/g,"[ok]")
+      .replace(/📊/g,"[chart]").replace(/✦/g,"*").replace(/·/g,"-").replace(/•/g,"-")
+      .replace(/[^\x00-\xFF]/g,"?");
+  }
+  function ensurePage(needed) {
+    if (y + needed > PH - 12) { doc.addPage(); sf(C.bg); rct(0,0,PW,PH); y = 14; }
+  }
+  function sectionHeader(text) {
+    ensurePage(12);
+    sf(C.panel); rct(ML,y,CW,9);
+    sf(C.accent); rct(ML,y,3,9);
+    stc(C.white); doc.setFontSize(9); doc.setFont("helvetica","bold");
+    doc.text(safe(text), ML+5, y+6); y += 12;
+  }
+  function cardGrid(cards) {
+    if (!cards.length) return;
+    const colW=(CW-2)/2, cardH=10, gap=1.5;
+    let rowY=y;
+    cards.forEach((card,i) => {
+      if (i%2===0) { ensurePage(cardH+gap); rowY=y; }
+      const col=i%2, cx=ML+col*(colW+2);
+      sf(C.card); rct(cx,rowY,colW,cardH);
+      sd(C.border); doc.setLineWidth(0.15); rct(cx,rowY,colW,cardH,"S");
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); stc(C.textMuted);
+      doc.text(safe(card.label), cx+3, rowY+3.5);
+      doc.setFont("helvetica","bold"); doc.setFontSize(8); stc(C.textMain);
+      const vl = doc.splitTextToSize(safe(card.value), colW-6);
+      doc.text(vl[0]||safe(card.value), cx+3, rowY+7.5);
+      if (col===1||i===cards.length-1) y=rowY+cardH+gap;
+    });
+  }
+  function scoreGauge(score) {
+    if (score==null) return;
+    ensurePage(22);
+    const bx=ML, bw=CW, bh=12, by=y+4;
+    sf(C.panel); rct(ML,y,CW,20);
+    stc(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+    doc.text("Overall QoL Score", ML+2, y+3.5);
+    sf(C.card); rct(bx,by,bw,bh);
+    sd(C.border); doc.setLineWidth(0.2); rct(bx,by,bw,bh,"S");
+    const fillW=Math.max(2,(score/100)*bw);
+    const fillColor=score>=75?[46,204,113]:score>=50?[139,195,74]:score>=25?[243,156,18]:[231,76,60];
+    sf(fillColor); rct(bx,by,fillW,bh);
+    sd(C.border); doc.setLineWidth(0.3);
+    [25,50,75].forEach(v=>{const tx=bx+(v/100)*bw; doc.line(tx,by,tx,by+bh);});
+    stc(C.white); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+    doc.text(`${Math.round(score)} / 100`, bx+fillW/2, by+bh/2+2.5, {align:"center"});
+    stc(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
+    ["Poor","Fair","Good","Excellent"].forEach((lbl,i)=>
+      doc.text(lbl, bx+(i*25+12.5)/100*bw, by+bh+3.5, {align:"center"}));
+    y += 24;
+  }
+  function barChart(data) {
+    if (!data) return;
+    const {title:ct, labels, values, colors, unit} = data;
+    const n=labels.length, maxVal=Math.max(...values,1);
+    const chartH=38, totalH=chartH+22;
+    ensurePage(totalH+4);
+    sf(C.panel); rct(ML,y,CW,totalH+2);
+    stc(C.textMuted); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
+    doc.text(safe(ct), ML+CW/2, y+5, {align:"center"});
+    const chartTop=y+8, barAreaW=CW-16, barAreaX=ML+8;
+    sd(C.border); doc.setLineWidth(0.15);
+    [0,0.5,1].forEach(frac=>{
+      const lineY=chartTop+chartH*(1-frac);
+      doc.line(barAreaX,lineY,barAreaX+barAreaW,lineY);
+      if(frac>0){stc(C.textMuted);doc.setFont("helvetica","normal");doc.setFontSize(6);
+        doc.text(`${Math.round(maxVal*frac)}`,barAreaX-1,lineY+1,{align:"right"});}
+    });
+    const slotW=barAreaW/n, barW=Math.min(slotW*0.62,18);
+    values.forEach((val,i)=>{
+      const barH=Math.max(1,(val/maxVal)*chartH);
+      const bx=barAreaX+i*slotW+(slotW-barW)/2, by=chartTop+chartH-barH;
+      const rgb=typeof colors[i]==="string"?hexToRgb(colors[i]):colors[i];
+      sf([rgb[0]*0.4,rgb[1]*0.4,rgb[2]*0.4]); rct(bx+0.5,by+0.5,barW,barH);
+      sf(rgb); rct(bx,by,barW,barH);
+      stc(C.textMain); doc.setFont("helvetica","bold"); doc.setFontSize(6.5);
+      doc.text(`${val}`,bx+barW/2,by-1.2,{align:"center"});
+      stc(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+      doc.splitTextToSize(safe(labels[i]),slotW-1)
+        .forEach((ln,li)=>doc.text(safe(ln),bx+barW/2,chartTop+chartH+4+li*3.5,{align:"center"}));
+    });
+    stc(C.textMuted); doc.setFont("helvetica","italic"); doc.setFontSize(6);
+    doc.text(`(${unit})`,barAreaX+barAreaW,chartTop+chartH+4,{align:"right"});
+    y += totalH+5;
+  }
+  function insightBox(text) {
+    if (!text) return;
+    const lines = doc.splitTextToSize(safe(text), CW-10);
+    const bh = lines.length*4.5+5;
+    ensurePage(bh+3);
+    sf(C.panel); rct(ML,y,CW,bh);
+    sf(C.accentDim); rct(ML,y,2.5,bh);
+    stc(C.textMain); doc.setFont("helvetica","italic"); doc.setFontSize(8);
+    lines.forEach((line,i)=>doc.text(line,ML+5,y+4.5+i*4.5));
+    y += bh+3;
+  }
+  function scoreHeatmapStrip(gridFeatures) {
+    if (!gridFeatures?.length) return;
+    const scores = gridFeatures.map(f=>f.properties?.qol_score).filter(s=>s!=null).sort((a,b)=>a-b);
+    if (!scores.length) return;
+    ensurePage(28);
+    sf(C.panel); rct(ML,y,CW,26);
+    stc(C.textMuted); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
+    doc.text("Grid Cell Score Distribution (sorted low to high)", ML+CW/2, y+5, {align:"center"});
+    const stripY=y+8, stripH=10, n=scores.length, cellW=Math.max(0.3,CW/n);
+    scores.forEach((s,i)=>{
+      const r=s>=75?46:s>=50?139:s>=25?243:231;
+      const g=s>=75?204:s>=50?195:s>=25?156:76;
+      const b=s>=75?113:s>=50?74:s>=25?18:60;
+      doc.setFillColor(r,g,b); doc.rect(ML+i*cellW,stripY,cellW+0.1,stripH,"F");
+    });
+    const legItems=[{label:"Excellent (75–100)",r:46,g:204,b:113},{label:"Good (50–74)",r:139,g:195,b:74},
+      {label:"Fair (25–49)",r:243,g:156,b:18},{label:"Poor (0–24)",r:231,g:76,b:60}];
+    const legW=CW/4;
+    legItems.forEach((item,i)=>{const lx=ML+i*legW;
+      doc.setFillColor(item.r,item.g,item.b); doc.rect(lx,stripY+stripH+2,4,3,"F");
+      stc(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+      doc.text(item.label,lx+5.5,stripY+stripH+4.5);});
+    y += 30;
+  }
+  function footer(service) {
+    const pageCount = doc.getNumberOfPages();
+    for (let p=1; p<=pageCount; p++) {
+      doc.setPage(p);
+      sf(C.panel); rct(0,PH-10,PW,10);
+      sf(C.accentDim); rct(0,PH-10,PW,0.5);
+      stc(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+      doc.text("Malaz - Urban Quality of Life Platform", ML, PH-4);
+      doc.text(`Page ${p} of ${pageCount}`, PW-MR, PH-4, {align:"right"});
+    }
+  }
+  function coverPage(title, service) {
+    sf(C.bg); rct(0,0,PW,PH);
+    sf(C.panel); rct(0,0,PW,38);
+    sf(C.accent); rct(0,35.5,PW,2.5);
+    stc(C.accent); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    doc.text("MALAZ", ML, 12);
+    stc(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+    doc.text("Urban Quality of Life Platform", ML, 17);
+    stc(C.white); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+    doc.splitTextToSize(safe(title), CW-20).forEach((line,i)=>doc.text(line,ML,27+i*7));
+    stc(C.textMuted); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+    const dateStr = new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
+    doc.text(`Generated: ${dateStr}`, PW-MR, 12, {align:"right"});
+    doc.text(`Service: ${service}`,   PW-MR, 17, {align:"right"});
+    y = 44;
+  }
+
+  // Capture map canvas snapshot
+  function captureMap() {
+    try {
+      const canvas = document.querySelector("#analysisMap canvas");
+      if (!canvas) return null;
+      return { url: canvas.toDataURL("image/jpeg",0.85), w: canvas.width||1, h: canvas.height||1 };
+    } catch(e) { return null; }
+  }
+  function addMapImage(map) {
+    if (!map) return;
+    const imgW=CW-2, imgH=Math.min(90, imgW*(map.h/map.w));
+    ensurePage(imgH+12);
+    sf(C.panel); rct(ML,y,CW,imgH+4);
+    try { doc.addImage(map.url,"JPEG",ML+1,y+1,imgW,imgH); } catch(e){}
+    stc(C.textMuted); doc.setFont("helvetica","italic"); doc.setFontSize(7);
+    doc.text("Map — Full Area view at time of export", ML+2, y+imgH+5);
+    y += imgH+9;
+  }
+
+  return { doc, PW, PH, ML, MR, CW,
+    get y() { return y; }, set y(v) { y=v; },
+    C, safe, ensurePage, sectionHeader, cardGrid, scoreGauge,
+    barChart, insightBox, scoreHeatmapStrip, footer, coverPage,
+    captureMap, addMapImage, hexToRgb, sf, stc };
+}
+
+// Extract stat cards from a pane
+function _extractCards(paneId) {
+  return Array.from(document.querySelectorAll(`#${paneId} .stat-box`)).map(el => ({
+    label: el.querySelector(".stat-label")?.textContent?.trim() || "",
+    value: el.querySelector(".stat-value")?.textContent?.trim().replace(/\s+/g," ") || "",
+  })).filter(c => c.label);
+}
+
+// Compute bar chart data from loaded GeoJSON (same logic as dashboard's computeFullVisuals)
+function _computeVisuals(type, features) {
+  if (!features?.length) return null;
+  switch(type) {
+    case "crime": {
+      const b=[0,0,0,0,0];
+      features.forEach(f=>{const d=f.properties.crime_density||0;
+        if(d<=5)b[0]++;else if(d<=10)b[1]++;else if(d<=15)b[2]++;else if(d<=20)b[3]++;else b[4]++;});
+      return {title:"Crime Density Distribution",labels:["0–5","5–10","10–15","15–20",">20"],
+        values:b,colors:["#2ecc71","#f1c40f","#e67e22","#e74c3c","#891508"],unit:"/km²"};
+    }
+    case "urban-density": {
+      const b=[0,0,0,0,0];
+      features.forEach(f=>{const d=f.properties.density||f.properties.pop_density||0;
+        if(d<500)b[0]++;else if(d<2000)b[1]++;else if(d<5000)b[2]++;else if(d<10000)b[3]++;else b[4]++;});
+      return {title:"Population Density Distribution",labels:["<500","500–2k","2k–5k","5k–10k",">10k"],
+        values:b,colors:["#add8e6","#87ceeb","#4682b4","#4169e1","#000080"],unit:"pop/km²"};
+    }
+    case "public-transport": {
+      const cov=features.filter(f=>f.properties.type==="covered").length;
+      const unc=features.filter(f=>f.properties.type==="uncovered").length;
+      if(!cov&&!unc) return null;
+      return {title:"Coverage Breakdown",labels:["Covered","Uncovered"],
+        values:[cov,unc],colors:["#4cc2ff","#e74c3c"],unit:"zones"};
+    }
+    case "facility-accessibility": {
+      const t5=features.filter(f=>f.properties.time_min===5).length;
+      const t10=features.filter(f=>f.properties.time_min===10).length;
+      const t15=features.filter(f=>f.properties.time_min===15).length;
+      if(!t5&&!t10&&!t15) return null;
+      return {title:"Accessibility Walk-Time Zones",labels:["≤5 min","≤10 min","≤15 min"],
+        values:[t5,t10,t15],colors:["#198754","#ffc107","#dc3545"],unit:"zones"};
+    }
+    case "vegetation": {
+      const b=[0,0,0,0];
+      features.forEach(f=>{const p=f.properties.vegetation_pct??0;
+        if(p>=50)b[0]++;else if(p>=30)b[1]++;else if(p>=15)b[2]++;else b[3]++;});
+      return {title:"Vegetation Coverage Distribution",labels:["≥50%","30–50%","15–30%","<15%"],
+        values:b,colors:["#27ae60","#8bc34a","#f39c12","#c0392b"],unit:"cells"};
+    }
+    case "traffic": {
+      const b=[0,0,0];
+      features.filter(f=>f.properties.type!=="hotspot").forEach(f=>{
+        const c=f.properties.congestion;
+        if(c==="high")b[2]++;else if(c==="medium")b[1]++;else b[0]++;});
+      return {title:"Congestion Level Distribution",labels:["Low","Medium","High"],
+        values:b,colors:["#2ecc71","#f39c12","#e74c3c"],unit:"cells"};
+    }
+    case "informal-settlement": {
+      const b=[0,0,0];
+      features.filter(f=>f.properties.type!=="high_irregularity_zone").forEach(f=>{
+        const s=f.properties.irregularity_score??0;
+        if(s<=33)b[0]++;else if(s<=66)b[1]++;else b[2]++;});
+      return {title:"Irregularity Classification",labels:["Planned (0–33)","Mixed (34–66)","Informal (67–100)"],
+        values:b,colors:["#2ecc71","#f39c12","#e74c3c"],unit:"cells"};
+    }
+    default: return null;
+  }
+}
+
+function _extractScore(cards) {
+  for (const c of cards) {
+    const m = c.value.match(/^(\d+(?:\.\d+)?)\s*\/\s*100/);
+    if (m && (c.label.toLowerCase().includes("score")||c.label.toLowerCase().includes("overall")))
+      return parseFloat(m[1]);
+  }
+  return null;
+}
+
+function exportPDF() {
+  if (!window.jspdf) { alert("PDF library not loaded. Try again in a moment."); return; }
+  const { jsPDF } = window.jspdf;
+  const e = _buildPdfEngine(jsPDF);
+  const service = _analysis.type;
+  const title   = _analysis.title || _config?.title || service;
+
+  const rawCards  = _extractCards("tab-raw");
+  const fullCards = _extractCards("tab-full");
+  const gridFeats = window._lastGridGeoJSON?.features || null;
+  const gridCards = gridFeats ? [
+    { label:"Total Cells", value: gridFeats.length.toLocaleString() },
+    { label:"Avg QoL Score", value: (() => {
+        const s=gridFeats.map(f=>f.properties.qol_score).filter(x=>x!=null);
+        return s.length ? Math.round(s.reduce((a,b)=>a+b,0)/s.length)+"/100" : "—";
+      })() },
+  ] : [];
+  const overallScore = _extractScore(fullCards) ?? _analysis.score;
+  const fullVis = _isRaster ? null : _computeVisuals(service, _resultBlob?.features);
+
+  // Collect key insight text from the full tab
+  const insights = Array.from(document.querySelectorAll("#tab-full .key-insight"))
+    .map(el=>el.textContent.trim().replace(/^💡\s*/,"")).filter(t=>t.length>4);
+
+  e.coverPage(title, service);
+  const map = e.captureMap();
+  e.addMapImage(map);
+
+  if (rawCards.length) { e.sectionHeader("RAW DATA  /  INPUT SUMMARY"); e.cardGrid(rawCards); e.y += 3; }
+
+  if (fullCards.length || insights.length) {
+    e.sectionHeader("FULL AREA ANALYSIS");
+    e.cardGrid(fullCards);
+    if (overallScore != null) { e.y += 3; e.scoreGauge(overallScore); }
+    if (fullVis) { e.y += 2; e.barChart(fullVis); }
+    if (insights.length) { e.y += 2; insights.forEach(t=>e.insightBox(t)); }
+    e.y += 3;
+  }
+
+  e.sectionHeader("GRID / CELL ANALYSIS");
+  if (gridCards.length || gridFeats) {
+    e.cardGrid(gridCards);
+    if (gridFeats) { e.y += 2; e.scoreHeatmapStrip(gridFeats); }
+    e.y += 3;
+  } else {
+    e.ensurePage(16);
+    e.sf(e.C.panel); e.doc.rect(e.ML, e.y, e.CW, 13, "F");
+    e.stc(e.C.textMuted); e.doc.setFont("helvetica","italic"); e.doc.setFontSize(8);
+    e.doc.text("Grid analysis not yet generated. Open the Grid / Cell tab to compute cell scores first.", e.ML+4, e.y+7);
+    e.y += 16;
+  }
+
+  e.footer(service);
+  e.doc.save(`${service}_analysis_report.pdf`);
+}
+
+async function exportAIPDF() {
+  if (!window.jspdf) { alert("PDF library not loaded. Try again in a moment."); return; }
+  if (!_aiContext) { alert("Load the analysis result first so the AI context is available."); return; }
+
+  const btn = document.querySelector(`[onclick="exportAIPDF()"]`);
+  if (btn) { btn.textContent = "Generating…"; btn.disabled = true; }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/ai/recommendations`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({..._aiContext, lang:"en"})
+    });
+    if (!res.ok) throw new Error(`AI endpoint HTTP ${res.status}`);
+    const data = await res.json();
+
+    const { jsPDF } = window.jspdf;
+    const e = _buildPdfEngine(jsPDF);
+    const service = _analysis.type;
+    const title   = _analysis.title || _config?.title || service;
+
+    e.coverPage(`${title} — AI Report`, service);
+    e.addMapImage(e.captureMap());
+
+    const overallScore = _analysis.score;
+    if (overallScore != null) { e.sectionHeader("QoL SCORE"); e.scoreGauge(overallScore); e.y += 3; }
+
+    if (data.summary) { e.sectionHeader("AI ANALYSIS SUMMARY"); e.insightBox(data.summary); e.y += 3; }
+
+    if (data.insights?.length) {
+      e.sectionHeader("KEY INSIGHTS");
+      data.insights.forEach(ins => e.insightBox(typeof ins==="string"?ins:ins.text||JSON.stringify(ins)));
+      e.y += 3;
+    }
+    if (data.recommendations?.length) {
+      e.sectionHeader("AI RECOMMENDATIONS");
+      data.recommendations.forEach(r => e.insightBox(typeof r==="string"?r:r.text||JSON.stringify(r)));
+      e.y += 3;
+    }
+    if (data.anomalies?.length) {
+      e.sectionHeader("ANOMALIES DETECTED");
+      data.anomalies.forEach(a => e.insightBox("⚠ "+(typeof a==="string"?a:a.text||JSON.stringify(a))));
+      e.y += 3;
+    }
+
+    e.footer(service);
+    e.doc.save(`${service}_ai_report.pdf`);
+  } catch(err) {
+    alert("Could not generate AI PDF: " + err.message);
+  } finally {
+    if (btn) { btn.textContent = "✦ AI PDF Report"; btn.disabled = false; }
+  }
+}
+
+// ── AI Tab ────────────────────────────────────────────────────────────────────
+let _aiContext = null;  // built after result loads, used by AI tab + AI PDF
+
+async function fetchAIRecommendations() {
+  const pane = document.getElementById("tab-ai");
+  if (!_aiContext) {
+    pane.innerHTML = `<div class="ai-placeholder">
+      <div class="ai-icon">✦</div>
+      <p style="font-size:14px;font-weight:600;margin-bottom:8px;">No context available</p>
+      <p style="font-size:13px;color:var(--muted);">The result file must be loaded before AI recommendations can be generated.</p>
+    </div>`;
+    return;
+  }
+
+  pane.innerHTML = `<div class="loading-state"><div class="spinner"></div>Analysing results with AI…</div>`;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/ai/recommendations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ..._aiContext, lang: "en" })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    let html = "";
+    if (data.summary) html += `<div class="key-insight">💡 ${data.summary}</div>`;
+
+    if (data.insights?.length) {
+      html += `<div class="section-label">Key Insights</div>`;
+      data.insights.forEach(ins => {
+        html += `<div class="rec-box">${typeof ins === "string" ? ins : ins.text || JSON.stringify(ins)}</div>`;
+      });
+    }
+    if (data.recommendations?.length) {
+      html += `<div class="section-label">Recommendations</div>`;
+      data.recommendations.forEach(r => {
+        html += `<div class="rec-box">${typeof r === "string" ? r : r.text || JSON.stringify(r)}</div>`;
+      });
+    }
+    if (data.anomalies?.length) {
+      html += `<div class="section-label">Anomalies</div>`;
+      data.anomalies.forEach(a => {
+        html += `<div class="rec-box" style="border-color:rgba(231,76,60,.25);">⚠ ${typeof a === "string" ? a : a.text || JSON.stringify(a)}</div>`;
+      });
+    }
+
+    if (!html) html = `<p style="color:var(--muted);font-size:13px;">AI analysis complete — no specific findings to report.</p>`;
+    pane.innerHTML = html;
+
+  } catch(e) {
+    pane.innerHTML = `<div class="error-box">Could not load AI recommendations: ${e.message}<br>
+      <button class="exp-btn" style="margin-top:10px;" onclick="fetchAIRecommendations()">Retry</button></div>`;
+  }
+}
+
+// ── Legend render ─────────────────────────────────────────────────────────────
+function renderLegend(config) {
+  const card = document.getElementById("legendCard");
+  const list = document.getElementById("legendList");
+  card.style.display = "block";
+  list.innerHTML = config.legend.map(item => `
+    <div class="legend-chip">
+      <div class="legend-dot" style="background:${item.color};"></div>
+      <span class="legend-label">${item.label}</span>
+      <span class="legend-range">${item.range}</span>
+    </div>`).join("");
+}
+
+// ── Main loader ───────────────────────────────────────────────────────────────
 async function loadAnalysisDetails() {
+  initMap();
+
   try {
     const username = localStorage.getItem("username") || "default";
     const res  = await fetch(`${API_BASE_URL}/analyses?username=${username}`);
     const data = await res.json();
-    const analysis = data.find(a => String(a.id) === String(analysisId));
+    _analysis  = data.find(a => String(a.id) === String(analysisId));
 
-    if (!analysis) {
+    if (!_analysis) {
       document.getElementById("analysisTitle").textContent = "Analysis not found";
       document.getElementById("analysisMeta").textContent  = "This record does not exist or has been deleted.";
       return;
     }
 
-    const config = ANALYSIS_CONFIG[analysis.type];
+    _config   = ANALYSIS_CONFIG[_analysis.type];
+    _isRaster = _config?.isRaster ?? false;
 
-    // Fill header
-    document.getElementById("analysisTitle").textContent = analysis.title || (config ? config.title : analysis.type);
-    document.getElementById("analysisMeta").textContent  =
-      `${analysis.area || "Analysis"} • ${new Date(analysis.created_at).toLocaleString()}`;
+    // ── Header ──
+    const typeLabel   = ANALYSIS_LABELS?.[_analysis.type]?.en || _config?.title || _analysis.type;
+    const hasCustom   = _analysis.title && _analysis.title !== typeLabel;
+    document.getElementById("analysisTitle").textContent = _analysis.title || typeLabel;
+    const subParts = [];
+    if (hasCustom) subParts.push(typeLabel);
+    if (_analysis.project_name) subParts.push(_analysis.project_name);
+    subParts.push(new Date(_analysis.created_at).toLocaleString());
+    document.getElementById("analysisMeta").textContent = subParts.join("  ·  ");
 
-    // Fill metadata card
-    document.getElementById("metaType").textContent   = config ? config.title : analysis.type;
-    document.getElementById("metaDate").textContent   = new Date(analysis.created_at).toLocaleString();
-    document.getElementById("metaFormat").textContent = config ? config.dataFormat : "—";
-    const sc = analysis.score ?? "--", st = analysis.status || "mid";
-    document.getElementById("metaScore").innerHTML  = `<span class="score-badge ${scoreClass(st)}">${sc}/100</span>`;
-    document.getElementById("metaStatus").innerHTML = `<span class="score-badge ${scoreClass(st)}">${st.toUpperCase()}</span>`;
-
-    // If unknown type, show raw info
-    if (!config) {
-      document.getElementById("classSummaryTitle").textContent = "Analysis Type";
-      document.getElementById("classSummaryList").innerHTML =
-        `<div class="recommendation">Type "<strong>${analysis.type}</strong>" has no detail configuration yet.</div>`;
-      renderRecommendations(["This analysis type is not yet configured for detailed display.", "Contact your administrator to add support for this type."]);
-      if (analysis.result_file) {
-        const map = initMap();
-        try { await loadVectorMap(analysis, map, { styleFeature: () => ({ fillColor:"#00d4aa", fillOpacity:0.5, color:"#333", weight:1 }), popupFn: f => JSON.stringify(f.properties).slice(0,200) }); }
-        catch(e) { document.getElementById("analysisPreview").innerHTML = `<div class="error-msg">Could not render map: ${e.message}</div>`; }
-      }
-      return;
+    // Score pill
+    const sc = _analysis.score, st = _analysis.status || "mid";
+    if (sc != null) {
+      const pill = document.getElementById("scorePill");
+      pill.style.display = "inline-flex";
+      pill.className = `score-pill ${st}`;
+      pill.textContent = `${sc} / 100`;
     }
 
-    // Legend & classification
-    renderLegend(config);
-    renderClassSummary(config);
-    document.getElementById("classSummaryTitle").textContent = config.classTitle;
+    // ── Metadata sidebar ──
+    document.getElementById("metaType").textContent    = _config?.title || _analysis.type;
+    document.getElementById("metaDate").textContent    = new Date(_analysis.created_at).toLocaleString();
+    document.getElementById("metaFormat").textContent  = _config?.dataFormat || "—";
+    document.getElementById("metaScore").textContent   = sc != null ? `${sc} / 100` : "—";
+    document.getElementById("metaProject").textContent = _analysis.project_name || "Unassigned";
 
-    // Recommendations (will be prepended with insight for raster)
-    renderRecommendations(config.recommendations(analysis.score || 50));
-
-    // Expansion has no file — show score card
-    if (analysis.type === "expansion") {
-      document.getElementById("analysisPreview").style.cssText =
-        `display:flex;align-items:center;justify-content:center;flex-direction:column;background:linear-gradient(135deg,#0d1117,#1a2332);border-radius:16px;`;
-      document.getElementById("analysisPreview").innerHTML = `
-        <div style="text-align:center;padding:40px;">
-          <div style="font-size:72px;font-weight:800;color:var(--accent);">${analysis.score ?? "--"}</div>
-          <div style="font-size:20px;color:#94a3b8;margin-top:8px;">Expansion Suitability Score / 100</div>
-          <div style="font-size:14px;color:#64748b;margin-top:6px;">${analysis.area || "Urban expansion analysis"}</div>
+    // ── Expansion: special view ──
+    if (_analysis.type === "expansion") {
+      document.getElementById("mapTabBar").style.display = "none";
+      document.getElementById("analysisMap").style.cssText =
+        "display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0d1117,#1a2332);height:460px;";
+      document.getElementById("analysisMap").innerHTML = `
+        <div class="expansion-score">
+          <div class="big">${sc ?? "—"}</div>
+          <div class="sub">Expansion Suitability Score / 100</div>
+          <div style="font-size:13px;color:#64748b;margin-top:6px;">${_analysis.area||"Urban expansion analysis"}</div>
         </div>`;
-      renderStats([
-        { label:"Score",  value: (analysis.score ?? "--") + "/100" },
-        { label:"Status", value: (analysis.status || "—").toUpperCase() }
-      ]);
+      document.getElementById("tab-full").innerHTML = `
+        <div class="stats-grid">
+          ${sb("Score", sc != null ? `<span style="color:${scoreColor(sc)}">${sc} / 100</span>` : "—")}
+          ${sb("Status", (st).toUpperCase())}
+        </div>
+        <div class="rec-box" style="margin-top:8px;">Expansion analysis identifies optimal urban growth zones based on composite quality of life scores.</div>`;
+      document.getElementById("tab-raw").innerHTML = `<p style="color:var(--muted);font-size:13px;">Input files are not stored for expansion analysis.</p>`;
       return;
     }
 
-    // Sanitize result_file — reject absolute paths, double-prefixed, bare filenames
-    const resultFile = sanitizeResultFile(analysis.result_file);
-    if (!resultFile) { showNoFile(config, analysis); return; }
-    analysis.result_file = resultFile;
-
-    // Init map
-    const map = initMap();
-
-    const isRaster = ["ndvi","heat-index","air-quality"].includes(analysis.type);
-
-    try {
-      if (isRaster) {
-        await loadRasterMap(analysis, map, config);
-      } else {
-        await loadVectorMap(analysis, map, config);
-      }
-    } catch(err) {
-      console.error("Map load error:", err);
-      document.getElementById("analysisPreview").innerHTML =
-        `<div class="error-msg">Failed to load result: ${err.message}<br><small>URL: ${API_BASE_URL}/${analysis.result_file}</small></div>`;
-      renderStats([{ label:"Error", value: "Load failed" }]);
+    // ── Unknown type ──
+    if (!_config) {
+      document.getElementById("tab-full").innerHTML =
+        `<div class="error-box">Analysis type "<strong>${_analysis.type}</strong>" is not yet configured.</div>`;
+      return;
     }
 
-  } catch(outerErr) {
-    console.error("loadAnalysisDetails failed:", outerErr);
+    // ── Legend + Export ──
+    renderLegend(_config);
+    buildExportButtons(_isRaster);
+
+    // ── Sanitize result file path ──
+    const resultFile = sanitizeResultFile(_analysis.result_file);
+    if (!resultFile) {
+      document.getElementById("tab-full").innerHTML =
+        `<div class="error-box">No result file available for this analysis. Run it again to regenerate.</div>`;
+      document.getElementById("tab-raw").innerHTML =
+        `<div class="error-box">No result file saved.</div>`;
+      return;
+    }
+    _analysis.result_file = resultFile;
+    const url = `${API_BASE_URL}/${resultFile}`;
+
+    // Show the tab bar over the map
+    document.getElementById("mapTabBar").style.display = "flex";
+
+    if (_isRaster) await loadRasterAnalysis(url);
+    else           await loadVectorAnalysis(url);
+
+    setTimeout(() => { if (_map) _map.invalidateSize(); }, 400);
+
+  } catch(err) {
+    console.error("loadAnalysisDetails error:", err);
     document.getElementById("analysisTitle").textContent = "Error loading analysis";
-    document.getElementById("analysisMeta").textContent  = outerErr.message;
+    document.getElementById("analysisMeta").textContent  = err.message;
   }
 }
 
-function initMap() {
-  const map = L.map("analysisPreview").setView([30.0444, 31.2357], 10);
-  L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    { attribution:"Tiles © Esri" }
-  ).addTo(map);
-  return map;
+async function loadRasterAnalysis(url) {
+  try {
+    const { layer, georaster } = await loadRaster(url, _config, false);
+    _resultLayer = layer;
+    _resultLayer.addTo(_map);
+    fitLayer(_resultLayer);
+
+    const rawData = await loadRaster(url, _config, true);
+    _rawLayer = rawData.layer;
+
+    const min  = georaster.mins?.[0] ?? 0;
+    const max  = georaster.maxs?.[0] ?? 1;
+    const mean = (min + max) / 2;
+
+    const fullArea = _config.buildFullArea(georaster);
+    const recs     = _config.recommendations(fullArea.score);
+
+    // Build AI context (mirrors dashboard's lastAnalysisContext)
+    _aiContext = {
+      service:       _analysis.type,
+      service_label: _config.title,
+      inputs:        { file: _analysis.result_file },
+      full_area:     { min_value: min, max_value: max, mean_value: mean },
+      grid:          null,
+    };
+
+    document.getElementById("tab-full").innerHTML =
+      fullArea.html +
+      `<div class="section-label">Recommendations</div>` +
+      recs.map(r => `<div class="rec-box">${r}</div>`).join("");
+
+    document.getElementById("tab-raw").innerHTML =
+      `<div class="section-label">File Metadata</div>` +
+      `<div class="stats-grid">${_config.buildRaw(georaster)}</div>` +
+      `<div class="key-insight">💡 Switching to this tab shows the raw raster with a greyscale gradient on the map.</div>`;
+
+  } catch(err) {
+    document.getElementById("tab-full").innerHTML =
+      `<div class="error-box">Failed to load raster: ${err.message}</div>`;
+  }
 }
 
-function exportReport() {
-  const title = document.getElementById("analysisTitle").textContent;
-  const meta  = document.getElementById("analysisMeta").textContent;
-  const recs  = Array.from(document.querySelectorAll(".recommendation")).map(el => "• " + el.textContent).join("\n");
-  const stats = Array.from(document.querySelectorAll(".stat-box")).map(el => {
-    const label = el.querySelector(".stat-label")?.textContent || "";
-    const value = el.querySelector(".stat-value")?.textContent || "";
-    return `  ${label}: ${value}`;
-  }).join("\n");
-  const content = `URBAN QoL ANALYSIS REPORT\n${"=".repeat(40)}\n\n${title}\n${meta}\n\nSTATISTICS\n${stats}\n\nRECOMMENDATIONS\n${recs}\n\nGenerated by Urban QoL Platform`;
-  const blob = new Blob([content], { type:"text/plain" });
-  const a    = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "analysis-report.txt" });
-  a.click(); URL.revokeObjectURL(a.href);
+async function loadVectorAnalysis(url) {
+  try {
+    const { layer, geojson, features } = await loadVector(url, _config);
+    _resultLayer = layer;
+    _resultLayer.addTo(_map);
+    fitLayer(_resultLayer);
+    _resultBlob = geojson;
+
+    _rawLayer = L.geoJSON(geojson, {
+      style: () => ({ fillColor:"#7a7f94", fillOpacity:0.25, color:"#555", weight:1 }),
+      pointToLayer: _config.pointToLayer ? (f,ll) => _config.pointToLayer(f,ll) : undefined,
+      onEachFeature: (f,l) => {
+        const props = Object.entries(f.properties||{}).slice(0,8).map(([k,v]) => `<b>${k}:</b> ${v}`).join("<br>");
+        l.bindPopup(`<div style="font-size:11px;max-height:150px;overflow:auto;">${props}</div>`);
+      }
+    });
+
+    const fullArea  = _config.buildFullArea(features);
+    const usedScore = fullArea.useDbScore ? (_analysis.score || fullArea.score) : fullArea.score;
+    const recs      = _config.recommendations(usedScore || 50);
+
+    // Build AI context from feature statistics
+    const densities = features.map(f => f.properties.crime_density || f.properties.coverage_pct || f.properties.density || f.properties.pop_density || f.properties.vegetation_pct || 0).filter(v => !isNaN(v));
+    const avgVal = densities.length ? densities.reduce((a,b)=>a+b,0)/densities.length : null;
+    _aiContext = {
+      service:       _analysis.type,
+      service_label: _config.title,
+      inputs:        { file: _analysis.result_file },
+      full_area:     { feature_count: features.length, avg_value: avgVal, score: usedScore },
+      grid:          null,
+    };
+
+    document.getElementById("tab-full").innerHTML =
+      fullArea.html +
+      `<div class="section-label">Recommendations</div>` +
+      recs.map(r => `<div class="rec-box">${r}</div>`).join("");
+
+    document.getElementById("tab-raw").innerHTML =
+      `<div class="section-label">File Metadata</div>` +
+      `<div class="stats-grid">${_config.buildRaw(features)}</div>` +
+      `<div class="key-insight">💡 Switching to this tab shows all features with a neutral style on the map.</div>`;
+
+  } catch(err) {
+    document.getElementById("tab-full").innerHTML =
+      `<div class="error-box">Failed to load result: ${err.message}</div>`;
+  }
 }
 
 loadAnalysisDetails();
