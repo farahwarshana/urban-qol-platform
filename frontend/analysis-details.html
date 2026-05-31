@@ -36,9 +36,10 @@
     .map-tab-bar {
       position:absolute; top:12px; left:50%; transform:translateX(-50%);
       display:flex; gap:4px;
-      background:rgba(15,17,23,.82); backdrop-filter:blur(10px);
-      border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:4px;
+      background:var(--surface); backdrop-filter:blur(10px);
+      border:1px solid var(--border2); border-radius:12px; padding:4px;
       z-index:500;
+      opacity:.95;
     }
     .map-tab { padding:7px 16px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; color:var(--muted); transition:.15s; white-space:nowrap; user-select:none; }
     .map-tab:hover { color:var(--text); }
@@ -52,35 +53,35 @@
 
     /* ── Insight cards (compact 2-col grid inside tabs) ── */
     .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
-    .stat-box { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:10px; padding:12px 14px; }
+    .stat-box { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
     .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px; }
     .stat-value { font-size:18px; font-weight:700; color:var(--accent); line-height:1.2; }
 
     /* ── Key insight / rec boxes ── */
-    .key-insight { background:rgba(76,194,255,.07); border-left:3px solid var(--accent); border-radius:6px; padding:10px 12px; margin:10px 0; font-size:13px; line-height:1.55; color:#d8fffa; }
-    .rec-box { background:rgba(0,212,170,.06); border:1px solid rgba(0,212,170,.13); border-radius:10px; padding:10px 13px; margin-bottom:8px; font-size:13px; line-height:1.55; color:#d8fffa; }
+    .key-insight { background:rgba(76,194,255,.07); border-left:3px solid var(--accent); border-radius:6px; padding:10px 12px; margin:10px 0; font-size:13px; line-height:1.55; color:var(--text); }
+    .rec-box { background:rgba(0,212,170,.08); border:1px solid rgba(0,212,170,.2); border-radius:10px; padding:10px 13px; margin-bottom:8px; font-size:13px; line-height:1.55; color:var(--text); }
 
     /* ── Section label inside tab ── */
     .section-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:14px 0 8px; }
 
     /* ── Legend (compact horizontal chips inside sidebar) ── */
-    .legend-chip { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; background:rgba(255,255,255,.03); margin-bottom:5px; }
+    .legend-chip { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; background:var(--surface2); border:1px solid var(--border); margin-bottom:5px; }
     .legend-dot { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
-    .legend-label { font-size:12px; color:#d8fffa; flex:1; }
+    .legend-label { font-size:12px; color:var(--text); flex:1; }
     .legend-range { font-size:11px; color:var(--muted); white-space:nowrap; }
 
     /* ── Meta list (compact) ── */
     .meta-list { display:flex; flex-direction:column; gap:0; }
-    .meta-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+    .meta-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); }
     .meta-row:last-child { border-bottom:none; padding-bottom:0; }
     .meta-key { font-size:12px; color:var(--muted); flex-shrink:0; }
-    .meta-val { font-size:12px; color:#d8fffa; text-align:right; max-width:160px; word-break:break-word; }
+    .meta-val { font-size:12px; color:var(--text); text-align:right; max-width:160px; word-break:break-word; font-weight:500; }
 
     /* ── Export buttons ── */
     .export-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-    .exp-btn { padding:9px 10px; border-radius:9px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:var(--text); font-family:inherit; transition:.15s; text-align:center; }
+    .exp-btn { padding:9px 10px; border-radius:9px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid var(--border2); background:var(--surface2); color:var(--text); font-family:inherit; transition:.15s; text-align:center; }
     .exp-btn:hover { border-color:var(--accent); color:var(--accent); }
-    .exp-btn.accent { background:var(--accent); color:#08110f; border-color:var(--accent); grid-column:span 2; }
+    .exp-btn.accent { background:var(--accent); color:#fff; border-color:var(--accent); grid-column:span 2; }
     .exp-btn.accent:hover { opacity:.88; }
 
     /* ── Loading / error ── */
@@ -92,7 +93,7 @@
     /* ── Expansion score display ── */
     .expansion-score { text-align:center; padding:50px 20px; }
     .expansion-score .big { font-size:88px; font-weight:800; color:var(--accent); line-height:1; }
-    .expansion-score .sub { font-size:15px; color:#94a3b8; margin-top:8px; }
+    .expansion-score .sub { font-size:15px; color:var(--muted); margin-top:8px; }
 
     /* ── Grid / AI tabs ── */
     .grid-stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
@@ -125,6 +126,7 @@
       <div class="page-sub"   id="analysisMeta"></div>
     </div>
     <div class="score-pill mid" id="scorePill" style="display:none;"></div>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Switch to light mode" style="margin-left:auto">☀️</button>
   </div>
 
   <!-- Map with floating tab bar -->
@@ -189,6 +191,7 @@
 
 </div>
 
+<script src="js/app.js"></script>
 <script src="js/config.js"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/georaster"></script>
@@ -196,9 +199,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 
-const API_BASE_URL =
-  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-    ? "http://localhost:8000" : "";
+// API_BASE_URL already declared by app.js — no redeclaration needed
 
 const params     = new URLSearchParams(window.location.search);
 const analysisId = params.get("id");
@@ -1822,7 +1823,7 @@ async function loadAnalysisDetails() {
         <div class="expansion-score">
           <div class="big">${sc ?? "—"}</div>
           <div class="sub">Expansion Suitability Score / 100</div>
-          <div style="font-size:13px;color:#64748b;margin-top:6px;">${_analysis.area||"Urban expansion analysis"}</div>
+          <div style="font-size:13px;margin-top:6px;" class="page-sub">${_analysis.area||"Urban expansion analysis"}</div>
         </div>`;
       document.getElementById("tab-full").innerHTML = `
         <div class="stats-grid">

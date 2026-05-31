@@ -10,6 +10,18 @@
   --muted: #7a7f94;
 }
 
+[data-theme="light"] {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface2: #eaf0f6;
+  --border: rgba(0,0,0,0.09);
+  --border2: rgba(0,0,0,0.15);
+  --accent: #00a882;
+  --accent2: #0077cc;
+  --text: #1a2230;
+  --muted: #5a6a7a;
+}
+
 *,
 *::before,
 *::after {
@@ -66,4 +78,24 @@ button,
   background:var(--accent) !important;
   border-color:var(--accent) !important;
   color:#0f1117 !important;
+}
+
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  transition: border-color .15s, color .15s;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }

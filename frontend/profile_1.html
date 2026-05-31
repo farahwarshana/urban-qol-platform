@@ -25,6 +25,21 @@
       --success: #10b981;
     }
 
+    [data-theme="light"] {
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --surface2: #eaf0f6;
+      --border: rgba(0,0,0,0.09);
+      --border2: rgba(0,0,0,0.15);
+      --accent: #00a882;
+      --accent2: #0077cc;
+      --text: #1a2230;
+      --muted: #5a6a7a;
+      --danger: #dc2626;
+      --warn: #d97706;
+      --success: #16a34a;
+    }
+
     body {
       background: var(--bg);
       color: var(--text);
@@ -85,6 +100,7 @@
 }
 
     .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .nav-btn#themeBtn { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; }
 
     /* ── Layout ── */
     .container {
@@ -452,8 +468,8 @@
   .analysis-item{
   width:100%;
   min-height:90px;
-  background:rgba(26,29,39,.88);
-  border:1px solid rgba(255,255,255,.08);
+  background: var(--surface2);
+  border:1px solid var(--border2);
   border-radius:18px;
   padding:18px 20px;
 
@@ -476,8 +492,8 @@
 
 .analysis-item:hover{
   transform:translateY(-3px);
-  border-color:rgba(0,212,170,.28);
-  box-shadow:0 10px 30px rgba(0,212,170,.08);
+  border-color: var(--accent);
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
 }
 
     .analysis-icon{
@@ -492,17 +508,10 @@
 
   flex-shrink:0;
 
-  background:linear-gradient(
-    135deg,
-    rgba(0,212,170,.12),
-    rgba(0,153,255,.08)
-  );
+  background: var(--surface);
+  border:1px solid var(--border2);
 
-  border:1px solid rgba(255,255,255,.06);
-
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.04),
-    0 4px 14px rgba(0,0,0,.18);
+  box-shadow: 0 2px 8px rgba(0,0,0,.10);
 }
 
 .analysis-icon img{
@@ -555,9 +564,9 @@
       border-radius: 6px;
     }
 
-    .score-high   { background: rgba(16,185,129,0.12); color: #10b981; }
-    .score-mid    { background: rgba(245,158,11,0.12);  color: #f59e0b; }
-    .score-low    { background: rgba(255,77,109,0.12);  color: #ff4d6d; }
+    .score-high   { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.25); }
+    .score-mid    { background: rgba(245,158,11,0.15);  color: var(--warn);    border: 1px solid rgba(245,158,11,0.25); }
+    .score-low    { background: rgba(255,77,109,0.15);  color: var(--danger);  border: 1px solid rgba(255,77,109,0.25); }
 
     .dl-btn {
       background: none;
@@ -580,6 +589,8 @@
 }
 
     .dl-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .dl-btn.danger { color: var(--danger); border-color: rgba(255,77,109,0.3); }
+    .dl-btn.danger:hover { border-color: var(--danger); background: rgba(255,77,109,0.08); }
 
     .dl-btn svg { width: 12px; height: 12px; }
 
@@ -659,6 +670,8 @@
             onclick="toggleLang()">
       🌐 العربية
     </button>
+
+    <button class="nav-btn" onclick="toggleTheme()" id="themeBtn" title="Switch to light mode">☀️</button>
 
   </div>
 
@@ -855,13 +868,11 @@
   <span id="toastMsg">Changes saved successfully</span>
 </div>
 
+<script src="js/app.js"></script>
 <script src="js/config.js"></script>
 <script>
 
-  const API_BASE_URL =
-  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-    ? "http://localhost:8000"
-    : "";
+  // API_BASE_URL already declared by app.js — no redeclaration needed
 //   const analyses = [
 //     { id:1, type:'ndvi',    icon:'🌿', title:'NDVI Analysis — New Cairo',          area:'New Cairo District',      date:'May 6, 2026',  time:'11:34 PM', score:78,  status:'high'  },
 //     { id:2, type:'heat',    icon:'🌡️', title:'Heat Index — Heliopolis',            area:'Heliopolis Zone',          date:'May 5, 2026',  time:'10:12 PM', score:42,  status:'mid'   },
@@ -975,7 +986,8 @@ function renderByProject() {
       </button>
       <button onclick="confirmDeleteProject(event, ${meta.projectId}, '${safeLabel}')"
         title="Delete project"
-        style="padding:3px 9px; background:transparent; border:1px solid rgba(255,77,109,0.35); border-radius:6px; color:#ff4d6d; cursor:pointer; font-size:11px; display:flex; align-items:center; gap:4px;">
+        class="dl-btn danger"
+        style="padding:3px 9px; font-size:11px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M9 6V4h6v2"/></svg>
         Delete
       </button>` : '';
@@ -1031,7 +1043,7 @@ function renderAnalysisItem(a) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Rename
         </button>
-        <button class="dl-btn" onclick="confirmDeleteAnalysis(event, ${a.id})" title="Delete" style="color:#ff4d6d; border-color:rgba(255,77,109,0.3);">
+        <button class="dl-btn danger" onclick="confirmDeleteAnalysis(event, ${a.id})" title="Delete">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           ${translations[currentLang]?.delete || 'Delete'}
         </button>

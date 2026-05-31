@@ -9,20 +9,84 @@
 
 /* ---------- Theme variables (edit these to retheme) ---------- */
 :root {
-  --bg-base:        #0f1418;   /* page background                     */
-  --bg-panel:       #161c22;   /* sidebars, navbar, cards             */
-  --bg-panel-2:     #1c242c;   /* hover / nested panels               */
-  --bg-input:       #11161b;   /* form inputs                         */
-  --border-color:   #232c35;   /* subtle borders between panels       */
-  --text-primary:   #e6edf3;   /* main text                           */
-  --text-muted:     #8b97a3;   /* secondary text                      */
-  --accent:         #4cc2ff;   /* primary accent (links, buttons)     */
+  --bg-base:        #0f1418;
+  --bg-panel:       #161c22;
+  --bg-panel-2:     #1c242c;
+  --bg-input:       #11161b;
+  --border-color:   #232c35;
+  --text-primary:   #e6edf3;
+  --text-muted:     #8b97a3;
+  --accent:         #4cc2ff;
   --accent-hover:   #2aa8ea;
   --success:        #34d399;
   --warning:        #fbbf24;
   --danger:         #f87171;
   --radius:         8px;
   --transition:     150ms ease;
+}
+
+/* ---------- Light mode overrides ---------- */
+[data-theme="light"] {
+  --bg-base:        #f4f6f8;
+  --bg-panel:       #ffffff;
+  --bg-panel-2:     #eaf0f6;
+  --bg-input:       #f0f4f8;
+  --border-color:   #d0d7de;
+  --text-primary:   #1a2230;
+  --text-muted:     #5a6a7a;
+  --accent:         #0284c7;
+  --accent-hover:   #0369a1;
+  --success:        #16a34a;
+  --warning:        #d97706;
+  --danger:         #dc2626;
+}
+
+/* ---------- Theme toggle button ---------- */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+  flex-shrink: 0;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-panel-2);
+}
+
+/* Floating toggle for pages without a navbar (auth pages) */
+.theme-toggle-float {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  transition: border-color var(--transition), color var(--transition), box-shadow var(--transition);
+}
+.theme-toggle-float:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
 
 /* ---------- Reset / base ---------- */

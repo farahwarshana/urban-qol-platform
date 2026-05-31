@@ -150,7 +150,36 @@ function logout() {
 // _____________________________________________
 
 // Share
-function sharePortal() 
+function sharePortal()
 {
 window.location.href = "mailto:?subject=Urban Quality of Life Platform&body=Check out this platform!";
 }
+
+/* ---------- DARK / LIGHT THEME TOGGLE ---------- */
+(function initTheme() {
+  const saved = localStorage.getItem("theme") || "dark";
+  document.documentElement.setAttribute("data-theme", saved);
+})();
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme") || "dark";
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("theme", next);
+  _syncThemeButtons(next);
+}
+
+function _syncThemeButtons(theme) {
+  const icon = theme === "dark" ? "☀️" : "🌙";
+  const title = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+  document.querySelectorAll(".theme-toggle, .theme-toggle-float, #themeBtn").forEach(function(btn) {
+    btn.textContent = icon;
+    btn.title = title;
+  });
+}
+
+// Set correct icon on page load
+document.addEventListener("DOMContentLoaded", function() {
+  const theme = document.documentElement.getAttribute("data-theme") || "dark";
+  _syncThemeButtons(theme);
+});

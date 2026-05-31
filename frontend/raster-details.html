@@ -264,6 +264,7 @@
 
   <div class="topbar">
     <button class="back-btn" onclick="window.location.href='profile_1.html'">← Back</button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Switch to light mode">☀️</button>
   </div>
 
   <div class="analysis-title" id="analysisTitle">Loading...</div>
@@ -331,6 +332,7 @@
 
 </div>
 
+<script src="js/app.js"></script>
 <script src="js/config.js"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/georaster"></script>
@@ -338,11 +340,7 @@
 <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
 
 <script>
-const API_BASE_URL =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1"
-    ? "http://localhost:8000"
-    : "";
+// API_BASE_URL already declared by app.js — no redeclaration needed
 
 const params = new URLSearchParams(window.location.search);
 const analysisId = params.get("id");
