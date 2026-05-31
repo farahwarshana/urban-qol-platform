@@ -1100,7 +1100,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS analyses (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(100) NOT NULL,
-                project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
                 type VARCHAR(100),
                 title VARCHAR(200),
                 area VARCHAR(200),
@@ -1112,7 +1112,28 @@ def init_db():
 
         # Add project_id column if upgrading existing DB
         conn.execute(text("""
-            ALTER TABLE analyses ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL
+            ALTER TABLE analyses ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE
+        """))
+
+        # Migrate existing SET NULL constraint to CASCADE
+        conn.execute(text("""
+            DO $$
+            DECLARE
+                cname TEXT;
+            BEGIN
+                SELECT conname INTO cname
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                WHERE t.relname = 'analyses'
+                  AND c.contype = 'f'
+                  AND pg_get_constraintdef(c.oid) LIKE '%ON DELETE SET NULL%';
+                IF cname IS NOT NULL THEN
+                    EXECUTE 'ALTER TABLE analyses DROP CONSTRAINT ' || quote_ident(cname);
+                    ALTER TABLE analyses
+                        ADD CONSTRAINT analyses_project_id_fkey
+                        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE;
+                END IF;
+            END $$;
         """))
 
         conn.commit()
@@ -1367,6 +1388,30 @@ def save_analysis(analysis: AnalysisRecord, username: str):
         })
 
     return {"message": "Analysis saved successfully"}
+
+
+@app.delete("/analyses/{analysis_id}", tags=["User"])
+def delete_analysis(analysis_id: int, username: str):
+    with engine.begin() as conn:
+        result = conn.execute(
+            text("DELETE FROM analyses WHERE id = :id AND username = :username"),
+            {"id": analysis_id, "username": username}
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Analysis not found or not owned by user")
+    return {"message": "Analysis deleted"}
+
+
+@app.delete("/projects/{project_id}", tags=["User"])
+def delete_project(project_id: int, username: str):
+    with engine.begin() as conn:
+        result = conn.execute(
+            text("DELETE FROM projects WHERE id = :id AND username = :username"),
+            {"id": project_id, "username": username}
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Project not found or not owned by user")
+    return {"message": "Project deleted"}
 
 
 @app.get("/analyses", tags=["User"])

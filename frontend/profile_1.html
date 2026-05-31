@@ -904,11 +904,15 @@ function renderByProject() {
   const list = document.getElementById('analysisList');
   const count = document.getElementById('historyCount');
 
-  // Group by project_name (null → "Unassigned")
+  // Group by project_id (null → "__none__")
   const groups = {};
+  const groupMeta = {}; // key → { name, projectId }
   analyses.forEach(a => {
-    const key = a.project_name || '__none__';
-    if (!groups[key]) groups[key] = [];
+    const key = a.project_id != null ? String(a.project_id) : '__none__';
+    if (!groups[key]) {
+      groups[key] = [];
+      groupMeta[key] = { name: a.project_name || 'Unassigned', projectId: a.project_id };
+    }
     groups[key].push(a);
   });
 
@@ -926,19 +930,29 @@ function renderByProject() {
   const sortedKeys = Object.keys(groups).sort((a, b) => {
     if (a === '__none__') return 1;
     if (b === '__none__') return -1;
-    return a.localeCompare(b);
+    return groupMeta[a].name.localeCompare(groupMeta[b].name);
   });
 
   list.innerHTML = sortedKeys.map(key => {
-    const label = key === '__none__' ? 'Unassigned' : key;
+    const meta = groupMeta[key];
+    const label = meta.name;
     const items = groups[key];
     const itemsHtml = items.map(a => renderAnalysisItem(a)).join('');
+    const deleteBtn = meta.projectId != null
+      ? `<button onclick="confirmDeleteProject(event, ${meta.projectId}, '${label.replace(/'/g, "\\'")}')"
+           title="Delete project"
+           style="margin-left:auto; padding:3px 10px; background:transparent; border:1px solid rgba(255,77,109,0.35); border-radius:6px; color:#ff4d6d; cursor:pointer; font-size:11px; display:flex; align-items:center; gap:4px;">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M9 6V4h6v2"/></svg>
+           Delete project
+         </button>`
+      : '';
     return `
       <div style="margin-bottom:18px;">
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.07);">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="color:var(--accent);"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
           <span style="font-size:13px; font-weight:600; color:var(--accent);">${label}</span>
           <span style="font-size:11px; color:var(--muted);">${items.length} run${items.length !== 1 ? 's' : ''}</span>
+          ${deleteBtn}
         </div>
         ${itemsHtml}
       </div>
@@ -979,6 +993,10 @@ function renderAnalysisItem(a) {
         <button class="dl-btn" onclick="exportAnalysis(event, ${a.id})">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           ${translations[currentLang]?.export || 'Export'}
+        </button>
+        <button class="dl-btn" onclick="confirmDeleteAnalysis(event, ${a.id})" title="Delete" style="color:#ff4d6d; border-color:rgba(255,77,109,0.3);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Delete
         </button>
       </div>
     </div>
@@ -1359,11 +1377,91 @@ ${new Date(
 
 }
 
+// ── Delete analysis ───────────────────────────────────────────
+function confirmDeleteAnalysis(event, id) {
+  event.stopPropagation();
+  const analysis = analyses.find(a => a.id === id);
+  if (!analysis) return;
+  const name = analysis.title || analysis.type;
+  const project = analysis.project_name ? ` · ${analysis.project_name}` : '';
+  showDeleteConfirm(
+    `Are you sure you want to delete "<strong>${name}</strong>"${project ? ` (${analysis.project_name})` : ''}?`,
+    () => deleteAnalysis(id)
+  );
+}
+
+async function deleteAnalysis(id) {
+  const username = localStorage.getItem('username');
+  try {
+    const res = await fetch(`${API_BASE_URL}/analyses/${id}?username=${username}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed');
+    analyses = analyses.filter(a => a.id !== id);
+    if (currentViewMode === 'project') renderByProject();
+    else renderList(currentFilter);
+  } catch (e) {
+    alert('Could not delete analysis. Please try again.');
+  }
+}
+
+// ── Delete project ────────────────────────────────────────────
+function confirmDeleteProject(event, projectId, projectName) {
+  event.stopPropagation();
+  const count = analyses.filter(a => a.project_id === projectId).length;
+  const countNote = count > 0 ? ` This will also delete the ${count} analysis run${count !== 1 ? 's' : ''} inside it.` : '';
+  showDeleteConfirm(
+    `Are you sure you want to delete project "<strong>${projectName}</strong>"?${countNote}`,
+    () => deleteProject(projectId)
+  );
+}
+
+async function deleteProject(projectId) {
+  const username = localStorage.getItem('username');
+  try {
+    const res = await fetch(`${API_BASE_URL}/projects/${projectId}?username=${username}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed');
+    analyses = analyses.filter(a => a.project_id !== projectId);
+    if (currentViewMode === 'project') renderByProject();
+    else renderList(currentFilter);
+  } catch (e) {
+    alert('Could not delete project. Please try again.');
+  }
+}
+
+// ── Shared confirm modal ──────────────────────────────────────
+function showDeleteConfirm(messageHtml, onConfirm) {
+  const modal = document.getElementById('deleteConfirmModal');
+  document.getElementById('deleteConfirmMsg').innerHTML = messageHtml;
+  modal.style.display = 'flex';
+  document.getElementById('deleteConfirmBtn').onclick = () => {
+    hideDeleteConfirm();
+    onConfirm();
+  };
+}
+function hideDeleteConfirm() {
+  document.getElementById('deleteConfirmModal').style.display = 'none';
+}
+
 loadProfile();
 loadAnalyses();
 loadSavedAvatar();
 applyLang();
 
 </script>
+
+<!-- Delete confirmation modal -->
+<div id="deleteConfirmModal" style="display:none; position:fixed; inset:0; z-index:9100; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+  <div style="background:#1a1d27; border:1px solid rgba(255,80,80,0.25); border-radius:12px; padding:28px 32px; width:380px; max-width:95vw; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#ff4d6d" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span style="font-size:15px; font-weight:600; color:#e8eaf0;">Confirm Delete</span>
+    </div>
+    <p id="deleteConfirmMsg" style="font-size:14px; color:#b0b3c6; line-height:1.6; margin-bottom:22px;"></p>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button onclick="hideDeleteConfirm()" style="padding:9px 18px; background:transparent; border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#7a7f94; cursor:pointer; font-size:13px;">Cancel</button>
+      <button id="deleteConfirmBtn" style="padding:9px 20px; background:#ff4d6d; border:none; border-radius:8px; color:#fff; font-weight:600; cursor:pointer; font-size:13px;">Delete</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
