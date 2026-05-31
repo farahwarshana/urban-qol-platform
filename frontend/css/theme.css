@@ -99,3 +99,8 @@ button,
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Invert white icons to dark in light mode */
+[data-theme="light"] .nav-icon {
+  filter: invert(1) brightness(0.3);
+}

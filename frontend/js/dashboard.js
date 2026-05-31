@@ -254,8 +254,8 @@ function applyLang() {
 
   document.documentElement.dir = isAr ? "rtl" : "ltr";
 
-  document.getElementById("langBtn").textContent =
-    isAr ? "🌐 English" : "🌐 العربية";
+  document.getElementById("langBtn").innerHTML =
+    `<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/language.png" alt="lang" class="nav-icon" style="vertical-align:middle;margin-right:5px;"/>${isAr ? "English" : "العربية"}`;
 
   // Sidebar title
   const sidebarH2 = document.querySelector(".sidebar h2");

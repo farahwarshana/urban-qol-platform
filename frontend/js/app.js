@@ -155,11 +155,24 @@ function sharePortal()
 window.location.href = "mailto:?subject=Urban Quality of Life Platform&body=Check out this platform!";
 }
 
-/* ---------- LANGUAGE DIRECTION RESTORE ---------- */
+/* ---------- LANGUAGE TOGGLE (shared, non-dashboard pages) ---------- */
 (function initLang() {
   const lang = localStorage.getItem("lang") || "en";
   if (lang === "ar") document.documentElement.dir = "rtl";
 })();
+
+// Only define if the page hasn't defined its own (dashboard.js / profile_1 define their own)
+if (typeof toggleLang === "undefined") {
+  window.toggleLang = function toggleLang() {
+    const next = (localStorage.getItem("lang") || "en") === "en" ? "ar" : "en";
+    localStorage.setItem("lang", next);
+    document.documentElement.dir = next === "ar" ? "rtl" : "ltr";
+    const btn = document.getElementById("langBtn");
+    if (btn) btn.innerHTML = next === "ar"
+      ? '<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/language.png" alt="lang" class="nav-icon" style="vertical-align:middle;margin-right:5px;"/> English'
+      : '<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/language.png" alt="lang" class="nav-icon" style="vertical-align:middle;margin-right:5px;"/> العربية';
+  };
+}
 
 /* ---------- DARK / LIGHT THEME TOGGLE ---------- */
 (function initTheme() {

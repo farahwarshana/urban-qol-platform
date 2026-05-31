@@ -7,34 +7,16 @@
   <link type="image/png" sizes="16x16" rel="icon" href="https://img.icons8.com/isometric-line/50/ffffff/building.png">
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="css/theme.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --surface2: #222636;
-      --border: rgba(255,255,255,0.07);
-      --border2: rgba(255,255,255,0.12);
-      --accent: #00d4aa;
-      --accent2: #0099ff;
-      --text: #e8eaf0;
-      --muted: #7a7f94;
       --danger: #ff4d6d;
       --warn: #f59e0b;
       --success: #10b981;
     }
-
     [data-theme="light"] {
-      --bg: #f4f6f8;
-      --surface: #ffffff;
-      --surface2: #eaf0f6;
-      --border: rgba(0,0,0,0.09);
-      --border2: rgba(0,0,0,0.15);
-      --accent: #00a882;
-      --accent2: #0077cc;
-      --text: #1a2230;
-      --muted: #5a6a7a;
       --danger: #dc2626;
       --warn: #d97706;
       --success: #16a34a;
@@ -48,39 +30,32 @@
     }
 
     /* ── Navbar ── */
-    nav {
+    .navbar-app {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 2rem;
-      height: 60px;
+      padding: 0 20px;
+      height: 56px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
-      z-index: 100;
+      z-index: 200;
     }
-
-    .nav-logo {
+    .navbar-app .brand {
       display: flex;
       align-items: center;
       gap: 10px;
       font-size: 15px;
       font-weight: 600;
-      color: var(--text);
+      color: var(--accent);
       text-decoration: none;
     }
-
-    .nav-logo svg {
-      width: 28px; height: 28px;
-    }
-
-    .nav-right {
+    .navbar-app .nav-actions {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 8px;
     }
-
     .nav-btn {
       background: none;
       border: 1px solid var(--border2);
@@ -92,15 +67,23 @@
       cursor: pointer;
       transition: all 0.2s;
     }
-
-    .analysis-svg{
-  width:22px;
-  height:22px;
-  object-fit:contain;
-}
-
     .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .nav-btn#themeBtn { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+    .nav-btn.icon-btn { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+    .user-menu-wrap { position: relative; }
+    .user-menu-wrap .dropdown {
+      position: absolute; right: 0; top: calc(100% + 6px);
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: 10px; min-width: 160px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      display: none; z-index: 300;
+    }
+    .user-menu-wrap.open .dropdown { display: block; }
+    .user-menu-wrap .dropdown a {
+      display: block; padding: 10px 14px; color: var(--text);
+      font-size: 13px; text-decoration: none;
+    }
+    .user-menu-wrap .dropdown a:hover { color: var(--accent); }
+
+    .analysis-svg { width:22px; height:22px; object-fit:contain; }
 
     /* ── Layout ── */
     .container {
@@ -641,40 +624,32 @@
 <body>
 
 <!-- Navbar -->
-<nav>
-
-  <a href="#" class="nav-logo">
-
-    <span>
-      <img width="45"
-           height="45"
-           src="https://img.icons8.com/isometric-line/50/4cc2ff/building.png"
-           alt="building"/>
-    </span>
-
-    <span>
-      Malaz · Urban Quality of Life Analysis
-    </span>
-
+<nav class="navbar-app">
+  <a href="dashboard.html" class="brand">
+    <img width="36" height="36" src="https://img.icons8.com/isometric-line/50/4cc2ff/building.png" alt="Malaz"/>
+    Malaz · Urban Quality of Life Analysis
   </a>
-
-  <div class="nav-right">
-
-    <button class="nav-btn"
-            onclick="window.location.href='dashboard.html'">
-      ← Back to Map
+  <div class="nav-actions">
+    <button class="nav-btn" id="backToMapBtn" onclick="window.location.href='dashboard.html'">
+      <img width="18" height="18" src="https://img.icons8.com/material/24/FFFFFF/map-marker.png" alt="map" class="nav-icon" style="vertical-align:middle;margin-right:5px;"/><span id="backToMapText">Dashboard</span>
     </button>
-
-    <button class="nav-btn"
-            id="langBtn"
-            onclick="toggleLang()">
-      🌐 العربية
+    <button class="nav-btn" onclick="toggleLang()" id="langBtn">
+      <img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/language.png" alt="lang" class="nav-icon" style="vertical-align:middle;margin-right:5px;"/>العربية
     </button>
-
-    <button class="nav-btn" onclick="toggleTheme()" id="themeBtn" title="Switch to light mode">☀️</button>
-
+    <button class="nav-btn icon-btn theme-toggle" onclick="toggleTheme()" id="themeBtn" title="Switch theme">☀️</button>
+    <button class="nav-btn" onclick="window.open('https://arcg.is/0v4DT0', '_blank')" title="Feedback">
+      <img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/feedback.png" alt="feedback" class="nav-icon" style="vertical-align:middle;margin-right:5px;"/>Feedback
+    </button>
+    <div class="user-menu-wrap" id="userMenuWrap">
+      <button class="nav-btn" onclick="document.getElementById('userMenuWrap').classList.toggle('open')">
+        <img width="20" height="20" src="https://img.icons8.com/material-rounded/24/FFFFFF/name.png" alt="user" class="nav-icon" style="vertical-align:middle;margin-right:5px;"/>Profile ▾
+      </button>
+      <div class="dropdown">
+        <a href="profile_1.html">Profile</a>
+        <a href="#" onclick="logout(); return false;">Logout</a>
+      </div>
+    </div>
   </div>
-
 </nav>
 
 <!-- Main -->
@@ -1300,8 +1275,10 @@ function applyLang() {
   document.documentElement.dir = isAr ? "rtl" : "ltr";
 
   // الـ navbar
-  document.querySelector(".nav-btn").textContent = t.backToMap;
-  document.getElementById("langBtn").textContent  = t.langBtn;
+  const backText = document.getElementById("backToMapText");
+  if (backText) backText.textContent = t.backToMap;
+  const langBtn = document.getElementById("langBtn");
+  if (langBtn) langBtn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/language.png" alt="lang" class="nav-icon" style="vertical-align:middle;margin-right:5px;"/>${t.langBtn.replace(/^🌐\s*/, '')}`;
 
   // الـ profile
   document.querySelector(".profile-badge").innerHTML = `<span></span> ${t.activeResearcher}`;
