@@ -550,7 +550,7 @@ const SERVICES = {
   },
   "informal-settlement": {
     title: TXT[currentLang].informal,
-    desc: "Detect informal settlement patterns from satellite/aerial imagery using texture, edge density, and built-up crowding analysis.",
+    desc: "Detect informal settlement patterns from satellite/aerial imagery using texture disorder, edge fragmentation, directional anisotropy and local entropy.",
     inputs: [
       { type: "file", id: "tiffInput", label: "Upload satellite/aerial imagery (GeoTIFF)" },
     ],
@@ -2660,28 +2660,10 @@ async function runVegetationAnalysis() {
     if (inputLayer) map.removeLayer(inputLayer);
     clearMap();
 
-    // Render result cells coloured red→green by vegetation %
-    resultLayer = L.geoJSON(geojsonData, {
-      style: function(feature) {
-        const pct = feature.properties.vegetation_pct ?? 0;
-        return {
-          fillColor:   vegPctColor(pct),
-          fillOpacity: 0.65,
-          color:       "rgba(0,0,0,0.2)",
-          weight:      0.8,
-        };
-      },
-      onEachFeature: function(feature, layer) {
-        const p   = feature.properties;
-        const pct = p.vegetation_pct !== null ? p.vegetation_pct.toFixed(1) + "%" : "—";
-        const tag = p.passes_30pct ? "✓ Passes 30% standard" : "✗ Below 30% standard";
-        layer.bindPopup(
-          `<strong>Vegetation:</strong> ${pct}<br>` +
-          `<strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100<br>` +
-          `<span style="font-size:11px;">${tag}</span>`
-        );
-      },
-    }).addTo(map);
+    // Render vegetation as smooth overlapping blobs instead of square grid cells,
+    // so the full-area view looks like a continuous raster highlighting green areas.
+    resultLayer = _buildVegBlobLayer(geojsonData);
+    resultLayer.addTo(map);
 
     try {
       const b = resultLayer.getBounds();
@@ -2728,6 +2710,76 @@ function vegPctColor(pct) {
   // 0-30: red to orange-yellow
   const t = p / 30;
   return `rgba(${Math.round((1-t)*200+t*230)},${Math.round((1-t)*40+t*160)},0,0.85)`;
+}
+
+
+/* ---------- Vegetation blob layer (Full Area tab) ---------- */
+function _buildVegBlobLayer(geojsonData) {
+  const features = (geojsonData && geojsonData.features) || [];
+
+  // Invisible polygon layer kept only for getBounds()
+  const bboxLayer = L.geoJSON(geojsonData, {
+    style: () => ({ fillOpacity: 0, opacity: 0, weight: 0 }),
+    interactive: false,
+  });
+
+  if (!features.length) {
+    bboxLayer.getBounds = () => { try { return bboxLayer.getBounds(); } catch(e) { return null; } };
+    return bboxLayer;
+  }
+
+  // Estimate cell half-width in degrees from the first feature bbox
+  const coords = features[0].geometry && features[0].geometry.coordinates && features[0].geometry.coordinates[0];
+  const cellHalfDeg = coords ? Math.abs(coords[2][0] - coords[0][0]) / 2 : 0.002;
+  const cellRadiusM = cellHalfDeg * 111320;
+
+  const canvas = L.canvas({ padding: 0.6 });
+  const circleGroup = L.layerGroup();
+
+  features.forEach(function(f) {
+    const pct = f.properties.vegetation_pct ?? 0;
+    const cx  = f.properties.cell_cx;
+    const cy  = f.properties.cell_cy;
+    if (cx == null || cy == null) return;
+
+    const color       = vegPctColor(pct);
+    const coreOpacity = 0.15 + (pct / 100) * 0.65;
+
+    // Outer glow bleeds into neighbours to merge cells into a continuous surface
+    if (pct >= 2) {
+      circleGroup.addLayer(L.circle([cy, cx], {
+        renderer: canvas,
+        radius: cellRadiusM * 1.35,
+        fillColor: color,
+        fillOpacity: coreOpacity * 0.38,
+        color: "transparent",
+        weight: 0,
+        interactive: false,
+      }));
+    }
+
+    // Inner core with popup
+    const pctStr = pct.toFixed(1) + "%";
+    const tag    = f.properties.passes_30pct ? "✓ Passes 30% standard" : "✗ Below 30% standard";
+    const core   = L.circle([cy, cx], {
+      renderer: canvas,
+      radius: cellRadiusM * 0.78,
+      fillColor: color,
+      fillOpacity: coreOpacity,
+      color: "transparent",
+      weight: 0,
+    });
+    core.bindPopup(
+      `<strong>Vegetation:</strong> ${pctStr}<br>` +
+      `<strong>QoL Score:</strong> ${f.properties.qol_score ?? "—"}/100<br>` +
+      `<span style="font-size:11px;">${tag}</span>`
+    );
+    circleGroup.addLayer(core);
+  });
+
+  const group = L.layerGroup([bboxLayer, circleGroup]);
+  group.getBounds = function() { try { return bboxLayer.getBounds(); } catch(e) { return null; } };
+  return group;
 }
 
 
@@ -3347,7 +3399,7 @@ async function runInformalSettlementAnalysis() {
   analysisPanel.innerHTML = `
     <div class="fade-in">
       <h3 class="panel-title">Informal Settlement — Processing</h3>
-      <p class="panel-desc">Computing texture irregularity, edge density, and built-up crowding…</p>
+      <p class="panel-desc">Computing texture disorder, edge fragmentation, directional anisotropy and local entropy…</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading…</span>
@@ -3419,7 +3471,7 @@ async function runInformalSettlementAnalysis() {
           `<strong>Irregularity Score:</strong> ${score}/100<br>` +
           `<strong>Classification:</strong> ${cls}<br>` +
           `<strong>QoL Score:</strong> ${qol}<br>` +
-          `<strong>Built-up Ratio:</strong> ${(p.buildup_ratio * 100).toFixed(1)}%`
+          `<strong>Edge Fragmentation:</strong> ${p.edge_fragmentation !== null && p.edge_fragmentation !== undefined ? (p.edge_fragmentation * 100).toFixed(1) + "%" : "—"}`
         );
       },
     }).addTo(map);
@@ -3520,7 +3572,7 @@ function renderInformalSettlementResults(stats, inputs) {
         </div>
         <div class="insight-card">
           <div class="label">Metrics computed</div>
-          <div class="value" style="font-size:11px;">Texture irregularity · Edge density · Built-up crowding</div>
+          <div class="value" style="font-size:11px;">Texture disorder · Edge fragmentation · Directional anisotropy · Local entropy</div>
         </div>
         <div class="insight-card">
           <div class="label">Cell size (approx.)</div>
@@ -3612,7 +3664,7 @@ function downloadISPACSV() {
     alert("Run the analysis first.");
     return;
   }
-  const rows = [["lat","lon","irregularity_score","classification","qol_score","texture_val","edge_val","buildup_ratio"]];
+  const rows = [["lat","lon","irregularity_score","classification","qol_score","texture_disorder","edge_fragmentation","directional_anisotropy","local_entropy"]];
   lastISPAResult.features.forEach(f => {
     const p = f.properties;
     if (p.type === "high_irregularity_zone") return;
@@ -3623,9 +3675,10 @@ function downloadISPACSV() {
       p.irregularity_score ?? "",
       p.classification ?? "",
       p.qol_score ?? "",
-      p.texture_val ?? "",
-      p.edge_val ?? "",
-      p.buildup_ratio ?? "",
+      p.texture_disorder ?? "",
+      p.edge_fragmentation ?? "",
+      p.directional_anisotropy ?? "",
+      p.local_entropy ?? "",
     ]);
   });
   const csv  = rows.map(r => r.join(",")).join("\n");
@@ -3670,7 +3723,7 @@ function downloadGridCSV(geojson, service) {
   // Preferred column order — lat/lon always first
   const preferred = ["lat","lon","qol_score","value","classification","congestion",
     "vegetation_pct","passes_30pct","irregularity_score","local_density","local_pressure",
-    "density","texture_val","edge_val","buildup_ratio"];
+    "density","texture_disorder","edge_fragmentation","directional_anisotropy","local_entropy"];
 
   // Map internal cell_cy/cell_cx → lat/lon; drop the originals
   const skipInternals = new Set(["cell_cy","cell_cx"]);

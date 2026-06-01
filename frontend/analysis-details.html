@@ -836,6 +836,77 @@ const ANALYSIS_CONFIG = {
       { color:"rgba(230,200,0,0.85)",   label:"Moderate",            range:"15 – 30%" },
       { color:"rgba(200,40,0,0.85)",    label:"Sparse / Bare",       range:"< 15%" }
     ],
+    buildLayer(geojson) {
+      // Render vegetation as smooth overlapping blobs (continuous raster feel)
+      // instead of discrete grid cells. Each cell becomes two concentric circles:
+      // a wide low-opacity glow and a tighter opaque core. The overlap between
+      // neighbouring circles merges them into a fluid, non-grid surface.
+      const features = geojson.features || [];
+      if (!features.length) return L.layerGroup();
+
+      // Estimate cell half-width in degrees from the first feature's bbox
+      const coords = features[0].geometry?.coordinates?.[0];
+      const cellHalfDeg = coords
+        ? Math.abs(coords[2][0] - coords[0][0]) / 2
+        : 0.002;
+      const cellRadiusM = cellHalfDeg * 111320; // approx metres
+
+      const canvas = L.canvas({ padding: 0.6 });
+
+      // Invisible polygon layer used only for getBounds()
+      const bboxLayer = L.geoJSON(geojson, {
+        style: () => ({ fillOpacity: 0, opacity: 0, weight: 0 }),
+        interactive: false,
+      });
+
+      // All circles share one canvas renderer for performance
+      const circleLayer = L.layerGroup();
+      features.forEach(f => {
+        const pct = f.properties.vegetation_pct ?? 0;
+        const cx  = f.properties.cell_cx;
+        const cy  = f.properties.cell_cy;
+        if (cx == null || cy == null) return;
+
+        const color   = vegPctColor(pct);
+        // Vegetated cells are fully visible; sparse areas fade towards transparent
+        const coreOpacity = 0.15 + (pct / 100) * 0.65;
+        const glowOpacity = coreOpacity * 0.38;
+
+        // Outer glow — bleeds into neighbouring cells to smooth boundaries
+        if (pct >= 2) {
+          circleLayer.addLayer(L.circle([cy, cx], {
+            renderer: canvas,
+            radius: cellRadiusM * 1.35,
+            fillColor: color,
+            fillOpacity: glowOpacity,
+            color: "transparent",
+            weight: 0,
+            interactive: false,
+          }));
+        }
+
+        // Inner core — clickable popup
+        const p       = f.properties;
+        const pctStr  = p.vegetation_pct != null ? p.vegetation_pct.toFixed(1) + "%" : "—";
+        const tag     = p.passes_30pct ? "✓ Passes 30% standard" : "✗ Below 30% standard";
+        const core = L.circle([cy, cx], {
+          renderer: canvas,
+          radius: cellRadiusM * 0.78,
+          fillColor: color,
+          fillOpacity: coreOpacity,
+          color: "transparent",
+          weight: 0,
+        });
+        core.bindPopup(`<strong>Vegetation:</strong> ${pctStr}<br>
+                        <strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100<br>
+                        <span style="font-size:11px;">${tag}</span>`);
+        circleLayer.addLayer(core);
+      });
+
+      const group = L.layerGroup([bboxLayer, circleLayer]);
+      group.getBounds = () => { try { return bboxLayer.getBounds(); } catch(e) { return null; } };
+      return group;
+    },
     styleFeature(f) {
       return { fillColor:vegPctColor(f.properties.vegetation_pct??0), fillOpacity:0.65,
                color:"rgba(0,0,0,0.2)", weight:0.8 };
@@ -1211,12 +1282,15 @@ function _fmtD(m) { return m>=1000?(m/1000).toFixed(2)+' km':Math.round(m)+' m';
 function _measureGetOverlay() {
   if (_measureOverlay) return _measureOverlay;
   _measureOverlay = document.createElement('div');
-  _measureOverlay.style.cssText = 'position:absolute;inset:0;z-index:650;cursor:crosshair;display:none;';
+  // z-index below the controls (600) so buttons remain clickable
+  _measureOverlay.style.cssText = 'position:absolute;inset:0;z-index:550;cursor:crosshair;display:none;';
   _map.getContainer().appendChild(_measureOverlay);
   return _measureOverlay;
 }
 function _measureClick(e) {
   if (_measureIgnoreNextClick) { _measureIgnoreNextClick = false; return; }
+  // Ignore clicks that land on the controls toolbar
+  if (e.target.closest && e.target.closest('.map-controls')) return;
   const rect = _map.getContainer().getBoundingClientRect();
   const ll = _map.containerPointToLatLng(L.point(e.clientX - rect.left, e.clientY - rect.top));
   const mk = L.circleMarker(ll,{radius:5,color:'#4cc2ff',fillColor:'#fff',fillOpacity:1,weight:2,interactive:false}).addTo(_map);
@@ -1286,7 +1360,7 @@ function _annotateCanvas() {
   if (_aCanvas) return _aCanvas;
   const c = _map.getContainer();
   _aCanvas = document.createElement('canvas');
-  _aCanvas.style.cssText='position:absolute;inset:0;z-index:640;pointer-events:none;';
+  _aCanvas.style.cssText='position:absolute;inset:0;z-index:540;pointer-events:none;';
   _aCanvas.width=c.offsetWidth; _aCanvas.height=c.offsetHeight;
   c.appendChild(_aCanvas); _aCtx=_aCanvas.getContext('2d');
   new ResizeObserver(()=>{ const d=_aCtx.getImageData(0,0,_aCanvas.width,_aCanvas.height); _aCanvas.width=c.offsetWidth; _aCanvas.height=c.offsetHeight; _aCtx.putImageData(d,0,0); }).observe(c);
@@ -1295,7 +1369,8 @@ function _annotateCanvas() {
 function _annotateOverlay() {
   if (_aOverlay) return _aOverlay;
   _aOverlay=document.createElement('div');
-  _aOverlay.style.cssText='position:absolute;inset:0;z-index:645;cursor:crosshair;display:none;';
+  // z-index below the controls (600) so buttons remain clickable
+  _aOverlay.style.cssText='position:absolute;inset:0;z-index:545;cursor:crosshair;display:none;';
   _map.getContainer().appendChild(_aOverlay); return _aOverlay;
 }
 function _aPos(e) { const r=_map.getContainer().getBoundingClientRect(),s=e.touches?e.touches[0]:e; return{x:s.clientX-r.left,y:s.clientY-r.top}; }

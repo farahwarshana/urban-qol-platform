@@ -3,21 +3,30 @@
 from ast import Index
 import os
 import sys
+import importlib.util
 from pathlib import Path as _Path
+
+# ── Fix PROJ/GDAL database conflict with PostgreSQL/PostGIS ──────────────────
+# PostgreSQL sets GDAL_DATA to its own stale proj.db in the system environment.
+# PROJ loads proj.db the moment any PROJ-aware library (rasterio, pyproj,
+# geopandas) is first imported, so we must override GDAL_DATA and PROJ_DATA
+# BEFORE those imports using importlib.util (which doesn't trigger PROJ).
+_rasterio_spec = importlib.util.find_spec("rasterio")
+if _rasterio_spec is not None:
+    _rasterio_dir = os.path.dirname(_rasterio_spec.origin)
+    _rasterio_proj = os.path.join(_rasterio_dir, "proj_data")
+    _rasterio_gdal = os.path.join(_rasterio_dir, "gdal_data")
+    if os.path.isfile(os.path.join(_rasterio_proj, "proj.db")):
+        os.environ["GDAL_DATA"]    = _rasterio_gdal
+        os.environ["PROJ_DATA"]    = _rasterio_proj
+        os.environ["PROJ_LIB"]     = _rasterio_proj
+        os.environ["PROJ_NETWORK"] = "OFF"
 
 # Allow imports from the project root (e.g. ai_agent package)
 sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
 
-from pyproj import datadir
-
 from dotenv import load_dotenv
-
 load_dotenv()
-
-proj_path = datadir.get_data_dir()
-
-os.environ["PROJ_LIB"] = proj_path
-os.environ["PROJ_DATA"] = proj_path
 
 import shutil
 import uuid

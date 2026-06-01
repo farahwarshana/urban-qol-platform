@@ -139,10 +139,12 @@
 #         "min_lst_c": round(float(np.nanmin(valid_lst)), 1),
 #         "max_lst_c": round(float(np.nanmax(valid_lst)), 1),
 #         "mean_lst_c": round(float(np.nanmean(valid_lst)), 1),
-#         "comfortable_percent": round(float(np.sum(valid_heat == 0) / valid_heat.size * 100), 1),
-#         "caution_percent": round(float(np.sum(valid_heat == 1) / valid_heat.size * 100), 1),
-#         "extreme_caution_percent": round(float(np.sum(valid_heat == 2) / valid_heat.size * 100), 1),
-#         "danger_percent": round(float(np.sum(valid_heat == 3) / valid_heat.size * 100), 1),
+#         "very_cold_percent":  round(float(np.sum(valid_heat == 0) / valid_heat.size * 100), 1),
+#         "cool_percent":       round(float(np.sum(valid_heat == 1) / valid_heat.size * 100), 1),
+#         "ideal_percent":      round(float(np.sum(valid_heat == 2) / valid_heat.size * 100), 1),
+#         "warm_percent":       round(float(np.sum(valid_heat == 3) / valid_heat.size * 100), 1),
+#         "hot_percent":        round(float(np.sum(valid_heat == 4) / valid_heat.size * 100), 1),
+#         "danger_percent":     round(float(np.sum(valid_heat == 5) / valid_heat.size * 100), 1),
 #     }
  
 #     return stats
@@ -318,12 +320,21 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
         raise ValueError("No valid LST pixels found.")
 
     # ── Heat Index classification ──────────────
+    # Bell-curve scoring: 20–26 °C is ideal (class 2), both colder and hotter degrade QoL.
+    # class 0 : < 10 °C     very cold
+    # class 1 : 10–20 °C    cool
+    # class 2 : 20–26 °C    ideal (peak score)
+    # class 3 : 26–32 °C    warm
+    # class 4 : 32–38 °C    hot
+    # class 5 : ≥ 38 °C     danger
     heat_index = np.full(lst.shape, -9999, dtype="int16")
 
-    heat_index[lst < 27] = 0
-    heat_index[(lst >= 27) & (lst < 32)] = 1
-    heat_index[(lst >= 32) & (lst < 38)] = 2
-    heat_index[lst >= 38] = 3
+    heat_index[lst < 10]                       = 0
+    heat_index[(lst >= 10) & (lst < 20)]       = 1
+    heat_index[(lst >= 20) & (lst < 26)]       = 2
+    heat_index[(lst >= 26) & (lst < 32)]       = 3
+    heat_index[(lst >= 32) & (lst < 38)]       = 4
+    heat_index[lst >= 38]                      = 5
 
     heat_index[np.isnan(lst)] = -9999
     heat_4326 = heat_index
@@ -393,10 +404,12 @@ def calculate_heat_index_4326(geotiff_path, output_heat_path):
         "min_lst_c": round(float(np.nanmin(valid_lst)), 1),
         "max_lst_c": round(float(np.nanmax(valid_lst)), 1),
         "mean_lst_c": round(float(np.nanmean(valid_lst)), 1),
-        "comfortable_percent": round(float(np.sum(valid_heat == 0) / valid_heat.size * 100), 1),
-        "caution_percent": round(float(np.sum(valid_heat == 1) / valid_heat.size * 100), 1),
-        "extreme_caution_percent": round(float(np.sum(valid_heat == 2) / valid_heat.size * 100), 1),
-        "danger_percent": round(float(np.sum(valid_heat == 3) / valid_heat.size * 100), 1),
+        "very_cold_percent":  round(float(np.sum(valid_heat == 0) / valid_heat.size * 100), 1),
+        "cool_percent":       round(float(np.sum(valid_heat == 1) / valid_heat.size * 100), 1),
+        "ideal_percent":      round(float(np.sum(valid_heat == 2) / valid_heat.size * 100), 1),
+        "warm_percent":       round(float(np.sum(valid_heat == 3) / valid_heat.size * 100), 1),
+        "hot_percent":        round(float(np.sum(valid_heat == 4) / valid_heat.size * 100), 1),
+        "danger_percent":     round(float(np.sum(valid_heat == 5) / valid_heat.size * 100), 1),
     }
 
     print("MIN:", np.nanmin(valid_lst))

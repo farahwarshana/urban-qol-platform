@@ -9,11 +9,13 @@ NDVI        : higher NDVI → higher score.
               NDVI -1..0 maps to 0, 0..0.2 weak vegetation 20-40,
               0.2..0.5 moderate 40-70, 0.5..1 excellent 70-100.
 
-Heat Index  : comfortable temperature scores high, extremes score low.
-              class 0 (< 27°C comfortable) → 100
-              class 1 (27-32°C caution)    → 65
-              class 2 (32-38°C extreme)    → 30
-              class 3 (≥ 38°C danger)      → 5
+Heat Index  : 20–26 °C is the ideal midpoint (highest score); both colder and hotter reduce QoL.
+              class 0 (< 10°C  very cold)  → 10
+              class 1 (10–20°C cool)       → 55
+              class 2 (20–26°C ideal)      → 100
+              class 3 (26–32°C warm)       → 55
+              class 4 (32–38°C hot)        → 25
+              class 5 (≥ 38°C  danger)     → 5
 
 Crime       : lower crime density → higher score.
               0 crime/km²  → 100, scales down, ≥ 50 crime/km² → 0.
@@ -246,20 +248,16 @@ def _score_ndvi(value):
 
 def _score_heat_index(cls_value):
     """
-    Heat index class (0–3) → QoL score.
+    Heat index class (0–5) → QoL score (bell-curve centred on 20–26 °C).
 
-    The backend outputs integer classes:
-      0 = comfortable  (< 27 °C)
-      1 = caution      (27–32 °C)
-      2 = extreme      (32–38 °C)
-      3 = danger       (≥ 38 °C)
-
-    Tier 4 Excellent : class 0 → 90   (comfortable, ideal outdoor conditions)
-    Tier 3 Good      : class 1 → 65   (warm but tolerable)
-    Tier 2 Poor      : class 2 → 30   (uncomfortably hot, discourages outdoor use)
-    Tier 1 Bad       : class 3 → 8    (dangerously hot, major QoL penalty)
+      0 = very cold (< 10 °C)   → 10
+      1 = cool      (10–20 °C)  → 55
+      2 = ideal     (20–26 °C)  → 100  ← peak
+      3 = warm      (26–32 °C)  → 55
+      4 = hot       (32–38 °C)  → 25
+      5 = danger    (≥ 38 °C)   → 5
     """
-    lut = {0: 90, 1: 65, 2: 30, 3: 8}
+    lut = {0: 10, 1: 55, 2: 100, 3: 55, 4: 25, 5: 5}
     if np.isnan(cls_value) or cls_value < 0:
         return None
     return lut.get(int(round(cls_value)), None)
@@ -967,15 +965,16 @@ def grid_from_informal_settlement(geojson_path):
             "type":     feat["type"],
             "geometry": feat["geometry"],
             "properties": {
-                "value":               irr,
-                "qol_score":           score,
-                "classification":      label,
-                "texture_val":         props.get("texture_val"),
-                "edge_val":            props.get("edge_val"),
-                "buildup_ratio":       props.get("buildup_ratio"),
-                "cell_cx":             props.get("cell_cx"),
-                "cell_cy":             props.get("cell_cy"),
-                "service":             "informal-settlement",
+                "value":                    irr,
+                "qol_score":                score,
+                "classification":           label,
+                "texture_disorder":         props.get("texture_disorder"),
+                "edge_fragmentation":       props.get("edge_fragmentation"),
+                "directional_anisotropy":   props.get("directional_anisotropy"),
+                "local_entropy":            props.get("local_entropy"),
+                "cell_cx":                  props.get("cell_cx"),
+                "cell_cy":                  props.get("cell_cy"),
+                "service":                  "informal-settlement",
             },
         })
 
