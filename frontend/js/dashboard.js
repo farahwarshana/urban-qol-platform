@@ -137,7 +137,8 @@ function autoSaveCurrentAnalysis() {
     'traffic': 'Traffic Analysis',
     'informal-settlement': 'Informal Settlement Analysis',
     'air-quality': 'Air Quality Index',
-    'facility-accessibility': 'Facility Accessibility'
+    'facility-accessibility': 'Facility Accessibility',
+    'building-density': 'Building Density',
   };
 
   const title = lastAnalysisName || serviceNames[lastResultService] || lastResultService;
@@ -274,6 +275,7 @@ function applyLang() {
     "informal-settlement":       T.informal,
     "air-quality":               T.air,
     "expansion":                 T.expansion,
+    "building-density":          T.buildingDensity,
   };
 
   document.querySelectorAll("li[data-service]").forEach(li => {
@@ -300,6 +302,7 @@ function applyLang() {
     "informal-settlement":          isAr ? "تكتشف أنماط المناطق العشوائية من صور الأقمار الصناعية." : "Detects informal settlement patterns from satellite imagery.",
     "air-quality":                  isAr ? "تسترجع وتقيّم بيانات جودة الهواء للمنطقة المحددة." : "Retrieves and evaluates air quality data for the defined area of interest.",
     "expansion":                    isAr ? "تحدد المناطق الأكثر ملاءمة للتطوير." : "Identifies the most suitable areas for development.",
+    "building-density":             isAr ? "تقيس كثافة المباني وتقارنها بمعيار 10–25 وحدة/فدان." : "Measures building area per land area and benchmarks against the 10–25 units/acre urban standard.",
   };
 
   document.querySelectorAll("li[data-service]").forEach(li => {
@@ -404,6 +407,8 @@ const TXT = {
     informal:     "Informal Settlement Pattern Analysis",
     air:          "Air Quality Index",
     expansion:    "Future Expansion Suitability",
+    buildingDensity: "Building Density",
+    buildingDensityDesc: "Measures building area per land area and benchmarks against the 10–25 units/acre urban standard.",
     uploadRaster: "Upload raster (GeoTIFF)",
     servicesTitle:"Analysis Services",
     urbanDesc: "Estimate population density across an area.",
@@ -444,6 +449,8 @@ const TXT = {
     informal:     "تحليل أنماط المناطق العشوائية",
     air:          "مؤشر جودة الهواء",
     expansion:    "ملاءمة التوسع المستقبلي",
+    buildingDensity: "كثافة المباني",
+    buildingDensityDesc: "تقيس نسبة مساحة المباني إلى إجمالي المساحة وتقارنها بمعيار 10–25 وحدة/فدان.",
     uploadRaster: "رفع ملف الراستر (GeoTIFF)",
     servicesTitle:"خدمات التحليل",
     urbanDesc: "تقدير كثافة السكان داخل المنطقة.",
@@ -560,6 +567,15 @@ const SERVICES = {
     desc: "Classify PM2.5, PM10, NO2, or AQI raster into 6 AQI categories and map air quality.",
     inputs: [
       { type: "file", id: "tiffInput", label: "Upload pollutant raster (GeoTIFF — PM2.5, PM10, NO2, or AQI)" },
+    ],
+  },
+  "building-density": {
+    title: TXT[currentLang].buildingDensity,
+    desc: TXT[currentLang].buildingDensityDesc,
+    inputs: [
+      { type: "file",   id: "tiffInput",           label: "Upload building mask raster (GeoTIFF)" },
+      { type: "tip",    text: "The raster should be a single-band building mask where pixels > 0.5 represent built area. Scored against the urban planning standard of 10–25 dwelling units per acre." },
+      { type: "number", id: "buildingThreshold",   label: "Building threshold (default: 0.5)", value: 0.5 },
     ],
   },
   "expansion": {
@@ -1072,6 +1088,45 @@ async function runExpansionAnalysis() {
     };
     _lastAIContextKey = null;  // force refresh when user visits AI tab
 
+    // Build per-layer Leaflet layers for Raw Data tab toggles
+    const _svcMeta = {
+      'ndvi':                     { label: 'Vegetation (NDVI)',       icon: '🌿', color: '#27ae60' },
+      'heat-index':               { label: 'Heat Index',              icon: '🌡️', color: '#e74c3c' },
+      'air-quality':              { label: 'Air Quality',             icon: '💨', color: '#3498db' },
+      'crime':                    { label: 'Crime Safety',            icon: '🛡️', color: '#e67e22' },
+      'urban-density':            { label: 'Urban Density',           icon: '🏙️', color: '#9b59b6' },
+      'public-transport':         { label: 'Public Transport',        icon: '🚌', color: '#1abc9c' },
+      'vegetation':               { label: 'Vegetation Coverage',     icon: '🌳', color: '#27ae60' },
+      'traffic':                  { label: 'Traffic Flow',            icon: '🚗', color: '#f39c12' },
+      'informal-settlement':      { label: 'Settlement Quality',      icon: '🏘️', color: '#e74c3c' },
+      'facility-accessibility':   { label: 'Facility Access',         icon: '🏥', color: '#2980b9' },
+      'facility_Accessibility_index': { label: 'Facility Access',     icon: '🏥', color: '#2980b9' },
+    };
+    _expansionRawLayers = [];
+    const _totalWR = Object.values(weightMap).reduce((s,v)=>s+v,0)||1;
+    for (const a of _expansionCandidates) {
+      const gj = _expansionGridCache[a.id];
+      if (!gj || !gj.features) continue;
+      const meta    = _svcMeta[a.type] || { label: a.title || a.type, icon: '📊', color: '#4cc2ff' };
+      const qScores = gj.features.map(f => f.properties.qol_score).filter(s => s != null);
+      const avgQol  = qScores.length ? Math.round(qScores.reduce((x,y)=>x+y,0)/qScores.length) : null;
+      const wPct    = Math.round(((weightMap[String(a.id)]||0) / _totalWR) * 100);
+      const layerColor = meta.color;
+      const lyr = L.geoJSON(gj, {
+        style: f => ({
+          fillColor:   layerColor,
+          fillOpacity: 0.55,
+          color:       'rgba(0,0,0,0.15)',
+          weight:      0.5,
+        }),
+        onEachFeature: (f, lyr) => {
+          const sc = f.properties.qol_score;
+          lyr.bindPopup(`<strong>${meta.label}</strong><br>Score: ${sc != null ? sc + '/100' : 'N/A'}`);
+        },
+      });
+      _expansionRawLayers.push({ id: a.id, label: meta.label, icon: meta.icon, color: layerColor, avgScore: avgQol, weight: wPct, layer: lyr });
+    }
+
     renderExpansionResults(result, _expansionCandidates, weightMap);
 
   } catch (err) {
@@ -1216,13 +1271,49 @@ function renderExpansionResults(result, candidates, weightMap) {
       ${tabsHtml()}
 
       <div class="tab-content" id="tab-raw">
-        <p class="text-muted" style="font-size:11px;">Weight allocation across selected analyses.</p>
-        ${layerSummaryHtml}
-        <div class="insight-card mt-2">
+        <p class="text-muted" style="font-size:11px;margin-bottom:10px;">Toggle individual analysis layers on the map. Each layer's average QoL score and weight are shown.</p>
+
+        <!-- Per-layer toggle list -->
+        <div id="exp-layer-toggles" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+          ${candidates.map((a, i) => {
+            const rl = _expansionRawLayers.find(r => r.id === a.id);
+            if (!rl) return '';
+            const scoreColor = rl.avgScore != null ? (rl.avgScore >= 75 ? '#27ae60' : rl.avgScore >= 50 ? '#f39c12' : '#e74c3c') : '#888';
+            return `
+              <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;">
+                <label class="exp-layer-toggle-wrap" style="display:flex;align-items:center;gap:0;cursor:pointer;flex-shrink:0;">
+                  <input type="checkbox" id="exp-lyr-${a.id}" checked
+                    onchange="_expansionToggleLayer(${a.id}, this.checked)"
+                    style="width:14px;height:14px;accent-color:${rl.color};cursor:pointer;">
+                </label>
+                <span style="font-size:15px;flex-shrink:0;">${rl.icon}</span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${rl.label}</div>
+                  <div style="height:3px;background:var(--border-color);border-radius:2px;margin-top:3px;">
+                    <div style="height:100%;width:${rl.weight}%;background:${rl.color};border-radius:2px;opacity:0.8;"></div>
+                  </div>
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                  ${rl.avgScore != null ? `<div style="font-size:13px;font-weight:800;color:${scoreColor};line-height:1;">${rl.avgScore}</div><div style="font-size:9px;color:var(--text-muted);">/100 avg</div>` : '<div style="font-size:10px;color:var(--text-muted);">—</div>'}
+                  <div style="font-size:9px;color:var(--text-muted);">${rl.weight}% wt</div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button class="btn btn-ghost" style="flex:1;font-size:11px;padding:5px;" onclick="_expansionToggleAllLayers(true)">Show all</button>
+          <button class="btn btn-ghost" style="flex:1;font-size:11px;padding:5px;" onclick="_expansionToggleAllLayers(false)">Hide all</button>
+        </div>
+
+        <div class="insight-card">
           <div class="label">Total cells</div><div class="value">${cellCount.toLocaleString()}</div>
         </div>
         <div class="insight-card">
           <div class="label">Cell size</div><div class="value">${cellLabel}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Layers combined</div><div class="value">${candidates.length}</div>
         </div>
       </div>
 
@@ -1284,6 +1375,10 @@ function renderExpansionResults(result, candidates, weightMap) {
 
 // Stores top-area boundary layers for "Focus on map" interaction
 let _expansionAreaLayers = [];
+
+// Stores individual per-layer Leaflet layers for the Raw Data tab toggles
+// Each entry: { id, label, icon, color, avgScore, weight, layer }
+let _expansionRawLayers = [];
 
 function _renderExpansionMap(weighted_grid, top_areas) {
   _expansionAreaLayers = [];
@@ -1361,6 +1456,23 @@ function _downloadExpansionGeoJSON() {
   downloadGeoJSON(lastResultBlob, 'expansion_weighted_grid.geojson');
 }
 
+function _expansionToggleLayer(id, visible) {
+  const rl = _expansionRawLayers.find(r => r.id === id);
+  if (!rl) return;
+  try {
+    if (visible) { if (!map.hasLayer(rl.layer)) rl.layer.addTo(map); }
+    else { if (map.hasLayer(rl.layer)) map.removeLayer(rl.layer); }
+  } catch(e) { console.warn('_expansionToggleLayer error', e); }
+}
+
+function _expansionToggleAllLayers(visible) {
+  _expansionRawLayers.forEach(rl => {
+    const cb = document.getElementById(`exp-lyr-${rl.id}`);
+    if (cb) cb.checked = visible;
+    _expansionToggleLayer(rl.id, visible);
+  });
+}
+
 
 /* ============================================================
    3. RUN ANALYSIS — switches the panel to the Results view
@@ -1422,6 +1534,11 @@ function _runAnalysisCore(key) {
 
   if (key === "air-quality") {
     runAirQualityAnalysis();
+    return;
+  }
+
+  if (key === "building-density") {
+    runBuildingDensityAnalysis();
     return;
   }
 
@@ -3409,6 +3526,8 @@ async function runInformalSettlementAnalysis() {
       throw new Error(err.detail || `HTTP ${response.status}`);
     }
 
+    captureResultFile(response);
+
     const avgIrregularity  = parseFloat(response.headers.get("X-Avg-Irregularity") || "0");
     const highPct          = parseFloat(response.headers.get("X-High-Pct")          || "0");
     const mediumPct        = parseFloat(response.headers.get("X-Medium-Pct")        || "0");
@@ -4873,6 +4992,297 @@ function renderAirQualityResults(stats, inputs) {
 }
 
 
+/* ============================================================
+   BUILDING DENSITY — analysis and results
+   ============================================================ */
+
+/* ---------- Building density % → colour ---------- */
+function buildingDensityColor(upa) {
+  // Optimal 10–25 u/acre = green; below = yellow→red; above = orange→red
+  if (upa >= 10 && upa <= 25) return "rgba(39,174,96,0.82)";   // green optimal
+  if (upa < 10) {
+    const t = upa / 10;
+    return `rgba(${Math.round((1-t)*220+t*39)},${Math.round((1-t)*100+t*174)},0,0.82)`;
+  }
+  // above 25
+  const t = Math.min(1, (upa - 25) / 75);
+  return `rgba(${Math.round((1-t)*230+t*180)},${Math.round((1-t)*120+t*20)},0,0.82)`;
+}
+
+/* ---------- Building Density — calls backend API ---------- */
+async function runBuildingDensityAnalysis() {
+  const tiffInput = document.getElementById("tiffInput");
+  const threshold = parseFloat(document.getElementById("buildingThreshold")?.value ?? 0.5);
+
+  if (!tiffInput || !tiffInput.files[0]) {
+    alert("Please upload a building mask GeoTIFF file.");
+    return;
+  }
+
+  const tiffFile = tiffInput.files[0];
+  const inputs   = { fileName: tiffFile.name, threshold };
+
+  lastBuildingRasterBuffer = await tiffFile.arrayBuffer();
+
+  const formData = new FormData();
+  formData.append("geotiff", tiffFile);
+
+  const url = `${API_BASE_URL}/calculate-building-density?building_threshold=${threshold}`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Building Density — Processing</h3>
+      <p class="panel-desc">Classifying built pixels and computing density grid…</p>
+      <div class="text-center my-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading…</span>
+        </div>
+      </div>
+    </div>`;
+
+  try {
+    const response = await fetch(url, { method: "POST", body: formData });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    captureResultFile(response);
+
+    const buildingPct    = parseFloat(response.headers.get("X-Building-Pct")     || "0");
+    const unitsPerAcre   = parseFloat(response.headers.get("X-Units-Per-Acre")   || "0");
+    const overallScore   = parseInt(response.headers.get("X-Building-Score")     || "0");
+    const validPixels    = response.headers.get("X-Valid-Pixels");
+    const buildingPixels = response.headers.get("X-Building-Pixels");
+    const cellSizeM      = parseInt(response.headers.get("X-Cell-Size-M")        || "0");
+    const inOptimal      = response.headers.get("X-In-Optimal-Range") === "true";
+
+    const geojsonData = await response.json();
+
+    lastResultBlob    = geojsonData;
+    lastResultService = "building-density";
+    updateLegend("building-density", "full");
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
+    if (inputLayer) map.removeLayer(inputLayer);
+    clearMap();
+
+    // Render raster underlay
+    if (lastBuildingRasterBuffer) {
+      try {
+        inputLayer = await renderGeoRasterFromArrayBuffer(lastBuildingRasterBuffer.slice(0), {
+          opacity: 0.75,
+          resolution: 256,
+        });
+      } catch (rasterErr) {
+        console.warn("Could not render building density raster underlay:", rasterErr);
+      }
+    }
+
+    // Overlay: colour cells by units_per_acre
+    resultLayer = L.geoJSON(geojsonData, {
+      style(f) {
+        const upa  = f.properties.units_per_acre || 0;
+        const color = buildingDensityColor(upa);
+        const inOpt = f.properties.in_optimal;
+        return {
+          fillColor:   color,
+          fillOpacity: 0.62,
+          color:       inOpt ? "rgba(39,174,96,0.9)" : "rgba(0,0,0,0.15)",
+          weight:      inOpt ? 1.5 : 0.5,
+        };
+      },
+      onEachFeature(f, layer) {
+        const p   = f.properties;
+        const upa = (p.units_per_acre || 0).toFixed(2);
+        const pct = (p.building_pct  || 0).toFixed(1);
+        const tag = p.in_optimal ? "✓ Within 10–25 u/acre standard" : "✗ Outside optimal range";
+        layer.bindPopup(
+          `<strong>Building Coverage:</strong> ${pct}%<br>` +
+          `<strong>Density:</strong> ${upa} units/acre<br>` +
+          `<strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100<br>` +
+          `<span style="font-size:11px;">${tag}</span>`
+        );
+      },
+    }).addTo(map);
+
+    try {
+      const b = resultLayer.getBounds();
+      if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+    } catch(e) {}
+
+    renderBuildingDensityResults({
+      building_pct:    buildingPct,
+      units_per_acre:  unitsPerAcre,
+      overall_score:   overallScore,
+      valid_pixels:    validPixels,
+      building_pixels: buildingPixels,
+      cell_size_m:     cellSizeM,
+      in_optimal:      inOptimal,
+    }, inputs);
+
+  } catch (error) {
+    console.error("Building density error:", error);
+    analysisPanel.innerHTML = `
+      <div class="fade-in">
+        <h3 class="panel-title">Error</h3>
+        <p class="text-danger">Failed to calculate building density: ${error.message}</p>
+        <button class="btn btn-ghost btn-block mt-3"
+                onclick="renderServicePanel('building-density')">
+          ← Back to inputs
+        </button>
+      </div>`;
+  }
+}
+
+
+/* ---------- Render Building Density Results ---------- */
+let lastBuildingRasterBuffer = null;
+
+function renderBuildingDensityResults(stats, inputs) {
+  lastAnalysisContext = {
+    service:       "building-density",
+    service_label: "Building Density",
+    inputs: { file: inputs?.fileName || "uploaded raster", threshold: inputs?.threshold },
+    full_area: {
+      building_pct:    parseFloat(stats.building_pct),
+      units_per_acre:  parseFloat(stats.units_per_acre),
+      overall_score:   parseInt(stats.overall_score),
+      valid_pixels:    parseInt(stats.valid_pixels),
+      building_pixels: parseInt(stats.building_pixels),
+      in_optimal:      stats.in_optimal,
+    },
+    grid: null,
+  };
+
+  const upa          = parseFloat(stats.units_per_acre) || 0;
+  const buildPct     = parseFloat(stats.building_pct) || 0;
+  const score        = parseInt(stats.overall_score) || 0;
+  const validPx      = parseInt(stats.valid_pixels) || 0;
+  const buildPx      = parseInt(stats.building_pixels) || 0;
+  const inOptimal    = stats.in_optimal;
+  const cat          = perfCategory(score);
+  const scoreClr     = qolScoreTextColor(score);
+
+  const upaGap = upa < 10
+    ? `<span style="color:var(--danger)">▼ ${(10 - upa).toFixed(2)} u/acre below optimal</span>`
+    : upa > 25
+    ? `<span style="color:var(--warning)">▲ ${(upa - 25).toFixed(2)} u/acre above optimal</span>`
+    : `<span style="color:var(--success)">✓ Within 10–25 u/acre standard</span>`;
+
+  const keyInsight = inOptimal
+    ? `Building density of ${upa.toFixed(1)} u/acre is within the optimal 10–25 range. Land use is well-balanced.`
+    : upa < 10
+    ? `Under-built at ${upa.toFixed(1)} u/acre — the area is too sparse for efficient service delivery.`
+    : `Over-built at ${upa.toFixed(1)} u/acre — exceeds the 25 u/acre limit, indicating overcrowding risk.`;
+
+  const nonBuildPct = (100 - buildPct).toFixed(1);
+  const chartHtml   = miniBarChart(
+    [buildPct.toFixed(1), nonBuildPct],
+    2,
+    [buildingDensityColor(upa), "#9b9b9b"],
+    ["Built", "Open"]
+  );
+
+  const inputsHtml = `
+    <div class="insight-card">
+      <div class="label">Raster file</div>
+      <div class="value" style="font-size:11px;word-break:break-all;">${inputs.fileName}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Building threshold</div>
+      <div class="value">&gt; ${inputs.threshold}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Total Pixels</div>
+      <div class="value">${validPx.toLocaleString()}</div>
+    </div>
+    <div class="insight-card">
+      <div class="label">Building Pixels</div>
+      <div class="value">${buildPx.toLocaleString()}</div>
+    </div>`;
+
+  analysisPanel.innerHTML = `
+    <div class="fade-in">
+      <h3 class="panel-title">Building Density — Results</h3>
+      <p class="panel-desc">Optimal range: 10–25 dwelling units/acre. Green cells are within standard; red/orange cells need attention.</p>
+
+      <div class="tabs">
+        <div class="tab"        data-tab="raw">Raw Data</div>
+        <div class="tab active" data-tab="full">Full Area</div>
+        <div class="tab"        data-tab="grid">Grid / Cell</div>
+        <div class="tab"        data-tab="ai">✦ AI Recommendations</div>
+      </div>
+
+      <!-- RAW tab -->
+      <div class="tab-content" id="tab-raw">
+        <p class="text-muted">Uploaded input data.</p>
+        ${inputsHtml}
+      </div>
+
+      <!-- FULL AREA tab -->
+      <div class="tab-content active" id="tab-full">
+        <div class="insight-card" style="border-left:3px solid ${inOptimal ? 'var(--success)' : 'var(--danger)'};">
+          <div class="label">vs. 10–25 u/acre Standard</div>
+          <div class="value">${upaGap}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Building Coverage</div>
+          <div class="value">${buildPct.toFixed(1)}%</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Density (units/acre)</div>
+          <div class="value">${upa.toFixed(2)}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Overall QoL Score</div>
+          <div class="value" style="color:${scoreClr}">${score} / 100</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Performance</div>
+          <div class="value" style="color:${cat.color};font-size:15px;">${cat.label}</div>
+        </div>
+        <div class="insight-card">
+          <div class="label">Status</div>
+          <div class="value" style="color:${inOptimal ? 'var(--success)' : 'var(--danger)'}">
+            ${inOptimal ? "✓ Within optimal range" : "✗ Outside optimal range"}
+          </div>
+        </div>
+        ${chartHtml}
+        <div style="background:rgba(76,194,255,0.08);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--text-primary);">
+          💡 ${keyInsight}
+        </div>
+        <button class="btn btn-ghost btn-block" style="margin-top:12px;font-size:12px;" data-full-dl="true">
+          <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
+          Download GeoJSON
+        </button>
+      </div>
+
+      <!-- GRID tab -->
+      <div class="tab-content" id="tab-grid">
+        <p class="text-muted">Click this tab to score cells…</p>
+      </div>
+
+      <div class="tab-content" id="tab-ai">
+        <div class="ai-tab-placeholder">
+          <div class="ai-tab-icon">✦</div>
+          <div class="ai-tab-title">AI Recommendations</div>
+          <div class="ai-tab-desc">The AI agent will analyse the results and return context-specific insights, anomalies, and actionable recommendations.</div>
+          <div class="ai-tab-badge">Coming soon</div>
+        </div>
+      </div>
+
+      <button class="btn btn-ghost btn-block mt-3"
+              onclick="renderServicePanel('building-density')">
+        ← Back to inputs
+      </button>
+    </div>`;
+  translateLabels();
+  wireTabSwitching();
+  lastAnalysisScore = score;
+  autoSaveCurrentAnalysis();
+}
+
+
 /* ---------- Render Facility Accessibility Results ---------- */
 function renderFacilityAccessibilityResults(stats, inputs, geojsonData) {
   lastAnalysisContext = {
@@ -5282,6 +5692,24 @@ function wireTabSwitching() {
               console.warn("Could not render raw input raster:", e);
             }
           })();
+        } else if (lastResultService === "expansion" && _expansionRawLayers.length) {
+          // Expansion raw tab: hide result / grid / area-boundary layers, show per-service layers
+          if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
+          if (_expansionAreaLayers) _expansionAreaLayers.forEach(l => { if (map.hasLayer(l)) map.removeLayer(l); });
+          _expansionRawLayers.forEach(rl => {
+            const cb = document.getElementById(`exp-lyr-${rl.id}`);
+            const visible = !cb || cb.checked;
+            if (visible) { try { if (!map.hasLayer(rl.layer)) rl.layer.addTo(map); } catch(e){} }
+            else { if (map.hasLayer(rl.layer)) map.removeLayer(rl.layer); }
+          });
+          try {
+            const visLayers = _expansionRawLayers.filter(rl => map.hasLayer(rl.layer)).map(rl => rl.layer);
+            if (visLayers.length) {
+              const grp = L.featureGroup(visLayers);
+              const b = grp.getBounds();
+              if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+            }
+          } catch(e) {}
         } else if (inputLayer) {
           if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
           try {
@@ -5300,6 +5728,8 @@ function wireTabSwitching() {
         }
         if (gridLayer  && map.hasLayer(gridLayer))  map.removeLayer(gridLayer);
         if (aiLayer    && map.hasLayer(aiLayer))    map.removeLayer(aiLayer);
+        // Remove expansion raw layers when switching away from raw tab
+        if (_expansionRawLayers) _expansionRawLayers.forEach(rl => { if (map.hasLayer(rl.layer)) map.removeLayer(rl.layer); });
         if (_keepUnderlay && inputLayer && !map.hasLayer(inputLayer)) {
           try { inputLayer.addTo(map); } catch(e) {}
         }
@@ -5331,10 +5761,11 @@ function wireTabSwitching() {
         if (inputLayer  && map.hasLayer(inputLayer))  map.removeLayer(inputLayer);
         if (resultLayer && map.hasLayer(resultLayer)) map.removeLayer(resultLayer);
         if (aiLayer     && map.hasLayer(aiLayer))     map.removeLayer(aiLayer);
-        // Remove expansion area boundaries from Full Area view when switching to Grid
+        // Remove expansion area boundaries and raw layers when switching to Grid
         if (_expansionAreaLayers && _expansionAreaLayers.length) {
           _expansionAreaLayers.forEach(lyr => { if (map.hasLayer(lyr)) { try { map.removeLayer(lyr); } catch(e){} } });
         }
+        if (_expansionRawLayers) _expansionRawLayers.forEach(rl => { if (map.hasLayer(rl.layer)) map.removeLayer(rl.layer); });
 
         // Expansion: weighted grid is already in lastResultBlob — no backend round-trip needed
         if (lastResultService === "expansion" && lastResultBlob) {

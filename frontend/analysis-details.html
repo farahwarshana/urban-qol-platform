@@ -2467,25 +2467,28 @@ async function loadVectorAnalysis(url) {
     const { layer, geojson, features } = await loadVector(url, _config);
     _resultLayer = layer;
     _resultLayer.addTo(_map);
-
-    // Add input layer (boundary + points) on top, if config provides one
-    if (_config.buildInputLayer) {
-      const inputLayer = _config.buildInputLayer(geojson);
-      if (inputLayer) { inputLayer.addTo(_map); _rawLayer = inputLayer; }
-    }
-
     fitLayer(_resultLayer);
     _resultBlob = geojson;
 
-    // Raw tab layer: neutral grey style showing all features
-    _rawLayer = L.geoJSON(geojson, {
-      style: () => ({ fillColor:"#7a7f94", fillOpacity:0.25, color:"#555", weight:1 }),
-      pointToLayer: _config.pointToLayer ? (f,ll) => _config.pointToLayer(f,ll) : undefined,
-      onEachFeature: (f,l) => {
-        const props = Object.entries(f.properties||{}).slice(0,8).map(([k,v]) => `<b>${k}:</b> ${v}`).join("<br>");
-        l.bindPopup(`<div style="font-size:11px;max-height:150px;overflow:auto;">${props}</div>`);
-      }
-    });
+    // Raw tab layer:
+    // - Services with a dedicated input layer (public-transport, facility-accessibility)
+    //   show boundary outline + station/facility points — same as dashboard Raw tab
+    // - All other services show the same styled result layer (no grey wash)
+    if (_config.buildInputLayer) {
+      const inputLayer = _config.buildInputLayer(geojson);
+      _rawLayer = inputLayer || _resultLayer;
+    } else {
+      // Re-render with the full style so Raw tab is identical to Full tab visually
+      // but uses the plain GeoJSON renderer (no custom buildLayer) for simplicity
+      _rawLayer = L.geoJSON(geojson, {
+        style: f => _config.styleFeature ? _config.styleFeature(f) : { fillColor:"#00d4aa", fillOpacity:0.5, color:"#333", weight:1 },
+        pointToLayer: _config.pointToLayer ? (f,ll) => _config.pointToLayer(f,ll) : undefined,
+        onEachFeature: (f,l) => {
+          const props = Object.entries(f.properties||{}).slice(0,8).map(([k,v]) => `<b>${k}:</b> ${v}`).join("<br>");
+          l.bindPopup(`<div style="font-size:11px;max-height:150px;overflow:auto;">${props}</div>`);
+        }
+      });
+    }
 
     const fullArea  = _config.buildFullArea(features);
     const usedScore = fullArea.useDbScore ? (_analysis.score || fullArea.score) : fullArea.score;
@@ -2508,10 +2511,13 @@ async function loadVectorAnalysis(url) {
       `<div class="section-label">Recommendations</div>` +
       recs.map(r => `<div class="rec-box">${r}</div>`).join("");
 
+    const rawDesc = _config.buildInputLayer
+      ? "This tab shows the input boundary and station/facility points on the map."
+      : "This tab shows the result data with its full styling on the map.";
     document.getElementById("tab-raw").innerHTML =
       `<div class="tab-panel-header">Raw Data</div>` +
       `<div class="stats-grid">${_config.buildRaw(features)}</div>` +
-      `<div class="key-insight">💡 This tab shows all features with a neutral grey style on the map.</div>`;
+      `<div class="key-insight">💡 ${rawDesc}</div>`;
 
   } catch(err) {
     document.getElementById("tab-full").innerHTML =

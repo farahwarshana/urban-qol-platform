@@ -331,6 +331,48 @@ def _score_urban_density(density):
         return int(np.interp(min(density, 50000), [35000, 50000], [25, 0]))
 
 
+def _score_building_density(units_per_acre: float):
+    """
+    Building density (units/acre) → QoL score 0–100.
+
+    Optimal urban standard: 10–25 units/acre → 100.
+    Values outside that range degrade in both directions.
+
+    Below 10 (under-built / too sparse):
+      10   → 100
+       5   →  60
+       2   →  30
+       0   →   0
+
+    Above 25 (over-built / too dense):
+      25   → 100
+      40   →  70
+      60   →  40
+      80   →  15
+     120+  →   0
+    """
+    if units_per_acre is None or (isinstance(units_per_acre, float) and np.isnan(units_per_acre)) or units_per_acre < 0:
+        return None
+    u = float(units_per_acre)
+    OPTIMAL_LOW, OPTIMAL_HIGH = 10.0, 25.0
+    if OPTIMAL_LOW <= u <= OPTIMAL_HIGH:
+        return 100
+    if u < OPTIMAL_LOW:
+        if u >= 5:
+            return int(np.interp(u, [5, OPTIMAL_LOW], [60, 100]))
+        if u >= 2:
+            return int(np.interp(u, [2, 5], [30, 60]))
+        return int(np.interp(u, [0, 2], [0, 30]))
+    # u > OPTIMAL_HIGH
+    if u <= 40:
+        return int(np.interp(u, [OPTIMAL_HIGH, 40], [100, 70]))
+    if u <= 60:
+        return int(np.interp(u, [40, 60], [70, 40]))
+    if u <= 80:
+        return int(np.interp(u, [60, 80], [40, 15]))
+    return int(np.interp(min(u, 120), [80, 120], [15, 0]))
+
+
 def _score_aqi(cls_value):
     """
     AQI class (0–5) → QoL score.
@@ -1015,6 +1057,48 @@ def grid_from_vegetation(geojson_path):
                 "cell_cx":      props.get("cell_cx"),
                 "cell_cy":      props.get("cell_cy"),
                 "service":      "vegetation",
+            },
+        })
+
+    return {
+        "type":        "FeatureCollection",
+        "features":    features,
+        "cell_size_m": cell_size_m,
+    }
+
+
+def grid_from_building_density(geojson_path: str) -> dict:
+    """
+    Re-score a building density cell GeoJSON produced by building_density.py.
+
+    The input already has per-cell units_per_acre values; this function
+    re-applies the scoring function and returns a clean grid GeoJSON
+    compatible with the standard grid tab rendering.
+    """
+    import json
+    with open(geojson_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    cell_size_m = data.get("cell_size_m", 0)
+    features    = []
+
+    for feat in data.get("features", []):
+        props = feat.get("properties", {})
+        upa   = props.get("units_per_acre")
+        score = _score_building_density(upa) if upa is not None else None
+
+        features.append({
+            "type":     feat["type"],
+            "geometry": feat["geometry"],
+            "properties": {
+                "value":          round(float(upa), 2) if upa is not None else None,
+                "qol_score":      score,
+                "building_pct":   props.get("building_pct"),
+                "units_per_acre": props.get("units_per_acre"),
+                "in_optimal":     props.get("in_optimal"),
+                "cell_cx":        props.get("cell_cx"),
+                "cell_cy":        props.get("cell_cy"),
+                "service":        "building-density",
             },
         })
 

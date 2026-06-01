@@ -66,6 +66,7 @@ from vegetation_density import calculate_vegetation_density
 from traffic_analysis import calculate_traffic_analysis
 from informal_settlement import calculate_informal_settlement
 from air_quality_index import calculate_air_quality_index
+from building_density import calculate_building_density
 from grid_analysis import (
     grid_from_raster,
     grid_from_vector,
@@ -74,6 +75,7 @@ from grid_analysis import (
     grid_from_vegetation,
     grid_from_traffic,
     grid_from_informal_settlement,
+    grid_from_building_density,
     combine_grids_weighted,
     extract_top_areas,
 )
@@ -131,6 +133,8 @@ app.add_middleware(
         "X-Unhealthy-Pct", "X-Very-Unhealthy-Pct", "X-Hazardous-Pct",
         "X-Total-Facilities", "X-Facilities-Processed", "X-Walking-Speed-Kmh",
         "X-Has-Aoi", "X-Zone-Pcts", "X-Uncovered-Pct",
+        "X-Building-Pct", "X-Units-Per-Acre", "X-Building-Score",
+        "X-Building-Pixels", "X-In-Optimal-Range",
     ],
 )
 
@@ -782,6 +786,78 @@ def grid_vegetation_endpoint(
         raise HTTPException(status_code=500, detail=f"Grid Vegetation failed: {e}")
 
 
+@app.post("/calculate-building-density", tags=["Building Density"])
+def calculate_building_density_endpoint(
+    geotiff: UploadFile = File(..., description="Single-band building mask GeoTIFF (pixel > 0.5 = built)"),
+    building_threshold: float = Query(0.5, description="Pixel value threshold above which a pixel is classified as building (default 0.5)"),
+):
+    """
+    Analyse building density from a GeoTIFF raster.
+    Returns a per-cell GeoJSON scored against the 10–25 units/acre urban standard.
+    """
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    bd_dir  = get_output_subdir("building_density")
+
+    tiff_path   = tmp_dir / "input.tif"
+    output_path = bd_dir / f"building_density_{job_id}.geojson"
+
+    try:
+        with tiff_path.open("wb") as f:
+            shutil.copyfileobj(geotiff.file, f)
+
+        result = calculate_building_density(
+            geotiff_path=str(tiff_path),
+            building_threshold=building_threshold,
+            output_path=str(output_path),
+            tmp_dir=str(tmp_dir),
+        )
+
+        with open(str(output_path), "r", encoding="utf-8") as f:
+            geojson_data = json.load(f)
+
+        return JSONResponse(
+            content=geojson_data,
+            headers={
+                "X-Result-File":       result_file_header(output_path),
+                "X-Building-Pct":      str(result["building_pct"]),
+                "X-Units-Per-Acre":    str(result["units_per_acre"]),
+                "X-Building-Score":    str(result["overall_score"]),
+                "X-Valid-Pixels":      str(result["valid_pixels"]),
+                "X-Building-Pixels":   str(result["building_pixels"]),
+                "X-Cell-Size-M":       str(result["cell_size_m"]),
+                "X-In-Optimal-Range":  str(result["in_optimal_range"]).lower(),
+            },
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Building density calculation failed: {e}")
+
+
+@app.post("/calculate-grid/building-density", tags=["Grid Analysis"])
+def grid_building_density_endpoint(
+    geojson: UploadFile = File(..., description="Building density result GeoJSON (from /calculate-building-density)"),
+):
+    """Re-score the building density cell GeoJSON and return it for the grid/cell tab."""
+    job_id  = str(uuid.uuid4())
+    tmp_dir = UPLOAD_DIR / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    input_path = tmp_dir / "bd_result.geojson"
+
+    try:
+        with input_path.open("wb") as f:
+            shutil.copyfileobj(geojson.file, f)
+
+        grid_geojson = grid_from_building_density(str(input_path))
+        return JSONResponse(content=grid_geojson)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grid Building Density failed: {e}")
+
+
 @app.post("/calculate-grid/facility-accessibility", tags=["Grid Analysis"])
 def grid_facility_accessibility_endpoint(
     geojson: UploadFile = File(..., description="Facility accessibility result GeoJSON"),
@@ -953,6 +1029,7 @@ def calculate_informal_settlement_endpoint(
         return JSONResponse(
             content=geojson_data,
             headers={
+                "X-Result-File":       result_file_header(output_path),
                 "X-Avg-Irregularity":  str(result["avg_irregularity"]),
                 "X-High-Pct":          str(result["high_pct"]),
                 "X-Medium-Pct":        str(result["medium_pct"]),
