@@ -588,19 +588,18 @@ input:focus, select:focus, textarea:focus {
 .map-scale-line {
   height: 4px;
   min-width: 40px;
-  background: var(--text-primary);
-  border: 1px solid var(--text-primary);
+  background: #4cc2ff;
+  border: 1px solid #4cc2ff;
   border-top: none;
   box-sizing: border-box;
-  /* left + right border act as end ticks */
-  border-left: 2px solid var(--text-primary);
-  border-right: 2px solid var(--text-primary);
+  border-left: 2px solid #4cc2ff;
+  border-right: 2px solid #4cc2ff;
 }
 
 .map-scale-label {
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #4cc2ff;
   background: rgba(15, 20, 24, 0.72);
   padding: 1px 4px;
   border-radius: 3px;
@@ -610,7 +609,7 @@ input:focus, select:focus, textarea:focus {
 .map-coords {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: #4cc2ff;
   background: rgba(15, 20, 24, 0.72);
   padding: 3px 8px;
   border-radius: 4px;

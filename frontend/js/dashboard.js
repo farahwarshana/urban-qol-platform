@@ -2598,7 +2598,8 @@ function renderTransitResults(stats, inputs, geojsonData) {
    VEGETATION DENSITY — analysis and results
    ============================================================ */
 
-let lastVegResult = null;   // full result GeoJSON for grid + CSV
+let lastVegResult       = null;   // full result GeoJSON for grid + CSV
+let lastVegRasterBuffer = null;   // original uploaded TIFF bytes for raster underlay
 
 
 /* ---------- Vegetation Analysis — calls backend API ---------- */
@@ -2613,6 +2614,9 @@ async function runVegetationAnalysis() {
 
   const tiffFile = tiffInput.files[0];
   const inputs   = { fileName: tiffFile.name, threshold, aoiDesc: "Full raster extent" };
+
+  // Read raw bytes now so we can render the raster underlay after the response
+  lastVegRasterBuffer = await tiffFile.arrayBuffer();
 
   const formData = new FormData();
   formData.append("geotiff", tiffFile);
@@ -2660,9 +2664,22 @@ async function runVegetationAnalysis() {
     if (inputLayer) map.removeLayer(inputLayer);
     clearMap();
 
-    // Render vegetation as smooth overlapping blobs instead of square grid cells,
-    // so the full-area view looks like a continuous raster highlighting green areas.
-    resultLayer = _buildVegBlobLayer(geojsonData);
+    // Full Analysis: show the original raster as an underlay so the user can
+    // see the actual satellite imagery, then draw a clean outline-only vector
+    // layer on top that highlights vegetated cells in green and bare cells with
+    // a faint red border — no opaque fill, so the raster stays visible.
+    if (lastVegRasterBuffer) {
+      try {
+        inputLayer = await renderGeoRasterFromArrayBuffer(lastVegRasterBuffer.slice(0), {
+          opacity: 0.85,
+          resolution: 256,
+        });
+      } catch (rasterErr) {
+        console.warn("Could not render vegetation raster underlay:", rasterErr);
+      }
+    }
+
+    resultLayer = _buildVegOutlineLayer(geojsonData);
     resultLayer.addTo(map);
 
     try {
@@ -2713,73 +2730,43 @@ function vegPctColor(pct) {
 }
 
 
-/* ---------- Vegetation blob layer (Full Area tab) ---------- */
-function _buildVegBlobLayer(geojsonData) {
+/* ---------- Vegetation outline layer (Full Area tab) ---------- */
+// Renders outline-only polygons over the raster underlay:
+//   vegetated cells (pct >= threshold)  → solid green border, very light green tint
+//   bare/sparse cells                   → no border, no fill (invisible, just popup)
+// This lets the raster show through while clearly marking where vegetation is.
+function _buildVegOutlineLayer(geojsonData) {
   const features = (geojsonData && geojsonData.features) || [];
 
-  // Invisible polygon layer kept only for getBounds()
-  const bboxLayer = L.geoJSON(geojsonData, {
-    style: () => ({ fillOpacity: 0, opacity: 0, weight: 0 }),
-    interactive: false,
+  return L.geoJSON(geojsonData, {
+    style: function(f) {
+      const pct = f.properties.vegetation_pct ?? 0;
+      if (pct >= 15) {
+        // Vegetated: solid green outline, very faint fill so the raster shows through
+        const intensity = Math.min(1, pct / 50);   // 0 at 15%, 1 at 50%+
+        const alpha = 0.08 + intensity * 0.18;      // 0.08–0.26 fill opacity
+        return {
+          fillColor:   "#27ae60",
+          fillOpacity: alpha,
+          color:       "#27ae60",
+          weight:      2,
+          opacity:     0.75 + intensity * 0.25,
+        };
+      }
+      // Bare / sparse: invisible outline, no fill — just there for popup
+      return { fillOpacity: 0, opacity: 0, weight: 0 };
+    },
+    onEachFeature: function(f, layer) {
+      const p      = f.properties;
+      const pct    = p.vegetation_pct != null ? p.vegetation_pct.toFixed(1) + "%" : "—";
+      const tag    = p.passes_30pct ? "✓ Passes 30% standard" : "✗ Below 30% standard";
+      layer.bindPopup(
+        `<strong>Vegetation:</strong> ${pct}<br>` +
+        `<strong>QoL Score:</strong> ${p.qol_score ?? "—"}/100<br>` +
+        `<span style="font-size:11px;">${tag}</span>`
+      );
+    },
   });
-
-  if (!features.length) {
-    bboxLayer.getBounds = () => { try { return bboxLayer.getBounds(); } catch(e) { return null; } };
-    return bboxLayer;
-  }
-
-  // Estimate cell half-width in degrees from the first feature bbox
-  const coords = features[0].geometry && features[0].geometry.coordinates && features[0].geometry.coordinates[0];
-  const cellHalfDeg = coords ? Math.abs(coords[2][0] - coords[0][0]) / 2 : 0.002;
-  const cellRadiusM = cellHalfDeg * 111320;
-
-  const canvas = L.canvas({ padding: 0.6 });
-  const circleGroup = L.layerGroup();
-
-  features.forEach(function(f) {
-    const pct = f.properties.vegetation_pct ?? 0;
-    const cx  = f.properties.cell_cx;
-    const cy  = f.properties.cell_cy;
-    if (cx == null || cy == null) return;
-
-    const color       = vegPctColor(pct);
-    const coreOpacity = 0.15 + (pct / 100) * 0.65;
-
-    // Outer glow bleeds into neighbours to merge cells into a continuous surface
-    if (pct >= 2) {
-      circleGroup.addLayer(L.circle([cy, cx], {
-        renderer: canvas,
-        radius: cellRadiusM * 1.35,
-        fillColor: color,
-        fillOpacity: coreOpacity * 0.38,
-        color: "transparent",
-        weight: 0,
-        interactive: false,
-      }));
-    }
-
-    // Inner core with popup
-    const pctStr = pct.toFixed(1) + "%";
-    const tag    = f.properties.passes_30pct ? "✓ Passes 30% standard" : "✗ Below 30% standard";
-    const core   = L.circle([cy, cx], {
-      renderer: canvas,
-      radius: cellRadiusM * 0.78,
-      fillColor: color,
-      fillOpacity: coreOpacity,
-      color: "transparent",
-      weight: 0,
-    });
-    core.bindPopup(
-      `<strong>Vegetation:</strong> ${pctStr}<br>` +
-      `<strong>QoL Score:</strong> ${f.properties.qol_score ?? "—"}/100<br>` +
-      `<span style="font-size:11px;">${tag}</span>`
-    );
-    circleGroup.addLayer(core);
-  });
-
-  const group = L.layerGroup([bboxLayer, circleGroup]);
-  group.getBounds = function() { try { return bboxLayer.getBounds(); } catch(e) { return null; } };
-  return group;
 }
 
 
@@ -3362,7 +3349,8 @@ function renderTrafficResults(stats, inputs) {
    INFORMAL SETTLEMENT PATTERN ANALYSIS — analysis and results
    ============================================================ */
 
-let lastISPAResult = null;
+let lastISPAResult       = null;
+let lastISPARasterBuffer = null;   // raw ArrayBuffer of uploaded GeoTIFF for raster underlay
 
 /* ---------- Irregularity score → fill colour ---------- */
 function irregularityColor(score) {
@@ -3393,6 +3381,9 @@ async function runInformalSettlementAnalysis() {
   const tiffFile = tiffInput.files[0];
   const inputs   = { fileName: tiffFile.name };
 
+  // Keep a copy of the raw bytes so we can re-render the raster underlay later
+  const rawArrayBuffer = await tiffFile.arrayBuffer();
+
   const formData = new FormData();
   formData.append("geotiff", tiffFile);
 
@@ -3410,7 +3401,6 @@ async function runInformalSettlementAnalysis() {
   try {
   const response = await fetch(
     `${API_BASE_URL}/calculate-informal-settlement`,
-    // "http://localhost:8000/calculate-informal-settlement",
     { method: "POST", body: formData }
   );
 
@@ -3429,56 +3419,56 @@ async function runInformalSettlementAnalysis() {
 
     const geojsonData = await response.json();
 
-    lastISPAResult    = geojsonData;
-    lastResultBlob    = geojsonData;
-    lastResultService = "informal-settlement";
+    lastISPAResult        = geojsonData;
+    lastISPARasterBuffer  = rawArrayBuffer;   // store raster for underlay restore
+    lastResultBlob        = geojsonData;
+    lastResultService     = "informal-settlement";
     updateLegend("informal-settlement", "full");
 
     if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
     if (inputLayer) map.removeLayer(inputLayer);
     clearMap();
 
-    // Render: cells coloured by irregularity score, high-zone outlines on top
-    resultLayer = L.geoJSON(geojsonData, {
-      style: function(feature) {
-        const p = feature.properties;
-        if (p.type === "high_irregularity_zone") {
-          return {
-            fillColor:   "transparent",
-            fillOpacity: 0,
-            color:       "#e74c3c",
-            weight:      2.5,
-            dashArray:   "5,4",
-          };
-        }
-        return {
-          fillColor:   irregularityColor(p.irregularity_score),
-          fillOpacity: 0.7,
-          color:       "rgba(0,0,0,0.18)",
-          weight:      0.7,
-        };
+    // ── Raster underlay ───────────────────────────────────────────────────
+    // Render the original satellite image at low opacity as background context.
+    // inputLayer holds the raster so wireTabSwitching can restore/remove it.
+    try {
+      inputLayer = await renderGeoRasterFromArrayBuffer(rawArrayBuffer.slice(0), {
+        opacity: 0.55,
+        resolution: 128,
+      });
+    } catch (rasterErr) {
+      console.warn("Could not render raster underlay:", rasterErr);
+    }
+
+    // ── High-irregularity zone outlines only (no cell fill) ───────────────
+    const highZoneFeatures = geojsonData.features.filter(
+      f => f.properties.type === "high_irregularity_zone"
+    );
+    const highZoneGeoJSON = { type: "FeatureCollection", features: highZoneFeatures };
+
+    resultLayer = L.geoJSON(highZoneGeoJSON, {
+      style: {
+        fillColor:   "#e74c3c",
+        fillOpacity: 0.18,
+        color:       "#e74c3c",
+        weight:      2.5,
+        dashArray:   "6,4",
       },
       onEachFeature: function(feature, layer) {
-        const p = feature.properties;
-        if (p.type === "high_irregularity_zone") {
-          layer.bindPopup("<strong>High Irregularity Zone</strong><br>Potential informal settlement area");
-          return;
-        }
-        const cls   = p.classification || "—";
-        const score = p.irregularity_score !== null ? p.irregularity_score : "—";
-        const qol   = p.qol_score !== null ? p.qol_score + "/100" : "—";
-        layer.bindPopup(
-          `<strong>Irregularity Score:</strong> ${score}/100<br>` +
-          `<strong>Classification:</strong> ${cls}<br>` +
-          `<strong>QoL Score:</strong> ${qol}<br>` +
-          `<strong>Edge Fragmentation:</strong> ${p.edge_fragmentation !== null && p.edge_fragmentation !== undefined ? (p.edge_fragmentation * 100).toFixed(1) + "%" : "—"}`
-        );
+        layer.bindPopup("<strong>High Irregularity Zone</strong><br>Potential informal settlement area");
       },
     }).addTo(map);
 
     try {
-      const b = resultLayer.getBounds();
-      if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+      // Fit to raster bounds if available, else fall back to zone bounds
+      if (inputLayer && inputLayer.getBounds) {
+        const b = inputLayer.getBounds();
+        if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+      } else {
+        const b = resultLayer.getBounds();
+        if (b && b.isValid()) map.fitBounds(b, { padding: [50, 50] });
+      }
     } catch(e) {}
 
     renderInformalSettlementResults({
@@ -5302,9 +5292,17 @@ function wireTabSwitching() {
         }
 
       } else if (target === "full") {
-        if (inputLayer && map.hasLayer(inputLayer)) map.removeLayer(inputLayer);
+        // For informal-settlement and vegetation the raster underlay sits beneath
+        // the outline vectors — keep inputLayer visible alongside resultLayer.
+        const _keepUnderlay = lastResultService === "informal-settlement" || lastResultService === "vegetation";
+        if (!_keepUnderlay) {
+          if (inputLayer && map.hasLayer(inputLayer)) map.removeLayer(inputLayer);
+        }
         if (gridLayer  && map.hasLayer(gridLayer))  map.removeLayer(gridLayer);
         if (aiLayer    && map.hasLayer(aiLayer))    map.removeLayer(aiLayer);
+        if (_keepUnderlay && inputLayer && !map.hasLayer(inputLayer)) {
+          try { inputLayer.addTo(map); } catch(e) {}
+        }
         if (resultLayer && !map.hasLayer(resultLayer)) {
           try {
             resultLayer.addTo(map);

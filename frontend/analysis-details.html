@@ -62,7 +62,7 @@
 
     /* ── Main layout: map top, content below ── */
     .map-section { position:relative; border-radius:16px; overflow:hidden; border:1px solid var(--border); margin-bottom:20px; background:var(--surface); }
-    #analysisMap { width:100%; height:460px; }
+    #analysisMap { width:100%; height:500px; }
 
     /* ── Tab bar sits directly on top of map (inside map-section, absolute) ── */
     .map-tab-bar {
@@ -78,23 +78,27 @@
     .map-tab.active { background:var(--accent); color:#08110f; }
 
     /* ── Content row below map ── */
-    .content-row { display:grid; grid-template-columns:1fr 300px; gap:18px; align-items:start; }
+    .content-row { display:grid; grid-template-columns:1fr 320px; gap:20px; align-items:start; }
 
     /* ── Card ── */
     .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; }
 
-    /* ── Insight cards (compact 2-col grid inside tabs) ── */
-    .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+    /* ── Insight cards (2-col grid inside tabs) ── */
+    .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
     .stat-box { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
-    .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px; }
-    .stat-value { font-size:18px; font-weight:700; color:var(--accent); line-height:1.2; }
+    .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+    .stat-value { font-size:17px; font-weight:700; color:var(--accent); line-height:1.25; }
 
     /* ── Key insight / rec boxes ── */
-    .key-insight { background:rgba(76,194,255,.07); border-left:3px solid var(--accent); border-radius:6px; padding:10px 12px; margin:10px 0; font-size:13px; line-height:1.55; color:var(--text); }
-    .rec-box { background:rgba(0,212,170,.08); border:1px solid rgba(0,212,170,.2); border-radius:10px; padding:10px 13px; margin-bottom:8px; font-size:13px; line-height:1.55; color:var(--text); }
+    .key-insight { background:rgba(76,194,255,.07); border-left:3px solid var(--accent); border-radius:6px; padding:10px 13px; margin:12px 0; font-size:13px; line-height:1.6; color:var(--text); }
+    .rec-box { background:rgba(0,212,170,.07); border:1px solid rgba(0,212,170,.18); border-radius:10px; padding:10px 13px; margin-bottom:8px; font-size:13px; line-height:1.6; color:var(--text); }
 
     /* ── Section label inside tab ── */
-    .section-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:14px 0 8px; }
+    .section-label { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; margin:16px 0 8px; padding-bottom:5px; border-bottom:1px solid var(--border); }
+
+    /* ── Tab panel header ── */
+    .tab-panel-header { font-size:14px; font-weight:600; color:var(--text); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+    .tab-panel-header::before { content:''; display:inline-block; width:3px; height:16px; background:var(--accent); border-radius:2px; flex-shrink:0; }
 
     /* ── Legend (compact horizontal chips inside sidebar) ── */
     .legend-chip { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; background:var(--surface2); border:1px solid var(--border); margin-bottom:5px; }
@@ -221,16 +225,16 @@
     }
     .map-scale-bar { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
     .map-scale-line {
-      height:4px; min-width:40px; background:#e2e8f0;
-      border:1px solid #e2e8f0; border-top:none;
-      border-left:2px solid #e2e8f0; border-right:2px solid #e2e8f0;
+      height:4px; min-width:40px; background:#4cc2ff;
+      border:1px solid #4cc2ff; border-top:none;
+      border-left:2px solid #4cc2ff; border-right:2px solid #4cc2ff;
     }
     .map-scale-label {
-      font-size:10px; font-weight:600; color:#e2e8f0;
+      font-size:10px; font-weight:600; color:#4cc2ff;
       background:rgba(15,20,24,.72); padding:1px 4px; border-radius:3px; white-space:nowrap;
     }
     .map-coords {
-      font-size:11px; font-weight:500; color:#e2e8f0;
+      font-size:11px; font-weight:500; color:#4cc2ff;
       background:rgba(15,20,24,.72); padding:3px 8px; border-radius:4px;
       white-space:nowrap; font-variant-numeric:tabular-nums;
     }
@@ -367,12 +371,10 @@
       <div id="tab-full"  class="tab-pane active"><div class="loading-state"><div class="spinner"></div>Loading…</div></div>
       <div id="tab-raw"   class="tab-pane" style="display:none;"></div>
       <div id="tab-grid"  class="tab-pane" style="display:none;"></div>
-      <div id="tab-ai"    class="tab-pane" style="display:none;">
-        <div class="ai-placeholder">
+      <div id="tab-ai" class="tab-pane" style="display:none;">
+        <div class="loading-state" style="padding:20px 0;">
           <div class="ai-icon">✦</div>
-          <p style="font-size:15px;font-weight:600;margin-bottom:8px;">AI Recommendations</p>
-          <p style="font-size:13px;color:var(--muted);line-height:1.65;">The AI agent analyses result data and returns context-specific insights, anomalies, and actionable recommendations.<br><br>Integration in progress — will appear here automatically once connected.</p>
-          <div class="ai-badge">Coming soon</div>
+          <p style="font-size:13px;color:var(--muted);margin-top:8px;">Click the ✦ AI tab to generate recommendations.</p>
         </div>
       </div>
     </div>
@@ -1598,6 +1600,7 @@ async function loadGrid() {
     const clabel = csm >= 1000 ? `${(csm/1000).toFixed(1)} km` : `${csm} m`;
 
     pane.innerHTML = `
+      <div class="tab-panel-header">Grid / Cell Analysis</div>
       <div class="stats-grid">
         ${sb("Total Cells", geojson.features.length.toLocaleString())}
         ${sb("Cell Size",   clabel)}
@@ -2268,7 +2271,7 @@ async function fetchAIRecommendations() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    let html = "";
+    let html = `<div class="tab-panel-header">✦ AI Recommendations</div>`;
     if (data.summary) html += `<div class="key-insight">💡 ${data.summary}</div>`;
 
     if (data.insights?.length) {
@@ -2443,14 +2446,15 @@ async function loadRasterAnalysis(url) {
     };
 
     document.getElementById("tab-full").innerHTML =
+      `<div class="tab-panel-header">Full Area Analysis</div>` +
       fullArea.html +
       `<div class="section-label">Recommendations</div>` +
       recs.map(r => `<div class="rec-box">${r}</div>`).join("");
 
     document.getElementById("tab-raw").innerHTML =
-      `<div class="section-label">File Metadata</div>` +
+      `<div class="tab-panel-header">Raw Data / File Metadata</div>` +
       `<div class="stats-grid">${_config.buildRaw(georaster)}</div>` +
-      `<div class="key-insight">💡 Switching to this tab shows the raw raster with a greyscale gradient on the map.</div>`;
+      `<div class="key-insight">💡 This tab shows the raw raster with a greyscale gradient on the map.</div>`;
 
   } catch(err) {
     document.getElementById("tab-full").innerHTML =
@@ -2499,14 +2503,15 @@ async function loadVectorAnalysis(url) {
     };
 
     document.getElementById("tab-full").innerHTML =
+      `<div class="tab-panel-header">Full Area Analysis</div>` +
       fullArea.html +
       `<div class="section-label">Recommendations</div>` +
       recs.map(r => `<div class="rec-box">${r}</div>`).join("");
 
     document.getElementById("tab-raw").innerHTML =
-      `<div class="section-label">File Metadata</div>` +
+      `<div class="tab-panel-header">Raw Data</div>` +
       `<div class="stats-grid">${_config.buildRaw(features)}</div>` +
-      `<div class="key-insight">💡 Switching to this tab shows all features with a neutral style on the map.</div>`;
+      `<div class="key-insight">💡 This tab shows all features with a neutral grey style on the map.</div>`;
 
   } catch(err) {
     document.getElementById("tab-full").innerHTML =
