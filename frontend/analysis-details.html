@@ -142,6 +142,98 @@
       .content-row { grid-template-columns:1fr; }
       .map-tab-bar { position:relative; top:auto; left:auto; transform:none; border-radius:0; border:none; border-bottom:1px solid var(--border); background:var(--surface); backdrop-filter:none; justify-content:center; }
     }
+
+    /* ── Map controls toolbar (top-left, identical to dashboard) ── */
+    .map-controls {
+      position:absolute; top:12px; left:12px;
+      display:flex; align-items:center; gap:6px; z-index:600; flex-wrap:wrap;
+    }
+    .map-controls .mc-btn {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 10px; font-size:12px; font-weight:500;
+      background:rgba(15,20,24,.82); border:1px solid rgba(255,255,255,.18);
+      color:#e2e8f0; border-radius:8px; cursor:pointer;
+      font-family:inherit; transition:.15s; white-space:nowrap;
+      backdrop-filter:blur(6px);
+    }
+    .map-controls .mc-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .mc-btn-active { background:var(--accent)!important; color:#06212e!important; border-color:var(--accent)!important; }
+
+    /* basemap / export dropdown menus */
+    .mc-menu { position:relative; }
+    .mc-menu .mc-dropdown {
+      position:absolute; top:calc(100% + 4px); left:0;
+      background:var(--surface,#1a1d27); border:1px solid var(--border,rgba(255,255,255,.12));
+      border-radius:10px; min-width:130px;
+      box-shadow:0 10px 30px rgba(0,0,0,.4); display:none; z-index:700;
+    }
+    .mc-menu.open .mc-dropdown { display:block; }
+    .mc-menu .mc-dropdown a {
+      display:block; padding:9px 14px; color:var(--text,#e2e8f0);
+      font-size:13px; text-decoration:none;
+    }
+    .mc-menu .mc-dropdown a:hover { color:var(--accent,#00d4aa); }
+
+    /* measure readout */
+    .measure-total {
+      background:rgba(15,20,24,.88); color:#4cc2ff;
+      font-size:11px; font-weight:600; padding:3px 8px;
+      border-radius:4px; border:1px solid rgba(76,194,255,.35);
+      white-space:nowrap; display:flex; align-items:center; gap:8px;
+    }
+    .measure-clear-btn {
+      background:transparent; border:1px solid rgba(76,194,255,.35);
+      color:#4cc2ff; font-size:10px; padding:1px 6px; border-radius:3px; cursor:pointer;
+    }
+    .measure-label {
+      background:rgba(15,20,24,.82); color:#4cc2ff; font-size:11px; font-weight:600;
+      padding:2px 6px; border-radius:4px; border:1px solid rgba(76,194,255,.35);
+      white-space:nowrap; pointer-events:none; transform:translate(-50%,-130%); display:inline-block;
+    }
+
+    /* annotate toolbar */
+    .annotate-toolbar {
+      display:none; align-items:center; gap:4px;
+      background:rgba(15,20,24,.88); border:1px solid rgba(255,255,255,.12);
+      border-radius:8px; padding:4px 8px; backdrop-filter:blur(6px);
+    }
+    .annotate-toolbar.visible { display:flex; }
+    .annotate-color-btn {
+      width:18px; height:18px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0;
+    }
+    .annotate-color-btn.selected { border-color:#fff; transform:scale(1.15); }
+    .annotate-eraser-btn {
+      background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15);
+      border-radius:5px; cursor:pointer; padding:2px 4px; display:flex; align-items:center;
+    }
+    .annotate-eraser-btn.selected { background:rgba(76,194,255,.18); border-color:#4cc2ff; }
+    .annotate-sep { width:1px; height:18px; background:rgba(255,255,255,.15); margin:0 2px; }
+    .annotate-clear-btn {
+      background:transparent; border:none; cursor:pointer; padding:2px 4px;
+      display:flex; align-items:center; border-radius:4px;
+    }
+
+    /* ── HUD: scale bar + coordinates (bottom of map) ── */
+    .map-hud {
+      position:absolute; bottom:10px; left:10px; right:10px;
+      display:flex; align-items:flex-end; justify-content:space-between;
+      pointer-events:none; z-index:600;
+    }
+    .map-scale-bar { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+    .map-scale-line {
+      height:4px; min-width:40px; background:#e2e8f0;
+      border:1px solid #e2e8f0; border-top:none;
+      border-left:2px solid #e2e8f0; border-right:2px solid #e2e8f0;
+    }
+    .map-scale-label {
+      font-size:10px; font-weight:600; color:#e2e8f0;
+      background:rgba(15,20,24,.72); padding:1px 4px; border-radius:3px; white-space:nowrap;
+    }
+    .map-coords {
+      font-size:11px; font-weight:500; color:#e2e8f0;
+      background:rgba(15,20,24,.72); padding:3px 8px; border-radius:4px;
+      white-space:nowrap; font-variant-numeric:tabular-nums;
+    }
   </style>
 </head>
 <body>
@@ -196,6 +288,68 @@
   <!-- Map with floating tab bar -->
   <div class="map-section">
     <div id="analysisMap"></div>
+
+    <!-- Map controls toolbar (top-left) -->
+    <div class="map-controls">
+      <div class="mc-menu" id="basemapMenu">
+        <button class="mc-btn" onclick="toggleBasemapMenu()">
+          <img width="20" height="20" src="https://img.icons8.com/cotton/64/map.png" alt="map"/>
+          <span>Basemap</span><span>▾</span>
+        </button>
+        <div class="mc-dropdown">
+          <a href="#" onclick="changeBasemap('light');  return false;">☀️ Light</a>
+          <a href="#" onclick="changeBasemap('dark');   return false;">🌙 Dark</a>
+          <a href="#" onclick="changeBasemap('voyager');return false;">🗺️ Voyager</a>
+        </div>
+      </div>
+
+      <button class="mc-btn" id="measureBtn" onclick="toggleMeasure()">
+        <img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Measure
+      </button>
+      <div id="measureTotal" class="measure-total" style="display:none;"></div>
+
+      <button class="mc-btn" id="annotateBtn" onclick="toggleAnnotate()">
+        <img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/>Annotate
+      </button>
+      <div id="annotateToolbar" class="annotate-toolbar">
+        <button class="annotate-color-btn selected" style="background:#e74c3c;" onclick="annotateSelectTool('color','#e74c3c',this)"></button>
+        <button class="annotate-color-btn" style="background:#f39c12;" onclick="annotateSelectTool('color','#f39c12',this)"></button>
+        <button class="annotate-color-btn" style="background:#f1c40f;" onclick="annotateSelectTool('color','#f1c40f',this)"></button>
+        <button class="annotate-color-btn" style="background:#2ecc71;" onclick="annotateSelectTool('color','#2ecc71',this)"></button>
+        <button class="annotate-color-btn" style="background:#3498db;" onclick="annotateSelectTool('color','#3498db',this)"></button>
+        <button class="annotate-color-btn" style="background:#ffffff;" onclick="annotateSelectTool('color','#ffffff',this)"></button>
+        <div class="annotate-sep"></div>
+        <button class="annotate-eraser-btn" id="annotateEraserBtn" onclick="annotateSelectTool('eraser',null,this)">
+          <img width="18" height="18" src="https://img.icons8.com/deco-glyph/48/FFFFFF/eraser.png" alt="eraser"/>
+        </button>
+        <div class="annotate-sep"></div>
+        <button class="annotate-clear-btn" onclick="annotateClearAll()">
+          <img width="18" height="18" src="https://img.icons8.com/ios-filled/50/FA5252/delete-forever.png" alt="delete-forever"/>
+        </button>
+      </div>
+
+      <div class="mc-menu" id="exportMenu">
+        <button class="mc-btn" id="export-btn" onclick="toggleExportMenu()">
+          <img width="20" height="20" src="https://img.icons8.com/ios-filled/50/FFFFFF/download--v1.png" alt="download--v1"/>Export<span>▾</span>
+        </button>
+        <div class="mc-dropdown">
+          <a href="#" onclick="exportMap('png');  toggleExportMenu(); return false;">🖼️ PNG</a>
+          <a href="#" onclick="exportMap('jpg');  toggleExportMenu(); return false;">📷 JPG</a>
+          <a href="#" onclick="exportMap('jpeg'); toggleExportMenu(); return false;">📷 JPEG</a>
+          <a href="#" onclick="exportMap('tiff'); toggleExportMenu(); return false;">🗺️ TIFF</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- HUD: scale bar + coordinates -->
+    <div class="map-hud">
+      <div class="map-scale-bar">
+        <div class="map-scale-line" id="mapScaleLine"></div>
+        <span class="map-scale-label" id="mapScaleLabel"></span>
+      </div>
+      <div class="map-coords" id="mapCoords">— , —</div>
+    </div>
+
     <!-- Tab bar floats over the map -->
     <div class="map-tab-bar" id="mapTabBar" style="display:none;">
       <div class="map-tab active" data-tab="full"  onclick="selectTab('full')">Full Analysis</div>
@@ -989,13 +1143,263 @@ function sanitizeResultFile(path) {
 }
 
 // ── Map init ──────────────────────────────────────────────────────────────────
+let _currentBasemap = null;
+
 function initMap() {
   _map = L.map("analysisMap").setView([30.0444, 31.2357], 10);
-  L.tileLayer(
+  _currentBasemap = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     { attribution:"Tiles © Esri" }
   ).addTo(_map);
+  _initHud();
   return _map;
+}
+
+// ── HUD: scale bar + coordinates ─────────────────────────────────────────────
+function _initHud() {
+  const coordsEl = document.getElementById('mapCoords');
+  const lineEl   = document.getElementById('mapScaleLine');
+  const labelEl  = document.getElementById('mapScaleLabel');
+  const NICE = [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000,200000,500000,1000000];
+  function updateScale() {
+    const c = _map.getCenter(), z = _map.getZoom();
+    const mpp = (156543.03392 * Math.cos(c.lat * Math.PI / 180)) / Math.pow(2, z);
+    const target = mpp * 80;
+    let best = NICE[0];
+    for (const d of NICE) { if (Math.abs(d - target) < Math.abs(best - target)) best = d; }
+    lineEl.style.width = (best / mpp) + 'px';
+    labelEl.textContent = best >= 1000 ? (best / 1000) + ' km' : best + ' m';
+  }
+  _map.on('mousemove', e => { coordsEl.textContent = e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5); });
+  _map.on('mouseout',  () => { coordsEl.textContent = '— , —'; });
+  _map.on('zoomend moveend', updateScale);
+  updateScale();
+}
+
+// ── Basemap switcher ─────────────────────────────────────────────────────────
+function toggleBasemapMenu() {
+  document.getElementById('basemapMenu').classList.toggle('open');
+}
+function changeBasemap(name) {
+  if (_currentBasemap) _map.removeLayer(_currentBasemap);
+  const urls = {
+    dark:    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    voyager: 'https://tiledbasemaps.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    light:   'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
+  };
+  _currentBasemap = L.tileLayer(urls[name] || urls.light, { attribution:'© CARTO © OpenStreetMap' }).addTo(_map);
+  _currentBasemap.setZIndex(0);
+  document.getElementById('basemapMenu').classList.remove('open');
+}
+document.addEventListener('click', function(e) {
+  const bm = document.getElementById('basemapMenu');
+  if (bm && !bm.contains(e.target)) bm.classList.remove('open');
+});
+
+// ── Measure tool ─────────────────────────────────────────────────────────────
+const _ms = { active:false, sessionPoints:[], totalDistance:0, markers:[], lines:[], labels:[], previewLine:null };
+let _measureOverlay = null, _measureIgnoreNextClick = false;
+
+function _hav(a, b) {
+  const R=6371000, φ1=a.lat*Math.PI/180, φ2=b.lat*Math.PI/180;
+  const Δφ=(b.lat-a.lat)*Math.PI/180, Δλ=(b.lng-a.lng)*Math.PI/180;
+  const s=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+function _fmtD(m) { return m>=1000?(m/1000).toFixed(2)+' km':Math.round(m)+' m'; }
+
+function _measureGetOverlay() {
+  if (_measureOverlay) return _measureOverlay;
+  _measureOverlay = document.createElement('div');
+  _measureOverlay.style.cssText = 'position:absolute;inset:0;z-index:650;cursor:crosshair;display:none;';
+  _map.getContainer().appendChild(_measureOverlay);
+  return _measureOverlay;
+}
+function _measureClick(e) {
+  if (_measureIgnoreNextClick) { _measureIgnoreNextClick = false; return; }
+  const rect = _map.getContainer().getBoundingClientRect();
+  const ll = _map.containerPointToLatLng(L.point(e.clientX - rect.left, e.clientY - rect.top));
+  const mk = L.circleMarker(ll,{radius:5,color:'#4cc2ff',fillColor:'#fff',fillOpacity:1,weight:2,interactive:false}).addTo(_map);
+  _ms.markers.push(mk);
+  if (_ms.sessionPoints.length) {
+    const prev = _ms.sessionPoints[_ms.sessionPoints.length-1];
+    const line = L.polyline([prev,ll],{color:'#4cc2ff',weight:2,dashArray:'6 5',opacity:0.7,interactive:false}).addTo(_map);
+    const dist = _hav(prev, ll);
+    const mid  = L.latLng((prev.lat+ll.lat)/2,(prev.lng+ll.lng)/2);
+    const lbl  = L.marker(mid,{icon:L.divIcon({className:'',html:`<div class="measure-label">${_fmtD(dist)}</div>`,iconAnchor:[0,0]}),interactive:false,zIndexOffset:500}).addTo(_map);
+    _ms.lines.push(line); _ms.labels.push(lbl);
+    _ms.totalDistance += dist;
+  }
+  _ms.sessionPoints.push(ll);
+  _measureUpdateTotal();
+}
+function _measureDblClick() { _measureIgnoreNextClick = true; measureDeactivate(); }
+function _measureMove(e) {
+  if (!_ms.sessionPoints.length) return;
+  const rect = _map.getContainer().getBoundingClientRect();
+  const ll = _map.containerPointToLatLng(L.point(e.clientX-rect.left, e.clientY-rect.top));
+  const last = _ms.sessionPoints[_ms.sessionPoints.length-1];
+  if (_ms.previewLine) _ms.previewLine.setLatLngs([last,ll]);
+  else _ms.previewLine = L.polyline([last,ll],{color:'#4cc2ff',weight:1.5,dashArray:'4 6',opacity:0.45,interactive:false}).addTo(_map);
+}
+function _measureUpdateTotal() {
+  const el = document.getElementById('measureTotal');
+  if (!_ms.totalDistance && _ms.sessionPoints.length < 2) { el.style.display='none'; return; }
+  el.innerHTML = 'Total: ' + _fmtD(_ms.totalDistance);
+  el.style.display = 'flex';
+}
+function measureClearAll() {
+  _ms.markers.forEach(m=>_map.removeLayer(m)); _ms.lines.forEach(l=>_map.removeLayer(l)); _ms.labels.forEach(l=>_map.removeLayer(l));
+  if (_ms.previewLine) _map.removeLayer(_ms.previewLine);
+  Object.assign(_ms,{sessionPoints:[],totalDistance:0,markers:[],lines:[],labels:[],previewLine:null});
+  const el=document.getElementById('measureTotal'); el.style.display='none'; el.innerHTML='';
+}
+function measureDeactivate() {
+  _ms.active=false; _ms.sessionPoints=[];
+  const btn=document.getElementById('measureBtn');
+  btn.innerHTML='<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Measure';
+  btn.classList.remove('mc-btn-active');
+  const ov=_measureGetOverlay(); ov.style.display='none';
+  ov.removeEventListener('click',_measureClick); ov.removeEventListener('dblclick',_measureDblClick); ov.removeEventListener('mousemove',_measureMove);
+  if (_ms.previewLine) { _map.removeLayer(_ms.previewLine); _ms.previewLine=null; }
+  if (_ms.totalDistance>0) {
+    const el=document.getElementById('measureTotal');
+    el.innerHTML=`Total: ${_fmtD(_ms.totalDistance)} <button class="measure-clear-btn" onclick="measureClearAll()">Clear</button>`;
+    el.style.display='flex';
+  }
+}
+function toggleMeasure() {
+  if (_ms.active) { measureDeactivate(); return; }
+  _ms.sessionPoints=[]; _ms.active=true;
+  const btn=document.getElementById('measureBtn');
+  btn.innerHTML='<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Cancel';
+  btn.classList.add('mc-btn-active');
+  const ov=_measureGetOverlay(); ov.style.display='block';
+  ov.addEventListener('click',_measureClick); ov.addEventListener('dblclick',_measureDblClick); ov.addEventListener('mousemove',_measureMove);
+}
+
+// ── Annotate tool ────────────────────────────────────────────────────────────
+const _as = { active:false, drawing:false, color:'#e74c3c', eraser:false, brushSize:4, eraserSize:18 };
+let _aCanvas=null, _aCtx=null, _aOverlay=null;
+
+function _annotateCanvas() {
+  if (_aCanvas) return _aCanvas;
+  const c = _map.getContainer();
+  _aCanvas = document.createElement('canvas');
+  _aCanvas.style.cssText='position:absolute;inset:0;z-index:640;pointer-events:none;';
+  _aCanvas.width=c.offsetWidth; _aCanvas.height=c.offsetHeight;
+  c.appendChild(_aCanvas); _aCtx=_aCanvas.getContext('2d');
+  new ResizeObserver(()=>{ const d=_aCtx.getImageData(0,0,_aCanvas.width,_aCanvas.height); _aCanvas.width=c.offsetWidth; _aCanvas.height=c.offsetHeight; _aCtx.putImageData(d,0,0); }).observe(c);
+  return _aCanvas;
+}
+function _annotateOverlay() {
+  if (_aOverlay) return _aOverlay;
+  _aOverlay=document.createElement('div');
+  _aOverlay.style.cssText='position:absolute;inset:0;z-index:645;cursor:crosshair;display:none;';
+  _map.getContainer().appendChild(_aOverlay); return _aOverlay;
+}
+function _aPos(e) { const r=_map.getContainer().getBoundingClientRect(),s=e.touches?e.touches[0]:e; return{x:s.clientX-r.left,y:s.clientY-r.top}; }
+function _aDown(e) {
+  _as.drawing=true; const{x,y}=_aPos(e); _aCtx.beginPath(); _aCtx.moveTo(x,y);
+  if(_as.eraser){_aCtx.globalCompositeOperation='destination-out';_aCtx.lineWidth=_as.eraserSize;}
+  else{_aCtx.globalCompositeOperation='source-over';_aCtx.strokeStyle=_as.color;_aCtx.lineWidth=_as.brushSize;}
+  _aCtx.lineCap='round'; _aCtx.lineJoin='round';
+}
+function _aMove(e) { if(!_as.drawing)return; const{x,y}=_aPos(e); _aCtx.lineTo(x,y); _aCtx.stroke(); }
+function _aUp()   { if(!_as.drawing)return; _as.drawing=false; _aCtx.closePath(); }
+function annotateClearAll() { if(_aCtx&&_aCanvas) _aCtx.clearRect(0,0,_aCanvas.width,_aCanvas.height); }
+function annotateSelectTool(type, color, btnEl) {
+  document.querySelectorAll('.annotate-color-btn').forEach(b=>b.classList.remove('selected'));
+  document.getElementById('annotateEraserBtn').classList.remove('selected');
+  _as.eraser = type==='eraser'; if(color)_as.color=color;
+  btnEl.classList.add('selected');
+}
+function _annotateDeactivate() {
+  _as.active=false; _as.drawing=false;
+  document.getElementById('annotateBtn').innerHTML='<img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/>Annotate';
+  document.getElementById('annotateBtn').classList.remove('mc-btn-active');
+  document.getElementById('annotateToolbar').classList.remove('visible');
+  _map.dragging.enable(); _map.doubleClickZoom.enable();
+  const ov=_annotateOverlay(); ov.style.display='none';
+  ov.removeEventListener('mousedown',_aDown); ov.removeEventListener('mousemove',_aMove);
+  ov.removeEventListener('mouseup',_aUp); ov.removeEventListener('mouseleave',_aUp);
+  if(_aCanvas) _aCanvas.style.pointerEvents='none';
+}
+function toggleAnnotate() {
+  if(_as.active){_annotateDeactivate();return;}
+  _as.active=true; _annotateCanvas();
+  document.getElementById('annotateBtn').innerHTML='<img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/>Cancel';
+  document.getElementById('annotateBtn').classList.add('mc-btn-active');
+  document.getElementById('annotateToolbar').classList.add('visible');
+  _map.dragging.disable(); _map.doubleClickZoom.disable();
+  const ov=_annotateOverlay(); ov.style.display='block';
+  ov.addEventListener('mousedown',_aDown); ov.addEventListener('mousemove',_aMove);
+  ov.addEventListener('mouseup',_aUp); ov.addEventListener('mouseleave',_aUp);
+}
+
+// ── Export ───────────────────────────────────────────────────────────────────
+function toggleExportMenu() {
+  const menu=document.getElementById('exportMenu');
+  const isOpen=menu.classList.toggle('open');
+  if(isOpen){
+    const close=e=>{if(!menu.contains(e.target)){menu.classList.remove('open');document.removeEventListener('click',close);}};
+    setTimeout(()=>document.addEventListener('click',close),10);
+  }
+}
+function exportMap(fmt) {
+  fmt=fmt.toLowerCase();
+  const btn=document.getElementById('export-btn');
+  if(btn){btn.disabled=true;btn.innerHTML='⏳ Exporting…';}
+  const reset=()=>{if(btn){btn.disabled=false;btn.innerHTML='<img width="20" height="20" src="https://img.icons8.com/ios-filled/50/FFFFFF/download--v1.png" alt="download--v1"/>Export▾';}};
+  setTimeout(()=>{
+    try{
+      const mc=document.querySelector('.leaflet-container');
+      if(!mc){reset();return;}
+      const w=mc.offsetWidth,h=mc.offsetHeight;
+      const ec=document.createElement('canvas'); ec.width=w; ec.height=h;
+      const ctx=ec.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);
+      ctx.save(); ctx.beginPath(); ctx.rect(0,0,w,h); ctx.clip();
+      const cr=mc.getBoundingClientRect();
+      // tiles
+      const tiles=Array.from(mc.querySelectorAll('.leaflet-tile-pane img.leaflet-tile')).filter(i=>i.complete);
+      let pending=tiles.length||1, done=false;
+      function finish(){
+        if(done)return; done=true;
+        // SVG vector layers
+        mc.querySelectorAll('.leaflet-overlay-pane svg').forEach(svg=>{
+          const s=new XMLSerializer().serializeToString(svg);
+          const blob=new Blob([s],{type:'image/svg+xml'}), url=URL.createObjectURL(blob);
+          const img=new Image(), off=_elOff(svg,cr);
+          img.onload=()=>{try{ctx.drawImage(img,off.x,off.y);}catch(e){}URL.revokeObjectURL(url);};
+          img.onerror=()=>URL.revokeObjectURL(url); img.src=url;
+        });
+        // annotation canvas
+        if(_aCanvas&&_aCanvas.width) try{ctx.drawImage(_aCanvas,0,0);}catch(e){}
+        ctx.restore();
+        setTimeout(()=>{
+          reset();
+          const mime={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',tiff:'image/tiff'}[fmt]||'image/png';
+          const q=(fmt==='jpg'||fmt==='jpeg')?0.92:undefined;
+          const a=document.createElement('a'); a.href=ec.toDataURL(mime,q); a.download='map-export.'+fmt;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        },200);
+      }
+      if(!tiles.length){finish();return;}
+      tiles.forEach(src=>{
+        const r=src.getBoundingClientRect(),dx=r.left-cr.left,dy=r.top-cr.top,dw=r.width||256,dh=r.height||256;
+        const img=new Image(); img.crossOrigin='anonymous';
+        img.onload=()=>{try{ctx.drawImage(img,dx,dy,dw,dh);}catch(e){}if(!--pending)finish();};
+        img.onerror=()=>{try{ctx.drawImage(src,dx,dy,dw,dh);}catch(e){}if(!--pending)finish();};
+        img.src=src.src;
+      });
+    }catch(err){console.error(err);reset();}
+  },250);
+}
+function _elOff(el,cr){
+  const r=el.getBoundingClientRect(); let x=r.left-cr.left,y=r.top-cr.top;
+  const t=window.getComputedStyle(el).transform;
+  if(t&&t!=='none'){const m=t.match(/matrix\(([^)]+)\)/);if(m){const p=m[1].split(',');x+=parseFloat(p[4])||0;y+=parseFloat(p[5])||0;}}
+  return{x,y};
 }
 
 // ── Raster loader ─────────────────────────────────────────────────────────────

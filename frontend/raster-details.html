@@ -123,12 +123,103 @@
       margin-bottom:24px;
     }
 
-    #analysisPreview {
+    #analysisPreviewWrap {
+      position:relative;
       width:100%;
       height:500px;
       border-radius:16px;
       overflow:hidden;
       background:#1f2635;
+    }
+    #analysisPreview {
+      width:100%;
+      height:100%;
+      border-radius:16px;
+    }
+
+    /* ── Map controls (identical to dashboard) ── */
+    .map-controls {
+      position:absolute; top:12px; left:12px;
+      display:flex; gap:6px; z-index:1000;
+    }
+    .map-controls .btn {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 10px; font-size:12px;
+      background:rgba(15,20,24,.82); border:1px solid rgba(255,255,255,.15);
+      color:var(--text,#e2e8f0); border-radius:8px; cursor:pointer;
+      font-family:inherit; transition:.15s; white-space:nowrap;
+    }
+    .map-controls .btn:hover { border-color:var(--accent,#00d4aa); color:var(--accent,#00d4aa); }
+    .map-controls .dropdown { left:0; }
+    .btn-active { background:var(--accent)!important; color:#06212e!important; border-color:var(--accent)!important; }
+    .user-menu { position:relative; }
+    .user-menu .dropdown {
+      position:absolute; top:calc(100% + 4px); left:0;
+      background:var(--surface,#1a1d27); border:1px solid var(--border,rgba(255,255,255,.12));
+      border-radius:10px; min-width:130px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35); display:none; z-index:300;
+    }
+    .user-menu.open .dropdown { display:block; }
+    .user-menu .dropdown a {
+      display:block; padding:9px 14px; color:var(--text,#e2e8f0);
+      font-size:13px; text-decoration:none;
+    }
+    .user-menu .dropdown a:hover { color:var(--accent,#00d4aa); }
+    .measure-total {
+      background:rgba(15,20,24,.88); color:#4cc2ff;
+      font-size:11px; font-weight:600; padding:3px 8px;
+      border-radius:4px; border:1px solid rgba(76,194,255,.35);
+      white-space:nowrap; align-self:center; display:flex; align-items:center; gap:8px;
+    }
+    .measure-clear-btn {
+      background:transparent; border:1px solid rgba(76,194,255,.35);
+      color:#4cc2ff; font-size:10px; padding:1px 6px; border-radius:3px; cursor:pointer;
+    }
+    .measure-label {
+      background:rgba(15,20,24,.82); color:#4cc2ff; font-size:11px; font-weight:600;
+      padding:2px 6px; border-radius:4px; border:1px solid rgba(76,194,255,.35);
+      white-space:nowrap; pointer-events:none; transform:translate(-50%,-130%); display:inline-block;
+    }
+    .annotate-toolbar {
+      display:none; align-items:center; gap:4px;
+      background:rgba(15,20,24,.88); border:1px solid rgba(255,255,255,.10);
+      border-radius:8px; padding:4px 8px;
+    }
+    .annotate-toolbar.visible { display:flex; }
+    .annotate-color-btn {
+      width:18px; height:18px; border-radius:50%; border:2px solid transparent; cursor:pointer;
+    }
+    .annotate-color-btn.selected { border-color:#fff; transform:scale(1.15); }
+    .annotate-eraser-btn {
+      background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15);
+      border-radius:5px; cursor:pointer; padding:2px 4px; display:flex; align-items:center;
+    }
+    .annotate-eraser-btn.selected { background:rgba(76,194,255,.18); border-color:#4cc2ff; }
+    .annotate-sep { width:1px; height:18px; background:rgba(255,255,255,.12); margin:0 2px; }
+    .annotate-clear-btn {
+      background:transparent; border:none; cursor:pointer; padding:2px 4px;
+      display:flex; align-items:center; border-radius:4px;
+    }
+    /* ── HUD (scale bar + coords) ── */
+    .map-hud {
+      position:absolute; bottom:10px; left:10px; right:10px;
+      display:flex; align-items:flex-end; justify-content:space-between;
+      pointer-events:none; z-index:900;
+    }
+    .map-scale-bar { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+    .map-scale-line {
+      height:4px; min-width:40px; background:var(--text-primary,#e2e8f0);
+      border:1px solid var(--text-primary,#e2e8f0); border-top:none;
+      border-left:2px solid var(--text-primary,#e2e8f0); border-right:2px solid var(--text-primary,#e2e8f0);
+    }
+    .map-scale-label {
+      font-size:10px; font-weight:600; color:var(--text-primary,#e2e8f0);
+      background:rgba(15,20,24,.72); padding:1px 4px; border-radius:3px; white-space:nowrap;
+    }
+    .map-coords {
+      font-size:11px; font-weight:500; color:var(--text-primary,#e2e8f0);
+      background:rgba(15,20,24,.72); padding:3px 8px; border-radius:4px;
+      white-space:nowrap; font-variant-numeric:tabular-nums;
     }
 
     .legend-list {
@@ -284,7 +375,7 @@
     @media(max-width:950px) {
       .container { padding:20px; }
       .two-col, .two-col-equal { grid-template-columns:1fr; }
-      #analysisPreview { height:320px; }
+      #analysisPreviewWrap { height:320px; }
     }
   </style>
 </head>
@@ -335,7 +426,71 @@
   <!-- ROW 1: Map + Legend -->
   <div class="two-col">
     <div class="card" style="padding:0; overflow:hidden;">
-      <div id="analysisPreview"></div>
+      <div id="analysisPreviewWrap">
+        <div id="analysisPreview"></div>
+
+        <!-- Map controls — identical to dashboard -->
+        <div class="map-controls">
+          <div class="user-menu" id="basemapMenu">
+            <button class="btn" onclick="toggleBasemapMenu()">
+              <img width="20" height="20" src="https://img.icons8.com/cotton/64/map.png" alt="map"/>
+              <span>Basemap</span>
+              <span>▾</span>
+            </button>
+            <div class="dropdown">
+              <a href="#" onclick="changeBasemap('light'); return false;">☀️ Light</a>
+              <a href="#" onclick="changeBasemap('dark'); return false;">🌙 Dark</a>
+              <a href="#" onclick="changeBasemap('voyager'); return false;">🗺️ Voyager</a>
+            </div>
+          </div>
+
+          <button class="btn" id="measureBtn" onclick="toggleMeasure()">
+            <img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/>Measure
+          </button>
+          <div id="measureTotal" class="measure-total" style="display:none;"></div>
+
+          <button class="btn" id="annotateBtn" onclick="toggleAnnotate()">
+            <img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/>Annotate
+          </button>
+          <div id="annotateToolbar" class="annotate-toolbar">
+            <button class="annotate-color-btn selected" data-color="#e74c3c" style="background:#e74c3c;" onclick="annotateSelectTool('color','#e74c3c',this)"></button>
+            <button class="annotate-color-btn" data-color="#f39c12" style="background:#f39c12;" onclick="annotateSelectTool('color','#f39c12',this)"></button>
+            <button class="annotate-color-btn" data-color="#f1c40f" style="background:#f1c40f;" onclick="annotateSelectTool('color','#f1c40f',this)"></button>
+            <button class="annotate-color-btn" data-color="#2ecc71" style="background:#2ecc71;" onclick="annotateSelectTool('color','#2ecc71',this)"></button>
+            <button class="annotate-color-btn" data-color="#3498db" style="background:#3498db;" onclick="annotateSelectTool('color','#3498db',this)"></button>
+            <button class="annotate-color-btn" data-color="#ffffff" style="background:#ffffff;" onclick="annotateSelectTool('color','#ffffff',this)"></button>
+            <div class="annotate-sep"></div>
+            <button class="annotate-eraser-btn" id="annotateEraserBtn" onclick="annotateSelectTool('eraser',null,this)">
+              <img width="18" height="18" src="https://img.icons8.com/deco-glyph/48/FFFFFF/eraser.png" alt="eraser"/>
+            </button>
+            <div class="annotate-sep"></div>
+            <button class="annotate-clear-btn" onclick="annotateClearAll()">
+              <img width="18" height="18" src="https://img.icons8.com/ios-filled/50/FA5252/delete-forever.png" alt="delete-forever"/>
+            </button>
+          </div>
+
+          <div class="user-menu" id="exportMenu">
+            <button class="btn" id="export-btn" onclick="toggleExportMenu()">
+              <img width="20" height="20" src="https://img.icons8.com/ios-filled/50/FFFFFF/download--v1.png" alt="download--v1"/>Export
+            </button>
+            <div class="dropdown">
+              <a href="#" onclick="exportMap('png');  toggleExportMenu(); return false;">🖼️ PNG</a>
+              <a href="#" onclick="exportMap('jpg');  toggleExportMenu(); return false;">📷 JPG</a>
+              <a href="#" onclick="exportMap('jpeg'); toggleExportMenu(); return false;">📷 JPEG</a>
+              <a href="#" onclick="exportMap('tiff'); toggleExportMenu(); return false;">🗺️ TIFF</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- HUD: scale bar + coordinates -->
+        <div class="map-hud">
+          <div class="map-scale-bar">
+            <div class="map-scale-line" id="mapScaleLine"></div>
+            <span class="map-scale-label" id="mapScaleLabel"></span>
+          </div>
+          <div class="map-coords" id="mapCoords">— , —</div>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -398,6 +553,7 @@
 <script src="js/config.js"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/georaster"></script>
+<script src="js/details-map.js"></script>
 
 <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
 
@@ -660,13 +816,11 @@ async function loadAnalysisDetails() {
   }
 
   const map = L.map("analysisPreview").setView([30.0444, 31.2357], 10);
-
- L.tileLayer(
-  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-  {
-    attribution: "Tiles © Esri"
-  }
-).addTo(map);
+  _detailsCurrentBasemap = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { attribution: "Tiles © Esri" }
+  ).addTo(map);
+  initDetailsMapControls(map);
 
   await loadRasterAnalysis(analysis, map, config);
 }
