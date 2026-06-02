@@ -88,6 +88,16 @@
   color: var(--accent);
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
+#langBtn {
+  right: 68px;
+  width: auto;
+  min-width: 120px;
+  border-radius: var(--radius);
+  padding: 0 12px;
+  height: 38px;
+  font-size: 13px;
+  white-space: nowrap;
+}
 
 /* ---------- Reset / base ---------- */
 * { box-sizing: border-box; }

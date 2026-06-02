@@ -241,11 +241,116 @@ function translateLabels() {
     "Walking distance":           "مسافة المشي",
     "Stations file":              "ملف المحطات",
     "Area of interest":           "منطقة الاهتمام",
+    "Total cells":                "إجمالي الخلايا",
+    "Cell size":                  "حجم الخلية",
+    "Layers combined":            "الطبقات المدمجة",
+    "Est. Population Covered":    "السكان المغطاة تقريبًا",
+    "Total Population":           "إجمالي السكان",
+    "Stations Analyzed":          "المحطات المحللة",
+    "Population Density":         "كثافة السكان",
+    "Demand Pressure":            "ضغط الطلب",
+    "Overall Score":              "النتيجة الإجمالية",
+    "Area Coverage":              "تغطية المنطقة",
+    "Performance":                "الأداء",
+    "Total Pixels (Features)":    "إجمالي البكسلات (الميزات)",
+    "NDVI threshold":            "عتبة NDVI",
+    "Vegetation Coverage":        "تغطية الغطاء النباتي",
+    "Vegetated Pixels":           "البكسلات المغطاة بالنباتات",
+    "Traffic Pressure":           "ضغط المرور",
+    "AOI Area":                   "مساحة منطقة الاهتمام",
+    "Population (input)":         "عدد السكان (مدخل)",
+    "Avg Segment Length":         "متوسط طول القطاع",
+    "Intersection Density":        "كثافة التقاطعات",
+    "Primary corridors":          "الممرات الرئيسية",
+    "Secondary connectors":       "الموصلات الفرعية",
+    "Local roads":                "الطرق المحلية",
+    "Imagery file":               "ملف الصور",
+    "Metrics computed":           "القياسات المحسوبة",
+    "Cell size (approx.)":        "حجم الخلية (تقريبي)",
+    "High-Irregularity Cells":    "الخلايا عالية عدم الانتظام",
+    "Medium-Irregularity Cells":  "الخلايا متوسطة عدم الانتظام",
+    "Low-Irregularity Cells":     "الخلايا منخفضة عدم الانتظام",
+    "Merged High-Irregularity Zones": "مناطق الانعدام العالي المدمجة",
+    "Per-Capita Crime Rate":      "معدل الجريمة لكل فرد",
+    "Top Unsafe Areas":           "أعلى المناطق غير الآمنة",
+    "Top Safe Areas":             "أعلى المناطق الآمنة",
+    "Crime Type Breakdown":        "تفصيل أنواع الجريمة",
+    "Crime data (CSV)":           "بيانات الجريمة (CSV)",
+    "Total Incidents":             "إجمالي الحوادث",
+    "Boundary data (GeoJSON)":    "بيانات الحدود (GeoJSON)",
+    "Latitude field":             "حقل خط العرض",
+    "Longitude field":            "حقل خط الطول",
+    "Overall Safety Score":       "نتيجة السلامة الإجمالية",
+    "Avg Density":                "متوسط الكثافة",
+    "High-Density Clusters (Hotspots)": "تجمعات الكثافة العالية (البقع الساخنة)",
+    "Lowest-Density Zones (Underutilized Land)": "مناطق الكثافة المنخفضة (أرض غير مستغلة)",
+    "Total Features (Areas)":     "إجمالي الميزات (المناطق)",
+    "Data Coverage Area":         "مساحة تغطية البيانات",
+    "Population field":           "حقل السكان",
+    "Total Area":                 "إجمالي المساحة",
+    "Peak Density Zone":          "منطقة الكثافة القصوى",
+    "Dimensions":                 "الأبعاد",
+    "Pixel Size":                 "حجم البكسل",
+    "Satellite":                  "القمر الصناعي",
+    "Red band":                   "النطاق الأحمر",
+    "NIR band":                   "النطاق القريب من الأشعة تحت الحمراء",
+    "Mean NDVI":                  "متوسط NDVI",
+    "Min NDVI":                   "أدنى NDVI",
+    "Max NDVI":                   "أعلى NDVI",
+    "Std. Deviation":             "الانحراف المعياري",
+    "No Vegetation (< 0)":        "لا يوجد نبات (< 0)",
+    "Bare Soil (0.0 – 0.2)":      "تربة عارية (0.0 – 0.2)",
+    "Moderate Vegetation (0.2 – 0.6)": "غطاء نباتي متوسط (0.2 – 0.6)",
+    "Dense Vegetation (0.6 – 1.0)": "غطاء نباتي كثيف (0.6 – 1.0)",
+    "Building threshold":         "عتبة المباني",
+    "Total Pixels":               "إجمالي البكسلات",
+    "Building Pixels":            "بكسلات المباني",
+    "vs. 10–25 u/acre Standard":  "بالنسبة لمعيار 10–25 وحدة/فدان",
+    "Building Coverage":          "تغطية المباني",
+    "Density (units/acre)":       "الكثافة (وحدات/فدان)",
+    "Covered area":               "المساحة المغطاة",
+    "Uncovered area":             "المساحة غير المغطاة",
+    "Facilities file":            "ملف المرافق",
+    "Facilities uploaded":        "المرافق المرفوعة",
+    "Walking speed":              "سرعة المشي",
+    "Time intervals":             "الفترات الزمنية",
+    "Files submitted":            "الملفات المرسلة",
   };
 
   document.querySelectorAll(".label").forEach(el => {
     const text = el.textContent.trim();
     if (labelMap[text]) el.textContent = labelMap[text];
+  });
+
+  const textMap = {
+    "Download GeoJSON": TXT[currentLang].downloadJson,
+    "Download CSV": TXT[currentLang].downloadCsv,
+    "Download GeoTIFF": TXT[currentLang].downloadTiff,
+    "Download Weighted Grid GeoJSON": TXT[currentLang].downloadWeightedGrid,
+    "Click this tab to generate the cell grid…": TXT[currentLang].clickTabGenerateGrid,
+    "Click this tab to score cells…": TXT[currentLang].clickTabScoreCells,
+    "Click this tab to generate the congestion cell grid…": TXT[currentLang].clickTabGenerateGrid,
+    "Click this tab to generate the 200 m cell grid…": TXT[currentLang].clickTabGenerateGrid,
+    "No input info available.": TXT[currentLang].noInputInfoAvailable,
+    "Analysis complete.": TXT[currentLang].analysisComplete,
+    "Run the analysis first.": TXT[currentLang].runAnalysisFirst,
+    "No grid data to export.": TXT[currentLang].noGridDataToExport,
+    "No analysis result available.": TXT[currentLang].noAnalysisResultAvailable,
+    "CSV file is empty": TXT[currentLang].csvFileEmpty,
+    "No valid coordinate points found in the CSV.": TXT[currentLang].noValidCoordinatePoints,
+    "PDF library not loaded. Try refreshing the page.": TXT[currentLang].pdfLibraryNotLoaded,
+    "Run an analysis and open the AI tab first.": TXT[currentLang].runAnalysisAndOpenAi,
+    "Show all": TXT[currentLang].showAll,
+    "Hide all": TXT[currentLang].hideAll,
+    "Focus on map →": TXT[currentLang].focusOnMap,
+    "AI Recommendations": TXT[currentLang].aiRecommendations,
+    "The AI agent will analyse the raw data and analysis results for this service and return context-specific insights, anomalies, and actionable recommendations.\n\nIntegration in progress — results will appear here automatically once the agent is connected.": TXT[currentLang].aiTabDesc,
+    "Coming soon": TXT[currentLang].comingSoon,
+  };
+
+  document.querySelectorAll("button, a, p, span, div").forEach(el => {
+    const text = el.textContent.trim();
+    if (textMap[text]) el.textContent = textMap[text];
   });
 }
 
@@ -254,9 +359,13 @@ function applyLang() {
   const T = TXT[currentLang];
 
   document.documentElement.dir = isAr ? "rtl" : "ltr";
+  document.documentElement.lang = currentLang;
 
   document.getElementById("langBtn").innerHTML =
     `<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/language.png" alt="lang" class="nav-icon" style="vertical-align:middle;margin-right:5px;"/>${isAr ? "English" : "العربية"}`;
+
+  const brandLabel = document.querySelector(".navbar-app .brand span:last-child");
+  if (brandLabel) brandLabel.textContent = T.brand;
 
   // Sidebar title
   const sidebarH2 = document.querySelector(".sidebar h2");
@@ -329,34 +438,41 @@ function applyLang() {
   if (shareBtn) shareBtn.innerHTML = `<img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/share-rounded.png" alt="share-rounded"/> ${isAr ? "مشاركة" : "Share"}`;
 
   const feedbackBtn = document.getElementById("feedbackBtn");
-  if (feedbackBtn) feedbackBtn.innerHTML = `<img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/feedback.png" alt="feedback"/> ${isAr ? "ملاحظات" : "Feedback"}`;
+  if (feedbackBtn) feedbackBtn.innerHTML = `<img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/feedback.png" alt="feedback"/> ${T.feedback}`;
 
   const userSpan = document.querySelector(".user-btn span:nth-child(2)");
-  if (userSpan) userSpan.textContent = isAr ? "الملف الشخصي" : "Profile";
+  if (userSpan) userSpan.textContent = T.profile;
 
   const dropdownLinks = document.querySelectorAll(".user-menu .dropdown a");
-  if (dropdownLinks[0]) dropdownLinks[0].textContent = isAr ? "الملف الشخصي" : "Profile";
-  if (dropdownLinks[1]) dropdownLinks[1].textContent = isAr ? "تسجيل خروج" : "Logout";
+  if (dropdownLinks[0]) dropdownLinks[0].textContent = T.profile;
+  if (dropdownLinks[1]) dropdownLinks[1].textContent = T.logout;
 
   // Map controls
   const measureBtn = document.getElementById("measureBtn");
-  if (measureBtn) measureBtn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/> ${isAr ? "قياس" : "Measure"}`;
+  if (measureBtn) measureBtn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/material/24/FFFFFF/ruler--v1.png" alt="ruler--v1"/> ${T.measure}`;
 
   const annotateBtn = document.getElementById("annotateBtn");
-  if (annotateBtn) annotateBtn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/> ${isAr ? "تعليق" : "Annotate"}`;
+  if (annotateBtn) annotateBtn.innerHTML = `<img width="20" height="20" src="https://img.icons8.com/windows/32/FFFFFF/sign-up.png" alt="sign-up"/> ${T.annotate}`;
 
   // Chatbot
   const chatHeader = document.querySelector(".chatbot-header");
-  if (chatHeader) chatHeader.textContent = isAr ? "اسأل حضاري" : "Ask Hadary";
+  if (chatHeader) chatHeader.textContent = T.chatHeader;
 
   const chatInput = document.getElementById("chatInput");
-  if (chatInput) chatInput.placeholder = isAr ? "اكتب رسالة..." : "Type a message…";
+  if (chatInput) chatInput.placeholder = T.chatInputPlaceholder;
 
   const chatSendBtn = document.querySelector(".chatbot-input .btn-primary");
-  if (chatSendBtn) chatSendBtn.textContent = isAr ? "إرسال" : "Send";
+  if (chatSendBtn) chatSendBtn.textContent = T.chatSend;
 // Share button
   const shareBtnNew = document.querySelector("button[onclick='toggleShareMenu()']");
   if (shareBtnNew) shareBtnNew.innerHTML = `<img width="24" height="24" src="https://img.icons8.com/material/24/FFFFFF/share-rounded.png" alt="share-rounded"/> ${T.share}`;
+
+  const shareMenuButtons = document.querySelectorAll("#shareMenu button");
+  if (shareMenuButtons[0]) shareMenuButtons[0].textContent = T.whatsapp;
+  if (shareMenuButtons[1]) shareMenuButtons[1].textContent = T.telegram;
+  if (shareMenuButtons[2]) shareMenuButtons[2].textContent = T.facebook;
+  if (shareMenuButtons[3]) shareMenuButtons[3].textContent = T.copyLink;
+  if (shareMenuButtons[4]) shareMenuButtons[4].textContent = T.more;
 
   // Export button
   const exportBtn = document.getElementById("export-btn");
@@ -385,6 +501,14 @@ function applyLang() {
   if (newProjectName) newProjectName.placeholder = T.projectName;
   const newProjectDesc = document.getElementById("newProjectDesc");
   if (newProjectDesc) newProjectDesc.placeholder = T.projectDescPlaceholder;
+  const mapPlaceholder = document.getElementById("mapPlaceholder");
+  if (mapPlaceholder) {
+    const h3 = mapPlaceholder.querySelector("h3");
+    const p = mapPlaceholder.querySelector("p");
+    if (h3) h3.textContent = T.mapPlaceholderTitle;
+    if (p) p.textContent = T.mapPlaceholderDesc;
+  }
+
   const noProjectOpt = document.querySelector("#projectSelect option[value='']");
   if (noProjectOpt) noProjectOpt.textContent = T.noProject;
 
@@ -409,20 +533,125 @@ const TXT = {
     expansion:    "Future Expansion Suitability",
     buildingDensity: "Building Density",
     buildingDensityDesc: "Measures building area per land area and benchmarks against the 10–25 units/acre urban standard.",
+    brand: "Malaz · Urban Quality of Life Analysis",
     uploadRaster: "Upload raster (GeoTIFF)",
     servicesTitle:"Analysis Services",
     urbanDesc: "Estimate population density across an area.",
     uploadBoundary: "Upload boundary data (GeoJSON)",
     populationField: "Population field name",
+    populationFieldPlaceholder: "e.g. population, pop",
+    publicTransportDesc: "Analyze walking coverage of transit stations within an area of interest.",
+    uploadStations: "Upload transit stations (GeoJSON points)",
+    walkingDistance: "Walking distance (metres)",
+    totalPopulationOptional: "Total population in area (optional)",
+    walkingIntervalsPlaceholder: "e.g. 5, 10, 15",
+    autoDetectedFromCSV: "Auto-detected from CSV",
+    facilityDesc: "Compute walkable service areas for every facility point in your dataset.",
+    uploadFacilities: "Upload facilities layer (GeoJSON)",
+    uploadBoundaryOptional: "Upload area of interest (GeoJSON polygon) (optional)",
+    walkingSpeed: "Walking speed (km/h)",
+    walkingIntervals: "Walking time intervals (minutes, comma-separated)",
+    facilityTip: "AOI is optional. When provided, zones are clipped to it and uncovered areas are shown. Buffers use a tortuosity factor of 0.75 to approximate real street-level reach.",
+    heatDesc: "Surface heat analysis from raster data.",
+    vegetationDesc: "Analyse how much of your area meets the 30% urban greenery standard.",
+    vegetationThreshold: "Vegetation threshold. Recommended: 0.3",
+    ndviDesc: "Normalized Difference Vegetation Index from raster.",
+    crimeDesc: "Hotspot analysis from incident points.",
+    uploadCrimeCsv: "Upload crime data (CSV)",
+    latField: "Latitude column name",
+    lonField: "Longitude column name",
+    crimePopulationOptional: "Total population (optional — enables per-capita comparison)",
+    trafficDesc: "Analyze road density and congestion hotspots within an area of interest.",
+    uploadRoads: "Upload road network (GeoJSON LineStrings)",
+    populationOptional: "Population (optional — enables traffic pressure)",
+    informalDesc: "Detect informal settlement patterns from satellite/aerial imagery using texture disorder, edge fragmentation, directional anisotropy and local entropy.",
+    airDesc: "Classify PM2.5, PM10, NO2, or AQI raster into 6 AQI categories and map air quality.",
+    uploadPollutantRaster: "Upload pollutant raster (GeoTIFF — PM2.5, PM10, NO2, or AQI)",
+    uploadBuildingRaster: "Upload building mask raster (GeoTIFF)",
+    buildingDensityTip: "The raster should be a single-band building mask where pixels > 0.5 represent built area. Scored against the urban planning standard of 10–25 dwelling units per acre.",
+    buildingThreshold: "Building threshold (default: 0.5)",
+    expansionDesc: "Combine multiple analyses to score expansion areas.",
     share:        "Share",
-    export:       "Export",
+    feedback:     "Feedback",
+    profile:      "Profile",
+    logout:       "Logout",
+    whatsapp:     "🟢 WhatsApp",
+    telegram:     "🔵 Telegram",
+    facebook:     "🔵 Facebook",
+    copyLink:     "📋 Copy Link",
+    more:         "📤 More...",
     basemap:      "Basemap",
     light:        "☀️ Light",
     dark:         "🌙 Dark",
     voyager:      "🗺️ Voyager",
     measure:      "Measure",
     annotate:     "Annotate",
+    themeToggleTitle: "Switch to light mode",
+    mapPlaceholderTitle: "🗺️ Map area",
+    mapPlaceholderDesc: "Map will be rendered here.",
+    chatHeader:   "Ask Hadary",
+    chatInputPlaceholder: "Type a message…",
+    chatSend:     "Send",
+    noProject:    "— No project —",
+    pleaseLoginFeature: "Please log in to use this feature.",
+    noUnassignedAnalyses: "No unassigned analyses found.",
+    chooseSourceStep1: "Step 1 — Pick a source",
+    chooseProjectOption: "— choose a project —",
+    step2AssignWeights: "Step 2 — Assign weights",
+    step2Details: "Drag sliders to set importance (they auto-normalise).",
+    computeExpansion: "▶ Compute Best Expansion Areas",
+    noEligibleProjectAnalyses: "No eligible analyses in this project.",
+    loadingAnalysisGrids: "Loading analysis grids…",
+    combiningGrids: "Combining grids and finding best areas…",
+    focusOnMap: "Focus on map →",
+    noHighScoringClusters: "No high-scoring clusters found. Try including more analyses or lowering weight thresholds.",
+    showAll: "Show all",
+    hideAll: "Hide all",
+    downloadWeightedGrid: "Download Weighted Grid GeoJSON",
+    analysisComplete: "Analysis complete.",
+    clickTabGenerateGrid: "Click this tab to generate the cell grid…",
+    clickTabScoreCells: "Click this tab to score cells…",
+    noInputInfoAvailable: "No input info available.",
+    noGridDataToExport: "No grid data to export.",
+    noAnalysisResultAvailable: "No analysis result available.",
+    pleaseSelectAnalysisFirst: "Please select at least one analysis first.",
+    allWeightsZero: "All weights are zero. Please assign at least one non-zero weight.",
+    pleaseUploadGeoTIFFFirst: "Please upload a GeoTIFF file first.",
+    pleaseUploadCsvCrime: "Please upload a CSV file with crime data first.",
+    pleaseUploadGeoJsonBoundary: "Please upload a GeoJSON file with boundary data first.",
+    pleaseEnterPopulationField: "Please enter the population field name.",
+    pleaseUploadGeoJsonFacilities: "Please upload a GeoJSON file with facility points.",
+    pleaseUploadGeoJsonTransitStations: "Please upload a GeoJSON file with transit stations.",
+    pleaseUploadGeoJsonAoi: "Please upload a GeoJSON file for the area of interest.",
+    pleaseUploadSatelliteGeoTIFF: "Please upload a satellite GeoTIFF file.",
+    runAnalysisFirst: "Run the analysis first.",
+    pleaseUploadRoadNetworkGeoJson: "Please upload a GeoJSON file with road network data.",
+    pleaseUploadBuildingMask: "Please upload a building mask GeoTIFF file.",
+    pleaseUploadSatelliteAerialGeoTIFF: "Please upload a satellite/aerial GeoTIFF file.",
     back:         "← Back to inputs",
+    cancel: "Cancel",
+    total: "Total:",
+    clear: "Clear",
+    error: "Error",
+    back:         "← Back to inputs",
+    ndviProcessingTitle: "NDVI — Processing",
+    ndviProcessingDesc: "Calculating NDVI from uploaded raster...",
+    heatProcessingTitle: "Heat Index — Processing",
+    heatProcessingDesc: "Calculating heat index from uploaded raster...",
+    crimeProcessingTitle: "Crime Density — Processing",
+    crimeProcessingDesc: "Calculating crime density from uploaded data...",
+    urbanProcessingTitle: "Urban Density — Processing",
+    urbanProcessingDesc: "Calculating urban density from uploaded data...",
+    facilityProcessingTitle: "Facility Accessibility — Processing",
+    facilityProcessingDesc: "Computing walkable service areas for every facility point…",
+    transportProcessingTitle: "Public Transport — Processing",
+    transportProcessingDesc: "Calculating transit coverage…",
+    vegetationProcessingTitle: "Vegetation Density — Processing",
+    vegetationProcessingDesc: "Classifying vegetated pixels and building cell grid…",
+    trafficProcessingTitle: "Traffic Analysis — Processing",
+    trafficProcessingDesc: "Classifying road hierarchy and computing connectivity…",
+    informalProcessingTitle: "Informal Settlement — Processing",
+    informalProcessingDesc: "Computing texture disorder, edge fragmentation, directional anisotropy and local entropy…",
     downloadJson: "Download GeoJSON",
     downloadCsv:  "Download CSV",
     downloadTiff: "Download GeoTIFF",
@@ -434,6 +663,7 @@ const TXT = {
     orCreate:     "or create new",
     projectName:  "Project name (e.g. Cairo 2026)",
     projectDescPlaceholder: "Short description (optional)",
+    analysisWeights: "Analysis weights (comma list, e.g. 0.3,0.5,0.2)",
     chatGreeting: "Hi! My name is Hadary and I'm here to help you with your urban analysis.",
     noProject:    "— No project —",
   },
@@ -451,20 +681,125 @@ const TXT = {
     expansion:    "ملاءمة التوسع المستقبلي",
     buildingDensity: "كثافة المباني",
     buildingDensityDesc: "تقيس نسبة مساحة المباني إلى إجمالي المساحة وتقارنها بمعيار 10–25 وحدة/فدان.",
+    brand: "مالاز · تحليل جودة الحياة الحضرية",
     uploadRaster: "رفع ملف الراستر (GeoTIFF)",
     servicesTitle:"خدمات التحليل",
     urbanDesc: "تقدير كثافة السكان داخل المنطقة.",
     uploadBoundary: "رفع حدود المنطقة (GeoJSON)",
     populationField: "اسم حقل السكان",
+    populationFieldPlaceholder: "مثلاً: السكان، pop",
+    publicTransportDesc: "تحلل تغطية محطات النقل العام في المنطقة.",
+    uploadStations: "رفع محطات النقل العام (GeoJSON نقاط)",
+    walkingDistance: "مسافة المشي (متر)",
+    totalPopulationOptional: "إجمالي السكان في المنطقة (اختياري)",
+    walkingIntervalsPlaceholder: "مثلاً: 5، 10، 15",
+    autoDetectedFromCSV: "يتم اكتشافه تلقائيًا من CSV",
+    facilityDesc: "تحسب مناطق الخدمة القابلة للمشي لكل نقطة منشأة في مجموعة البيانات الخاصة بك.",
+    uploadFacilities: "رفع طبقة المرافق (GeoJSON)",
+    uploadBoundaryOptional: "رفع منطقة الاهتمام (GeoJSON مضلع) (اختياري)",
+    walkingSpeed: "سرعة المشي (كم/س)",
+    walkingIntervals: "فترات زمنية للمشي (دقائق، مفصولة بفواصل)",
+    facilityTip: "الـ AOI اختياري. عند توفره، تُقتَص المناطق لتتوافق معه وتُعرض المناطق غير المغطاة. تستخدم العوازل عامل التواء 0.75 لتقريب مدى الشوارع الحقيقية.",
+    heatDesc: "تحليل سطح الحرارة من بيانات الراستر.",
+    vegetationDesc: "تحلل مدى تلبية منطقتك لمعيار 30٪ من المساحات الخضراء.",
+    vegetationThreshold: "عتبة الغطاء النباتي. الموصى بها: 0.3",
+    ndviDesc: "مؤشر الفرق بين الأشجار الطبيعي من الراستر.",
+    crimeDesc: "تحليل البقع الساخنة من بيانات الحوادث.",
+    uploadCrimeCsv: "رفع بيانات الجريمة (CSV)",
+    latField: "اسم عمود خط العرض",
+    lonField: "اسم عمود خط الطول",
+    crimePopulationOptional: "إجمالي السكان (اختياري — يمكّن المقارنة لكل فرد)",
+    trafficDesc: "تحلل كثافة الطرق ونقاط الازدحام داخل المنطقة.",
+    uploadRoads: "رفع شبكة الطرق (GeoJSON خطوط)",
+    populationOptional: "السكان (اختياري — يمكّن ضغط المرور)",
+    informalDesc: "تكتشف أنماط المناطق العشوائية من صور الأقمار الصناعية/الجوية باستخدام عدم تنظيم النسيج، تجزئة الحواف، اللااتجاهية المحلية والإنتروبي.",
+    airDesc: "يصنف رستر PM2.5 أو PM10 أو NO2 أو AQI إلى 6 فئات جودة هواء ويرسمها.",
+    uploadPollutantRaster: "رفع رستر الملوثات (GeoTIFF — PM2.5، PM10، NO2، أو AQI)",
+    uploadBuildingRaster: "رفع رستر قناع المباني (GeoTIFF)",
+    buildingDensityTip: "يجب أن يكون الراستر قناع مباني بقناة واحدة حيث تمثل البكسلات > 0.5 المساحة المبنية. يُقيّم مقابل معيار التخطيط الحضري 10–25 وحدة/فدان.",
+    buildingThreshold: "عتبة المباني (افتراضي: 0.5)",
+    expansionDesc: "اجمع عدة تحليلات لتسجيل مناطق التوسع.",
     share:        "مشاركة",
-    export:       "تصدير",
+    feedback:     "ملاحظات",
+    profile:      "الملف الشخصي",
+    logout:       "تسجيل خروج",
+    whatsapp:     "🟢 واتساب",
+    telegram:     "🔵 تيليجرام",
+    facebook:     "🔵 فيسبوك",
+    copyLink:     "📋 نسخ الرابط",
+    more:         "📤 المزيد...",
     basemap:      "خريطة الأساس",
     light:        "☀️ فاتح",
     dark:         "🌙 داكن",
     voyager:      "🗺️ فضائي",
     measure:      "قياس",
     annotate:     "تعليق",
+    themeToggleTitle: "تبديل الوضع الفاتح",
+    mapPlaceholderTitle: "🗺️ منطقة الخريطة",
+    mapPlaceholderDesc: "سيتم عرض الخريطة هنا.",
+    chatHeader:   "اسأل حضاري",
+    chatInputPlaceholder: "اكتب رسالة...",
+    chatSend:     "إرسال",
+    noProject:    "— بدون مشروع —",
+    pleaseLoginFeature: "الرجاء تسجيل الدخول لاستخدام هذه الميزة.",
+    noUnassignedAnalyses: "لا توجد تحليلات غير مرتبطة.",
+    chooseSourceStep1: "الخطوة 1 — اختر المصدر",
+    chooseProjectOption: "— اختر مشروعًا —",
+    step2AssignWeights: "الخطوة 2 — حدد الأوزان",
+    step2Details: "حرك المؤشرات لتحديد الأهمية (تتم المعايرة تلقائيًا).",
+    computeExpansion: "▶ حساب أفضل مناطق التوسع",
+    noEligibleProjectAnalyses: "لا توجد تحليلات مؤهلة في هذا المشروع.",
+    loadingAnalysisGrids: "جاري تحميل شبكات التحليل…",
+    combiningGrids: "جاري دمج الشبكات والعثور على أفضل المناطق…",
+    focusOnMap: "ركز على الخريطة →",
+    noHighScoringClusters: "لم يتم العثور على تجمعات ذات درجات عالية. جرّب تضمين تحليلات أكثر أو خفض حدود الأوزان.",
+    showAll: "عرض الكل",
+    hideAll: "إخفاء الكل",
+    downloadWeightedGrid: "تحميل خريطة الشبكة المرجحة GeoJSON",
+    analysisComplete: "اكتمل التحليل.",
+    clickTabGenerateGrid: "انقر هذا التبويب لإنشاء شبكة الخلايا…",
+    clickTabScoreCells: "انقر هذا التبويب لتقييم الخلايا…",
+    noInputInfoAvailable: "لا توجد معلومات إدخال متاحة.",
+    noGridDataToExport: "لا توجد بيانات شبكة للتصدير.",
+    noAnalysisResultAvailable: "لا تتوفر نتيجة تحليل.",
+    pleaseSelectAnalysisFirst: "الرجاء اختيار تحليل واحد على الأقل أولاً.",
+    allWeightsZero: "جميع الأوزان صفر. الرجاء تعيين وزن واحد غير صفري على الأقل.",
+    pleaseUploadGeoTIFFFirst: "الرجاء رفع ملف GeoTIFF أولاً.",
+    pleaseUploadCsvCrime: "الرجاء رفع ملف CSV يحتوي على بيانات الجريمة أولاً.",
+    pleaseUploadGeoJsonBoundary: "الرجاء رفع ملف GeoJSON يحتوي على بيانات الحدود أولاً.",
+    pleaseEnterPopulationField: "الرجاء إدخال اسم حقل السكان.",
+    pleaseUploadGeoJsonFacilities: "الرجاء رفع ملف GeoJSON يحتوي على نقاط المرافق.",
+    pleaseUploadGeoJsonTransitStations: "الرجاء رفع ملف GeoJSON يحتوي على محطات النقل.",
+    pleaseUploadGeoJsonAoi: "الرجاء رفع ملف GeoJSON لمنطقة الاهتمام.",
+    pleaseUploadSatelliteGeoTIFF: "الرجاء رفع ملف GeoTIFF للأقمار الصناعية.",
+    runAnalysisFirst: "قم بتشغيل التحليل أولاً.",
+    pleaseUploadRoadNetworkGeoJson: "الرجاء رفع ملف GeoJSON يحتوي على شبكة الطرق.",
+    pleaseUploadBuildingMask: "الرجاء رفع ملف GeoTIFF لقناع المباني.",
+    pleaseUploadSatelliteAerialGeoTIFF: "الرجاء رفع ملف GeoTIFF للقمر الصناعي/الجوي.",
+    aiRecommendations: "توصيات الذكاء الاصطناعي",
+    cancel: "إلغاء",
+    total: "الإجمالي:",
+    clear: "مسح",
+    error: "خطأ",
     back:         "← رجوع للمدخلات",
+    ndviProcessingTitle: "NDVI — جاري المعالجة",
+    ndviProcessingDesc: "جاري حساب NDVI من ملف الراستر المرفوع...",
+    heatProcessingTitle: "مؤشر الحرارة — جاري المعالجة",
+    heatProcessingDesc: "جاري حساب مؤشر الحرارة من ملف الراستر المرفوع...",
+    crimeProcessingTitle: "كثافة الجريمة — جاري المعالجة",
+    crimeProcessingDesc: "جاري حساب كثافة الجريمة من البيانات المرفوعة...",
+    urbanProcessingTitle: "كثافة حضرية — جاري المعالجة",
+    urbanProcessingDesc: "جاري حساب كثافة السكان من البيانات المرفوعة...",
+    facilityProcessingTitle: "إمكانية الوصول للمرافق — جاري المعالجة",
+    facilityProcessingDesc: "جاري حساب مناطق الخدمة القابلة للمشي لكل منشأة...",
+    transportProcessingTitle: "النقل العام — جاري المعالجة",
+    transportProcessingDesc: "جاري حساب تغطية النقل العام...",
+    vegetationProcessingTitle: "كثافة الغطاء النباتي — جاري المعالجة",
+    vegetationProcessingDesc: "جاري تصنيف البكسلات الخضراء وبناء شبكة الخلايا...",
+    trafficProcessingTitle: "تحليل المرور — جاري المعالجة",
+    trafficProcessingDesc: "جاري تصنيف هرمية الطرق وحساب المقاييس...",
+    informalProcessingTitle: "المناطق العشوائية — جاري المعالجة",
+    informalProcessingDesc: "جاري حساب مؤشرات عدم الانتظام والتجزئة والاتجاهية والإنتروبي المحلي...",
     downloadJson: "تحميل GeoJSON",
     downloadCsv:  "تحميل CSV",
     downloadTiff: "تحميل GeoTIFF",
@@ -476,6 +811,7 @@ const TXT = {
     orCreate:     "أو أنشئ مشروعاً جديداً",
     projectName:  "اسم المشروع (مثلاً: القاهرة 2026)",
     projectDescPlaceholder: "وصف مختصر (اختياري)",
+    analysisWeights: "أوزان التحليل (قائمة مفصولة بفواصل، مثلاً: 0.3,0.5,0.2)",
     chatGreeting: "أهلاً! أنا حضاري، هنا لمساعدتك في تحليل بياناتك الحضرية.",
     noProject:    "— بدون مشروع —",
   }
@@ -486,103 +822,103 @@ const SERVICES = {
     desc: TXT[currentLang].urbanDesc,
     inputs: [
       { type: "file", id: "geoJsonInput", label: TXT[currentLang].uploadBoundary},
-      { type: "text", id: "populationField", label: "Population field name", placeholder: "e.g. population, pop" }
+      { type: "text", id: "populationField", label: TXT[currentLang].populationField, placeholder: TXT[currentLang].populationFieldPlaceholder }
     ],
   },
   "public-transport": {
     title: TXT[currentLang].transport,
-    desc: "Analyze walking coverage of transit stations within an area of interest.",
+    desc: TXT[currentLang].publicTransportDesc,
     inputs: [
-      { type: "file",   id: "stationsInput",    label: "Upload transit stations (GeoJSON points)" },
-      { type: "file",   id: "aoiInput",          label: "Upload area of interest (GeoJSON polygon)" },
-      { type: "tip",    text: "Recommended urban public transport coverage is within 500–1000 walking metres." },
-      { type: "number", id: "walkingDistance",   label: "Walking distance (metres)", value: 1000 },
-      { type: "number", id: "populationCount",   label: "Total population in area (optional)", value: "" },
+      { type: "file",   id: "stationsInput",    label: TXT[currentLang].uploadStations },
+      { type: "file",   id: "aoiInput",          label: TXT[currentLang].uploadBoundary },
+      { type: "tip",    text: TXT[currentLang].publicTransportDesc },
+      { type: "number", id: "walkingDistance",   label: TXT[currentLang].walkingDistance, value: 1000 },
+      { type: "number", id: "populationCount",   label: TXT[currentLang].totalPopulationOptional, value: "" },
     ],
   },
   "facility_Accessibility_index": {
     title: TXT[currentLang].facility,
-    desc: "Compute walkable service areas for every facility point in your dataset.",
+    desc: TXT[currentLang].facilityDesc,
     inputs: [
-      { type: "file",   id: "facilitiesGeojsonInput", label: "Upload facilities layer (GeoJSON)" },
-      { type: "file",   id: "facilityAoiInput",       label: "Upload area of interest (GeoJSON) <span style='background:rgba(76,194,255,0.15);color:var(--accent);font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;vertical-align:middle;'>optional</span>" },
-      { type: "number", id: "walkingSpeedInput",       label: "Walking speed (km/h)", value: 4.5 },
-      { type: "text",   id: "walkingIntervalsInput",   label: "Walking time intervals (minutes, comma-separated)", placeholder: "e.g. 5, 10, 15" },
-      { type: "tip",    text: "AOI is optional. When provided, zones are clipped to it and uncovered areas are shown. Buffers use a tortuosity factor of 0.75 to approximate real street-level reach." },
+      { type: "file",   id: "facilitiesGeojsonInput", label: TXT[currentLang].uploadFacilities },
+      { type: "file",   id: "facilityAoiInput",       label: TXT[currentLang].uploadBoundaryOptional },
+      { type: "number", id: "walkingSpeedInput",       label: TXT[currentLang].walkingSpeed, value: 4.5 },
+      { type: "text",   id: "walkingIntervalsInput",   label: TXT[currentLang].walkingIntervals, placeholder: TXT[currentLang].walkingIntervalsPlaceholder },
+      { type: "tip",    text: TXT[currentLang].facilityTip },
     ],
-    action: runFacilityAccessibilityAnalysis
+    // action: runFacilityAccessibilityAnalysis
   },
 
   "heat-index": {
     title: TXT[currentLang].heat,
-    desc: "Surface heat analysis from raster data.",
+    desc: TXT[currentLang].heatDesc,
     inputs: [
-      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "tiffInput", label: TXT[currentLang].uploadRaster },
     ],
   },
   "vegetation": {
     title: TXT[currentLang].vegetation,
-    desc: "Analyse how much of your area meets the 30% urban greenery standard.",
+    desc: TXT[currentLang].vegetationDesc,
     inputs: [
-      { type: "file",   id: "tiffInput",    label: "Upload satellite raster (GeoTIFF)" },
-      { type: "number", id: "vegThreshold", label: "Vegetation Threshold. Recommended: 0.3", value: 0.3 },
+      { type: "file",   id: "tiffInput",    label: TXT[currentLang].uploadRaster },
+      { type: "number", id: "vegThreshold", label: TXT[currentLang].vegetationThreshold, value: 0.3 },
     ],
   },
   "ndvi": {
     title: TXT[currentLang].ndvi,
-    desc: "Normalized Difference Vegetation Index from raster.",
+    desc: TXT[currentLang].ndviDesc,
     inputs: [
-      { type: "file", id: "tiffInput", label: "Upload raster (GeoTIFF)" },
+      { type: "file", id: "tiffInput", label: TXT[currentLang].uploadRaster },
     ],
   },
   "crime": {
     title: TXT[currentLang].crime,
-    desc: "Hotspot analysis from incident points.",
+    desc: TXT[currentLang].crimeDesc,
     inputs: [
-      { type: "file", id: "csvInput", label: "Upload crime data (CSV)" },
-      { type: "file", id: "geoJsonInput", label: "Upload boundary data (GeoJSON)" },
-      { type: "text", id: "latField", label: "Latitude column name", placeholder: "Auto-detected from CSV", autoDetect: true },
-      { type: "text", id: "lonField", label: "Longitude column name", placeholder: "Auto-detected from CSV", autoDetect: true },
-      { type: "number", id: "crimePopInput", label: "Total population (optional — enables per-capita comparison)" },
+      { type: "file", id: "csvInput", label: TXT[currentLang].uploadCrimeCsv },
+      { type: "file", id: "geoJsonInput", label: TXT[currentLang].uploadBoundary },
+      { type: "text", id: "latField", label: TXT[currentLang].latField, placeholder: TXT[currentLang].autoDetectedFromCSV, autoDetect: true },
+      { type: "text", id: "lonField", label: TXT[currentLang].lonField, placeholder: TXT[currentLang].autoDetectedFromCSV, autoDetect: true },
+      { type: "number", id: "crimePopInput", label: TXT[currentLang].crimePopulationOptional },
     ],
   },
   "traffic": {
     title: TXT[currentLang].traffic,
-    desc: "Analyse road density and congestion hotspots within an area of interest.",
+    desc: TXT[currentLang].trafficDesc,
     inputs: [
-      { type: "file",   id: "roadsInput",  label: "Upload road network (GeoJSON LineStrings)" },
-      { type: "file",   id: "aoiInput",    label: "Upload area of interest (GeoJSON polygon)" },
-      { type: "number", id: "populationInput", label: "Population (optional — enables traffic pressure)" },
+      { type: "file",   id: "roadsInput",  label: TXT[currentLang].uploadRoads },
+      { type: "file",   id: "aoiInput",    label: TXT[currentLang].uploadBoundary },
+      { type: "number", id: "populationInput", label: TXT[currentLang].populationOptional },
     ],
   },
   "informal-settlement": {
     title: TXT[currentLang].informal,
-    desc: "Detect informal settlement patterns from satellite/aerial imagery using texture disorder, edge fragmentation, directional anisotropy and local entropy.",
+    desc: TXT[currentLang].informalDesc,
     inputs: [
-      { type: "file", id: "tiffInput", label: "Upload satellite/aerial imagery (GeoTIFF)" },
+      { type: "file", id: "tiffInput", label: TXT[currentLang].uploadRaster },
     ],
   },
   "air-quality": {
     title: TXT[currentLang].air,
-    desc: "Classify PM2.5, PM10, NO2, or AQI raster into 6 AQI categories and map air quality.",
+    desc: TXT[currentLang].airDesc,
     inputs: [
-      { type: "file", id: "tiffInput", label: "Upload pollutant raster (GeoTIFF — PM2.5, PM10, NO2, or AQI)" },
+      { type: "file", id: "tiffInput", label: TXT[currentLang].uploadPollutantRaster },
     ],
   },
   "building-density": {
     title: TXT[currentLang].buildingDensity,
     desc: TXT[currentLang].buildingDensityDesc,
     inputs: [
-      { type: "file",   id: "tiffInput",           label: "Upload building mask raster (GeoTIFF)" },
-      { type: "tip",    text: "The raster should be a single-band building mask where pixels > 0.5 represent built area. Scored against the urban planning standard of 10–25 dwelling units per acre." },
-      { type: "number", id: "buildingThreshold",   label: "Building threshold (default: 0.5)", value: 0.5 },
+      { type: "file",   id: "tiffInput",           label: TXT[currentLang].uploadBuildingRaster },
+      { type: "tip",    text: TXT[currentLang].buildingDensityTip },
+      { type: "number", id: "buildingThreshold",   label: TXT[currentLang].buildingThreshold, value: 0.5 },
     ],
   },
   "expansion": {
-    title: "Future Expansion Suitability",
-    desc: "Combine multiple analyses to score expansion areas.",
+    title: TXT[currentLang].expansion,
+    desc: TXT[currentLang].expansionDesc,
     inputs: [
-      { type: "text", id: "weights", label: "Analysis weights (comma list, e.g. 0.3,0.5,0.2)" },
+      { type: "text", id: "weights", label: TXT[currentLang].analysisWeights },
     ],
     isExpansion: true,
   },
@@ -687,7 +1023,7 @@ function renderServicePanel(key) {
       <!-- STEP 3 — Run Analysis button -->
       <button class="btn btn-primary btn-block btn-lg mt-3"
               onclick="runAnalysis('${key}')">
-        ${currentLang === "ar" ? "▶ تشغيل التحليل" : "▶ Run Analysis"}
+        ${TXT[currentLang].runAnalysis}
       </button>
     </div>
   `;
@@ -724,7 +1060,7 @@ async function renderExpansionPanel(service) {
 
   const username = localStorage.getItem('username');
   if (!username) {
-    analysisPanel.innerHTML = `<p class="text-danger">Please log in to use this feature.</p>`;
+    analysisPanel.innerHTML = `<p class="text-danger">${TXT[currentLang].pleaseLoginFeature}</p>`;
     return;
   }
 
@@ -770,7 +1106,7 @@ async function renderExpansionPanel(service) {
           </label>
           <span class="badge" style="background:${a.score >= 75 ? '#27ae60' : a.score >= 40 ? '#f0a500' : '#e74c3c'};color:#fff;border-radius:4px;padding:2px 7px;font-size:11px;">${a.score ?? '—'}</span>
         </div>`).join('')
-    : `<p class="text-muted" style="font-size:12px;">No unassigned analyses found.</p>`;
+    : `<p class="text-muted" style="font-size:12px;">${TXT[currentLang].noUnassignedAnalyses}</p>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
@@ -779,7 +1115,7 @@ async function renderExpansionPanel(service) {
 
       <!-- Step 1: Source -->
       <div style="margin-bottom:14px;">
-        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em;">Step 1 — Pick a source</label>
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em;">${TXT[currentLang].chooseSourceStep1}</label>
         <div style="display:flex;gap:8px;margin-top:6px;">
           <button id="exp-src-project" class="btn btn-ghost btn-sm" style="flex:1;border:1px solid var(--accent);" onclick="_expansionSwitchSource('project')">By Project</button>
           <button id="exp-src-history" class="btn btn-ghost btn-sm" style="flex:1;" onclick="_expansionSwitchSource('history')">From History</button>
@@ -791,7 +1127,7 @@ async function renderExpansionPanel(service) {
         <div class="form-group">
           <label style="font-size:12px;">Select project</label>
           <select id="exp-project-sel" style="width:100%;background:var(--input-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;">
-            <option value="">— choose a project —</option>
+            <option value="">${TXT[currentLang].chooseProjectOption}</option>
             ${projectOpts}
           </select>
         </div>
@@ -808,14 +1144,14 @@ async function renderExpansionPanel(service) {
 
       <!-- Step 2: Weights (populated dynamically) -->
       <div id="exp-weights-section" style="margin-top:16px;display:none;">
-        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em;">Step 2 — Assign weights</label>
-        <p style="font-size:11px;color:var(--text-muted);margin:4px 0 8px;">Drag sliders to set importance (they auto-normalise).</p>
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em;">${TXT[currentLang].step2AssignWeights}</label>
+        <p style="font-size:11px;color:var(--text-muted);margin:4px 0 8px;">${TXT[currentLang].step2Details}</p>
         <div id="exp-weight-sliders"></div>
       </div>
 
       <button id="exp-run-btn" class="btn btn-primary btn-block btn-lg mt-3" style="display:none;"
               onclick="runExpansionAnalysis()">
-        ▶ Compute Best Expansion Areas
+        ${TXT[currentLang].computeExpansion}
       </button>
     </div>
   `;
@@ -830,7 +1166,7 @@ async function renderExpansionPanel(service) {
 
       const inProject = eligible.filter(a => String(a.project_id) === String(pid));
       if (!inProject.length) {
-        container.innerHTML = `<p class="text-muted" style="font-size:12px;">No eligible analyses in this project.</p>`;
+        container.innerHTML = `<p class="text-muted" style="font-size:12px;">${TXT[currentLang].noEligibleProjectAnalyses}</p>`;
         _refreshExpansionWeights([]);
         return;
       }
@@ -948,7 +1284,7 @@ const _EXPANSION_GRID_ENDPOINT = {
 
 async function runExpansionAnalysis() {
   if (!_expansionCandidates || !_expansionCandidates.length) {
-    alert('Please select at least one analysis first.');
+    alert(TXT[currentLang].pleaseSelectAnalysisFirst);
     return;
   }
 
@@ -960,18 +1296,18 @@ async function runExpansionAnalysis() {
 
   const totalW = Object.values(weightMap).reduce((s, v) => s + v, 0);
   if (totalW === 0) {
-    alert('All weights are zero. Please assign at least one non-zero weight.');
+    alert(TXT[currentLang].allWeightsZero);
     return;
   }
 
   // Show loading state
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Expansion — Processing</h3>
-      <p class="panel-desc">Fetching grids and computing weighted suitability map…</p>
+      <h3 class="panel-title">${TXT[currentLang].expansionProcessingTitle || 'Expansion — Processing'}</h3>
+      <p class="panel-desc">${TXT[currentLang].expansionProcessingDesc || 'Fetching grids and computing weighted suitability map…'}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status"></div>
-        <p id="exp-progress" class="text-muted mt-2" style="font-size:12px;">Loading analysis grids…</p>
+        <p id="exp-progress" class="text-muted mt-2" style="font-size:12px;">${TXT[currentLang].loadingAnalysisGrids}</p>
       </div>
     </div>`;
 
@@ -985,7 +1321,7 @@ async function runExpansionAnalysis() {
       const w    = weightMap[String(a.id)] ?? 1;
       const cfg  = _EXPANSION_GRID_ENDPOINT[a.type];
 
-      if (progressEl()) progressEl().textContent = `Loading grid ${i+1}/${_expansionCandidates.length}: ${a.title || a.type}…`;
+      if (progressEl()) progressEl().textContent = TXT[currentLang].loadingAnalysisGrids;
 
       // Check cache
       if (_expansionGridCache[a.id]) {
@@ -1030,7 +1366,7 @@ async function runExpansionAnalysis() {
       throw new Error('No grids could be loaded. Check that result files are accessible.');
     }
 
-    if (progressEl()) progressEl().textContent = 'Combining grids and finding best areas…';
+    if (progressEl()) progressEl().textContent = TXT[currentLang].combiningGrids;
 
     const combineRes = await fetch(`${API_BASE_URL}/expansion/combine`, {
       method: 'POST',
@@ -1255,13 +1591,13 @@ function renderExpansionResults(result, candidates, weightMap) {
               <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color);">
                 <span style="font-size:10px;color:var(--text-muted);">📍 ${area.centroid[1].toFixed(4)}°N, ${area.centroid[0].toFixed(4)}°E</span>
                 <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;" onclick="_expansionFocusArea(${i})">
-                  Focus on map →
+                  ${TXT[currentLang].focusOnMap}
                 </button>
               </div>
             </div>
           </div>`;
       }).join('')
-    : `<p class="text-muted">No high-scoring clusters found. Try including more analyses or lowering weight thresholds.</p>`;
+    : `<p class="text-muted">${TXT[currentLang].noHighScoringClusters}</p>`;
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
@@ -1302,8 +1638,8 @@ function renderExpansionResults(result, candidates, weightMap) {
         </div>
 
         <div style="display:flex;gap:6px;margin-bottom:12px;">
-          <button class="btn btn-ghost" style="flex:1;font-size:11px;padding:5px;" onclick="_expansionToggleAllLayers(true)">Show all</button>
-          <button class="btn btn-ghost" style="flex:1;font-size:11px;padding:5px;" onclick="_expansionToggleAllLayers(false)">Hide all</button>
+          <button class="btn btn-ghost" style="flex:1;font-size:11px;padding:5px;" onclick="_expansionToggleAllLayers(true)">${TXT[currentLang].showAll}</button>
+          <button class="btn btn-ghost" style="flex:1;font-size:11px;padding:5px;" onclick="_expansionToggleAllLayers(false)">${TXT[currentLang].hideAll}</button>
         </div>
 
         <div class="insight-card">
@@ -1342,25 +1678,25 @@ function renderExpansionResults(result, candidates, weightMap) {
 
         <button class="btn btn-ghost btn-block" style="margin-top:4px;font-size:12px;" onclick="_downloadExpansionGeoJSON()">
           <img width="18" height="18" src="https://img.icons8.com/material-rounded/24/FFFFFF/json-download.png" alt="download" style="vertical-align:middle;margin-right:4px;"/>
-          Download Weighted Grid GeoJSON
+          ${TXT[currentLang].downloadWeightedGrid}
         </button>
       </div>
 
       <div class="tab-content" id="tab-grid">
-        <p class="text-muted">Click this tab to view the weighted cell grid on the map.</p>
+        <p class="text-muted">${TXT[currentLang].aiAnalysisComing}</p>
       </div>
 
       <div class="tab-content" id="tab-ai">
         <div class="ai-tab-placeholder">
           <div class="ai-tab-icon">✦</div>
-          <div class="ai-tab-title">AI Recommendations</div>
-          <div class="ai-tab-desc">AI analysis for expansion results coming soon.</div>
-          <div class="ai-tab-badge">Coming soon</div>
+          <div class="ai-tab-title">${TXT[currentLang].aiRecommendations}</div>
+          <div class="ai-tab-desc">${TXT[currentLang].aiAnalysisComing}</div>
+          <div class="ai-tab-badge">${TXT[currentLang].comingSoon}</div>
         </div>
       </div>
 
       <button class="btn btn-ghost btn-block mt-3" onclick="renderServicePanel('expansion')">
-        ← Back to inputs
+        ${TXT[currentLang].back}
       </button>
     </div>
   `;
@@ -1564,8 +1900,8 @@ async function runNDVIAnalysis() {
   // Show loading state
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">NDVI — Processing</h3>
-      <p class="panel-desc">Calculating NDVI from uploaded raster...</p>
+      <h3 class="panel-title">${TXT[currentLang].ndviProcessingTitle}</h3>
+      <p class="panel-desc">${TXT[currentLang].ndviProcessingDesc}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading...</span>
@@ -1709,8 +2045,8 @@ async function runHeatIndexAnalysis() {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Heat Index — Processing</h3>
-      <p class="panel-desc">Calculating heat index from uploaded raster...</p>
+      <h3 class="panel-title">${TXT[currentLang].heatProcessingTitle}</h3>
+      <p class="panel-desc">${TXT[currentLang].heatProcessingDesc}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading...</span>
@@ -1785,7 +2121,7 @@ async function runHeatIndexAnalysis() {
     if (v === 2) return "rgba(240,165,0,0.85)";
     if (v === 3) return "rgba(231,76,60,0.85)";
 
-    return "rgba(180,180,180,0.65)";س
+    return "rgba(180,180,180,0.65)";
   },
 });
     
@@ -1884,8 +2220,8 @@ async function runCrimeAnalysis() {
   // Show loading state
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Crime Density — Processing</h3>
-      <p class="panel-desc">Calculating crime density from uploaded data...</p>
+      <h3 class="panel-title">${TXT[currentLang].crimeProcessingTitle}</h3>
+      <p class="panel-desc">${TXT[currentLang].crimeProcessingDesc}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading...</span>
@@ -2034,8 +2370,8 @@ async function runUrbanDensityAnalysis() {
   // Show loading state
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Urban Density — Processing</h3>
-      <p class="panel-desc">Calculating urban density from uploaded data...</p>
+      <h3 class="panel-title">${TXT[currentLang].urbanProcessingTitle}</h3>
+      <p class="panel-desc">${TXT[currentLang].urbanProcessingDesc}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading...</span>
@@ -2200,8 +2536,8 @@ async function runFacilityAccessibilityAnalysis() {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Facility Accessibility — Processing</h3>
-      <p class="panel-desc">Computing walkable service areas for every facility point…</p>
+      <h3 class="panel-title">${TXT[currentLang].facilityProcessingTitle}</h3>
+      <p class="panel-desc">${TXT[currentLang].facilityProcessingDesc}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading…</span>
@@ -2374,8 +2710,8 @@ async function runPublicTransportAnalysis() {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Public Transport — Processing</h3>
-      <p class="panel-desc">Calculating transit coverage…</p>
+      <h3 class="panel-title">${TXT[currentLang].transportProcessingTitle}</h3>
+      <p class="panel-desc">${TXT[currentLang].transportProcessingDesc}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading…</span>
@@ -2743,8 +3079,8 @@ async function runVegetationAnalysis() {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Vegetation Density — Processing</h3>
-      <p class="panel-desc">Classifying vegetated pixels and building cell grid…</p>
+      <h3 class="panel-title">${TXT[currentLang].vegetationProcessingTitle}</h3>
+      <p class="panel-desc">${TXT[currentLang].vegetationProcessingDesc}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading…</span>
@@ -3120,8 +3456,8 @@ async function runTrafficAnalysis() {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Traffic Analysis — Processing</h3>
-      <p class="panel-desc">Classifying road hierarchy and computing connectivity…</p>
+      <h3 class="panel-title">${TXT[currentLang].trafficProcessingTitle}</h3>
+      <p class="panel-desc">${TXT[currentLang].trafficProcessingDesc}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading…</span>
@@ -3506,8 +3842,8 @@ async function runInformalSettlementAnalysis() {
 
   analysisPanel.innerHTML = `
     <div class="fade-in">
-      <h3 class="panel-title">Informal Settlement — Processing</h3>
-      <p class="panel-desc">Computing texture disorder, edge fragmentation, directional anisotropy and local entropy…</p>
+      <h3 class="panel-title">${TXT[currentLang].informalProcessingTitle}</h3>
+      <p class="panel-desc">${TXT[currentLang].informalProcessingDesc}</p>
       <div class="text-center my-4">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading…</span>
@@ -5614,7 +5950,7 @@ function getActiveServiceKey() {
 }
 
 
-/* ---------- Helper: wire up tab switching + map layer toggle ---------- */
+/* ---------- Helper: wire  tab switching + map layer toggle ---------- */
 function wireTabSwitching() {
   analysisPanel.querySelectorAll(".tab").forEach(tab => {
     tab.addEventListener("click", async function () {
@@ -5787,15 +6123,17 @@ function wireTabSwitching() {
             const b = gridLayer.getBounds();
             if (b && b.isValid()) map.fitBounds(b, { padding: [50,50] });
           } catch(e){}
-          const gridTabContent = analysisPanel.querySelector('#tab-grid');
-          if (gridTabContent && gridTabContent.textContent.includes('Click this tab')) {
-            const _sc = lastResultBlob.features.map(f => f.properties.qol_score).filter(s => s != null);
+          const gridTabContentExp = analysisPanel.querySelector('#tab-grid');
+          if (gridTabContentExp) {
+            const hintTexts = [TXT[currentLang].clickTabGenerateGrid, TXT[currentLang].clickTabScoreCells].filter(Boolean);
+            if (hintTexts.some(ht => gridTabContentExp.textContent.includes(ht))) {
+              const _sc = lastResultBlob.features.map(f => f.properties.qol_score).filter(s => s != null);
             const _avg = _sc.length ? Math.round(_sc.reduce((a,b)=>a+b,0)/_sc.length) : null;
             const _best = _sc.length ? Math.max(..._sc) : null;
             const _worst = _sc.length ? Math.min(..._sc) : null;
             const _csm  = lastResultBlob.cell_size_m || '?';
             const _cl   = _csm >= 1000 ? `${(_csm/1000).toFixed(1)} km` : `${_csm} m`;
-            gridTabContent.innerHTML = `
+            gridTabContentExp.innerHTML = `
               <div class="insight-card"><div class="label">Total cells</div><div class="value">${lastResultBlob.features.length.toLocaleString()}</div></div>
               <div class="insight-card"><div class="label">Cell size</div><div class="value">${_cl}</div></div>
               ${_avg  != null ? `<div class="insight-card"><div class="label">Avg composite score</div><div class="value">${_avg}/100</div></div>` : ''}
@@ -5805,8 +6143,9 @@ function wireTabSwitching() {
               ${window.qolGradientRow ? window.qolGradientRow() : ''}
             `;
           }
-          return;
-        }
+            return;
+          }
+        }  // end expansion block
 
         // If grid layer already loaded, just show it
         if (gridLayer) {
@@ -5829,7 +6168,7 @@ function wireTabSwitching() {
         }
 
         if (!lastResultBlob || !lastResultService) {
-          if (gridTabContent) gridTabContent.innerHTML = `<p class="text-muted">No analysis result available to grid.</p>`;
+            if (gridTabContentExp) gridTabContentExp.innerHTML = `<p class="text-muted">No analysis result available to grid.</p>`;
           return;
         }
 
@@ -6236,7 +6575,7 @@ function wireTabSwitching() {
         fetchAIRecommendations();
       }
     });
-  });
+});
 
   // Wire the download button for the initially-active full tab
   _wireFullDownloadBtn();

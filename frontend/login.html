@@ -25,6 +25,7 @@
 </head>
 <body>
   <button class="theme-toggle-float" onclick="toggleTheme()" title="Switch to light mode">☀️</button>
+  <button class="theme-toggle-float" id="langBtn" onclick="toggleLang()" title="Toggle language">العربية</button>
   <div class="auth-wrapper">
     <div class="auth-card fade-in">
 
@@ -36,8 +37,8 @@
         <span>Malaz · Urban Quality of Life Analysis</span>
       </div>
 
-      <h1>Welcome back</h1>
-      <p class="subtitle">Sign in to get full access to Malaz.</p>
+      <h1 id="pageHeading">Welcome back</h1>
+      <p class="subtitle" id="pageSubtitle">Sign in to get full access to Malaz.</p>
 
       <!-- Login form -->
       <form id="loginForm" novalidate>
