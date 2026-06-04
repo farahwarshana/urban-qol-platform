@@ -1050,7 +1050,7 @@ footer p {
   display: block;
 }
 
-.auth-wrapper ~ #langBtn {
+body:has(.auth-wrapper) #langBtn {
   position: fixed;
   top: 16px;
   right: 68px;
@@ -1070,7 +1070,7 @@ footer p {
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   transition: border-color var(--transition), color var(--transition);
 }
-.auth-wrapper ~ #langBtn:hover {
+body:has(.auth-wrapper) #langBtn:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
