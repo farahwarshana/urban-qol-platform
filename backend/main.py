@@ -1372,8 +1372,8 @@ def register(user: UserRegister):
 
     return {
         "token": token,
-        "username": result.username,
-        "is_admin": result.is_admin
+        "username": user.username,
+        "is_admin": False
     }
 
 @app.post("/login", tags=["Auth"])

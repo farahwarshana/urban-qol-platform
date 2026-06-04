@@ -192,7 +192,7 @@ if (loginForm) {
     localStorage.setItem("username", data.username);
     localStorage.setItem(
   "is_admin",
-  data.is_admin ? "1" : "0"
+  data.is_admin ? "true" : "false"
 );
 
     window.location.href = "dashboard.html";
