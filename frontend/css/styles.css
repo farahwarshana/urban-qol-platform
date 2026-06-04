@@ -88,17 +88,6 @@
   color: var(--accent);
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
-#langBtn {
-  right: 68px;
-  width: auto;
-  min-width: 120px;
-  border-radius: var(--radius);
-  padding: 0 12px;
-  height: 38px;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
 /* ---------- Reset / base ---------- */
 * { box-sizing: border-box; }
 
@@ -1059,4 +1048,29 @@ footer p {
 /* هذا الكلاس سيتم إضافته بواسطة الـ JavaScript لإظهار القائمة */
 .share-menu.show {
   display: block;
+}
+
+.auth-wrapper ~ #langBtn {
+  position: fixed;
+  top: 16px;
+  right: 68px;
+  z-index: 9999;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: auto;
+  min-width: 120px;
+  height: 38px;
+  border-radius: var(--radius);
+  padding: 0 12px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  transition: border-color var(--transition), color var(--transition);
+}
+.auth-wrapper ~ #langBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }

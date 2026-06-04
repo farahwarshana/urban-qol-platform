@@ -52,7 +52,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import Request
 
 # ------------------------------------------------------------------------------
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form, Depends
+from fastapi.security import HTTPBearer
+
+security = HTTPBearer()
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -505,7 +508,6 @@ def facility_accessibility_endpoint(
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Facility accessibility calculation failed: {e}")
-
 
 # ── Grid / Cell Analysis endpoints ───────────────────────────────────────────
 
@@ -1367,7 +1369,12 @@ def register(user: UserRegister):
         })
     
     token = create_token({"sub": user.email})
-    return {"token": token, "username": user.username}
+
+    return {
+        "token": token,
+        "username": result.username,
+        "is_admin": result.is_admin
+    }
 
 @app.post("/login", tags=["Auth"])
 def login(user: UserLogin):
@@ -1384,7 +1391,7 @@ def login(user: UserLogin):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
     token = create_token({"sub": user.email})
-    return {"token": token, "username": result.username}
+    return {"token": token, "username": result.username, "is_admin": result.is_admin}
 
 # ____________AnalysisRecord_________
 
@@ -1606,7 +1613,62 @@ def expansion_combine(req: ExpansionRequest):
         "top_areas":     top_areas,
     }
 
+# ──────────── Admin endpoints ────────────────
 
+def get_current_admin(token = Depends(security)):
+    try:
+        payload = jwt.decode(token.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    with engine.connect() as conn:
+        user = conn.execute(
+            text("SELECT * FROM users WHERE email = :email AND is_admin = TRUE"),
+            {"email": email}
+        ).fetchone()
+    
+    if not user:
+        raise HTTPException(status_code=403, detail="Admins only")
+    return user
+
+@app.get("/admin/users", tags=["Admin"])
+def admin_get_users(admin = Depends(get_current_admin)):
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT id, username, email, city, is_admin,
+                   created_at,
+                   (SELECT COUNT(*) FROM analyses WHERE username = u.username) as analysis_count
+            FROM users u
+            ORDER BY created_at DESC
+        """)).fetchall()
+        return [{"id": r.id, "username": r.username, "email": r.email,
+                 "city": r.city, "is_admin": r.is_admin,
+                 "created_at": str(r.created_at),
+                 "analysis_count": r.analysis_count} for r in rows]
+
+@app.patch("/admin/users/{user_id}", tags=["Admin"])
+def admin_update_user(user_id: int, body: dict, admin = Depends(get_current_admin)):
+    allowed = {"is_admin"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"UPDATE users SET is_admin = :is_admin WHERE id = :id"),
+            {"is_admin": updates.get("is_admin"), "id": user_id}
+        )
+    return {"message": "User updated"}
+
+@app.delete("/admin/users/{user_id}", tags=["Admin"])
+def admin_delete_user(user_id: int, admin = Depends(get_current_admin)):
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+    return {"message": "User deleted"}
+
+@app.get("/admin", tags=["Frontend"])
+def serve_admin():
+    return FileResponse(os.path.join(BASE_DIR, "admin.html"))
     # -------------------- endpoint (online url)-----------------
 @app.get("/", tags=["Frontend"])
 def root():

@@ -620,6 +620,19 @@
       .profile-card { position: static; }
     }
   </style>
+  <script>
+document.addEventListener("DOMContentLoaded", function () {
+  const isAdmin = localStorage.getItem("is_admin") === "1";
+
+  const adminBtn = document.getElementById("adminPanelBtn");
+
+  if (adminBtn && isAdmin) {
+    adminBtn.style.display = "block";
+  } else if (adminBtn) {
+    adminBtn.style.display = "none";
+  }
+});
+</script>
 </head>
 <body>
 
@@ -813,7 +826,10 @@
         <button id="newProjectBtn" onclick="openNewProjectModal()" style="display:none; align-items:center; gap:6px; padding:7px 14px; background:transparent; border:1px solid rgba(0,212,170,0.35); border-radius:8px; color:var(--accent); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; transition:.15s;" onmouseover="this.style.background='rgba(0,212,170,0.08)'" onmouseout="this.style.background='transparent'">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           New Project
-        </button>
+         </button>
+         <button id="adminPanelBtn" onclick="window.location.href='/admin'" style="display:none; align-items:center; gap:6px; padding:7px 14px; background:transparent; border:1px solid rgba(0,212,170,0.35); border-radius:8px; color:var(--accent); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; transition:.15s;" onmouseover="this.style.background='rgba(0,212,170,0.08)'" onmouseout="this.style.background='transparent'">
+             ⬡ Admin Center
+            </button>
       </div>
 
       <!-- Service chip filters — only visible in "All" tab -->

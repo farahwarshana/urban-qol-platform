@@ -190,6 +190,11 @@ if (loginForm) {
     }
     localStorage.setItem("token", data.token);
     localStorage.setItem("username", data.username);
+    localStorage.setItem(
+  "is_admin",
+  data.is_admin ? "1" : "0"
+);
+
     window.location.href = "dashboard.html";
   } catch {
     alert(T.errorConnection);
