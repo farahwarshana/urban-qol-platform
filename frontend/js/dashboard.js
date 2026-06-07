@@ -821,7 +821,7 @@ const SERVICES = {
     inputs: [
       { type: "file", id: "geoJsonInput", label: TXT[currentLang].uploadBoundary},
       { type: "text", id: "populationField", label: TXT[currentLang].populationField, placeholder: TXT[currentLang].populationFieldPlaceholder },
-      { type: "button", label: "Load Population Data", onclick: "loadPopulation()" }
+      { type: "button", label: "Load Population Data From ArcGIS online", onclick: "loadPopulation()" }
     ],
   },
   
@@ -863,6 +863,7 @@ const SERVICES = {
     inputs: [
       { type: "file",   id: "tiffInput",    label: TXT[currentLang].uploadRaster },
       { type: "number", id: "vegThreshold", label: TXT[currentLang].vegetationThreshold, value: 0.3 },
+      { type: "button", label: "Load Vegetation from ArcGIS", onclick: "loadVegetation()" }
     ],
   },
   "ndvi": {
@@ -870,6 +871,7 @@ const SERVICES = {
     desc: TXT[currentLang].ndviDesc,
     inputs: [
       { type: "file", id: "tiffInput", label: TXT[currentLang].uploadRaster },
+      { type: "button", label: "Load NDVI from ArcGIS online", onclick: "loadNDVI()" } // ← هنا
     ],
   },
   "crime": {
@@ -1887,6 +1889,37 @@ function _runAnalysisCore(key) {
 
 
 /* ---------- NDVI Analysis - calls backend API ---------- */
+async function loadNDVI() {
+  const URL = "https://itigeoportal.maps.arcgis.com/sharing/rest/content/items/5211c182c2ab4323b8441a995fcf8280/data";
+  
+  try {
+    const res = await fetch(URL);
+    if (!res.ok) throw new Error("Failed to fetch");
+    const blob = await res.blob();
+    const file = new File([blob], "ndvi.tif", { type: "image/tiff" });
+    
+    const tiffInput = document.getElementById("tiffInput");
+    if (!tiffInput) throw new Error("tiffInput not found");
+    
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    tiffInput.files = dt.files;
+    
+    const arrayBuffer = await file.arrayBuffer();
+    if (inputLayer) map.removeLayer(inputLayer);
+    inputLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+      opacity: 0.7,
+      resolution: 128,
+    });
+    
+    alert("NDVI data loaded successfully!");
+  } catch (err) {
+    console.error(err);
+    alert("Error loading NDVI data: " + err.message);
+  }
+}
+
+
 async function runNDVIAnalysis() {
   const tiffInput = document.getElementById("tiffInput");
 
@@ -3099,6 +3132,35 @@ let lastVegRasterBuffer = null;   // original uploaded TIFF bytes for raster und
 
 
 /* ---------- Vegetation Analysis — calls backend API ---------- */
+async function loadVegetation() {
+  const URL = "https://itigeoportal.maps.arcgis.com/sharing/rest/content/items/5211c182c2ab4323b8441a995fcf8280/data";
+  
+  try {
+    const res = await fetch(URL);
+    if (!res.ok) throw new Error("Failed to fetch");
+    const blob = await res.blob();
+    const file = new File([blob], "vegetation.tif", { type: "image/tiff" });
+    
+    const tiffInput = document.getElementById("tiffInput");
+    if (!tiffInput) throw new Error("tiffInput not found");
+    
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    tiffInput.files = dt.files;
+    
+    const arrayBuffer = await file.arrayBuffer();
+    if (inputLayer) map.removeLayer(inputLayer);
+    inputLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+      opacity: 0.7,
+      resolution: 128,
+    });
+    
+    alert("Vegetation data loaded successfully!");
+  } catch (err) {
+    console.error(err);
+    alert("Error loading Vegetation data: " + err.message);
+  }
+}
 async function runVegetationAnalysis() {
   const tiffInput = document.getElementById("tiffInput");
   const threshold = parseFloat(document.getElementById("vegThreshold")?.value ?? 0.2);
