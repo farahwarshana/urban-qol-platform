@@ -112,8 +112,6 @@ function _dispatchRun(key) {
   _pendingRunKey = null;
   _runAnalysisCore(key);
 }
-// ──────────────────────────────────────────────────────────────
-
 
 // ------------------saveAnalysisToProfile--------------------
 
@@ -822,9 +820,11 @@ const SERVICES = {
     desc: TXT[currentLang].urbanDesc,
     inputs: [
       { type: "file", id: "geoJsonInput", label: TXT[currentLang].uploadBoundary},
-      { type: "text", id: "populationField", label: TXT[currentLang].populationField, placeholder: TXT[currentLang].populationFieldPlaceholder }
+      { type: "text", id: "populationField", label: TXT[currentLang].populationField, placeholder: TXT[currentLang].populationFieldPlaceholder },
+      { type: "button", label: "Load Population Data", onclick: "loadPopulation()" }
     ],
   },
+  
   "public-transport": {
     title: TXT[currentLang].transport,
     desc: TXT[currentLang].publicTransportDesc,
@@ -836,6 +836,7 @@ const SERVICES = {
       { type: "number", id: "populationCount",   label: TXT[currentLang].totalPopulationOptional, value: "" },
     ],
   },
+  
   "facility_Accessibility_index": {
     title: TXT[currentLang].facility,
     desc: TXT[currentLang].facilityDesc,
@@ -1001,6 +1002,9 @@ function renderServicePanel(key) {
     }
     if (field.type === "custom") {
       return field.html;
+    }
+    if (field.type === "button") {
+      return `<button class="btn btn-ghost btn-block mt-2" onclick="${field.onclick}">${field.label}</button>`;
     }
     // default: text
     return `
@@ -2338,7 +2342,37 @@ captureResultFile(response);
     `;
   }
 }
+// ___________________ url from arcgis online______________
 
+async function loadPopulation() {
+  const ARCGIS_URL = "https://services3.arcgis.com/UDCw00RKDRKPqASe/arcgis/rest/services/egypt_province_Population_Density/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson";
+  
+  try {
+    const res = await fetch(ARCGIS_URL);
+    const data = await res.json();
+    console.log("ArcGIS Data:", data.features);
+    window._arcgisGeoJSON = data;       // ← هنا
+    window._arcgisDataLoaded = true;    // ← وهنا
+    document.getElementById("populationField").value = "TOTPOP_CY"; // ← هنا
+
+    // عرض البيانات على الخريطة
+    if (inputLayer) map.removeLayer(inputLayer);
+    inputLayer = L.geoJSON(data, {
+      style: { color: "#4cc2ff", weight: 1, fillOpacity: 0.3 },
+      onEachFeature: function(feature, layer) {
+        const props = feature.properties;
+        layer.bindPopup(Object.entries(props).map(([k, v]) => `<strong>${k}:</strong> ${v}`).join("<br>"));
+      }
+    }).addTo(map);
+
+    map.fitBounds(inputLayer.getBounds());
+    window._arcgisDataLoaded = true;
+
+  } catch (err) {
+    console.error(err);
+    alert("Error loading data");
+  }
+}
 
 /* ---------- Urban Density Analysis - calls backend API ---------- */
 async function runUrbanDensityAnalysis() {
@@ -2346,9 +2380,11 @@ async function runUrbanDensityAnalysis() {
   const populationField = document.getElementById("populationField");
   
   if (!geoJsonInput || !geoJsonInput.files[0]) {
+  if (!window._arcgisDataLoaded) {
     alert("Please upload a GeoJSON file with boundary data first.");
     return;
   }
+}
 
   const populationFieldValue = populationField ? populationField.value.trim() : "";
 
@@ -2357,15 +2393,22 @@ async function runUrbanDensityAnalysis() {
     return;
   }
 
-  const geoJsonFile = geoJsonInput.files[0];
-  const inputs = {
-    geoJsonFileName: geoJsonFile.name,
-    populationField: populationFieldValue,
-  };
+  let geoJsonFile;
+let inputs;
+const formData = new FormData();
 
-  const formData = new FormData();
-  formData.append("geojson", geoJsonFile);
-  formData.append("population_field", populationFieldValue);
+if (window._arcgisDataLoaded && window._arcgisGeoJSON) {
+  // استخدم البيانات من ArcGIS
+  const blob = new Blob([JSON.stringify(window._arcgisGeoJSON)], { type: "application/json" });
+  geoJsonFile = new File([blob], "arcgis_data.geojson", { type: "application/json" });
+  inputs = { geoJsonFileName: "arcgis_data.geojson", populationField: populationFieldValue };
+} else {
+  geoJsonFile = geoJsonInput.files[0];
+  inputs = { geoJsonFileName: geoJsonFile.name, populationField: populationFieldValue };
+}
+
+formData.append("geojson", geoJsonFile);
+formData.append("population_field", populationFieldValue);
 
   // Show loading state
   analysisPanel.innerHTML = `
