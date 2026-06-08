@@ -834,6 +834,7 @@ const SERVICES = {
       { type: "tip",    text: TXT[currentLang].publicTransportDesc },
       { type: "number", id: "walkingDistance",   label: TXT[currentLang].walkingDistance, value: 1000 },
       { type: "number", id: "populationCount",   label: TXT[currentLang].totalPopulationOptional, value: "" },
+      { type: "button", label: "Load Public Transport from ArcGIS", onclick: "loadPublicTransport()" }
     ],
   },
   
@@ -846,6 +847,7 @@ const SERVICES = {
       { type: "number", id: "walkingSpeedInput",       label: TXT[currentLang].walkingSpeed, value: 4.5 },
       { type: "text",   id: "walkingIntervalsInput",   label: TXT[currentLang].walkingIntervals, placeholder: TXT[currentLang].walkingIntervalsPlaceholder },
       { type: "tip",    text: TXT[currentLang].facilityTip },
+      { type: "button", label: "Load Facility from ArcGIS", onclick: "loadFacility()" }
     ],
     // action: runFacilityAccessibilityAnalysis
   },
@@ -855,6 +857,7 @@ const SERVICES = {
     desc: TXT[currentLang].heatDesc,
     inputs: [
       { type: "file", id: "tiffInput", label: TXT[currentLang].uploadRaster },
+      { type: "button", label: "Load Heat Index from ArcGIS", onclick: "loadHeatIndex()" }
     ],
   },
   "vegetation": {
@@ -2588,10 +2591,36 @@ function _parseIntervals(raw) {
 }
 
 /*---------------------facility accessibility-------------------------*/
+async function loadFacility() {
+  const ARCGIS_URL = "https://services3.arcgis.com/UDCw00RKDRKPqASe/arcgis/rest/services/CAIRO_SCHOOLS/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson";
+  
+  try {
+    const res = await fetch(ARCGIS_URL);
+    const data = await res.json();
+    console.log("Facility Data:", data.features);
+    window._arcgisGeoJSON = data;
+    window._arcgisDataLoaded = true;
+
+    if (inputLayer) map.removeLayer(inputLayer);
+    inputLayer = L.geoJSON(data, {
+      style: { color: "#f4a435", weight: 1, fillOpacity: 0.3 },
+      onEachFeature: function(feature, layer) {
+        const props = feature.properties;
+        layer.bindPopup(Object.entries(props).map(([k, v]) => `<strong>${k}:</strong> ${v}`).join("<br>"));
+      }
+    }).addTo(map);
+
+    map.fitBounds(inputLayer.getBounds());
+
+  } catch (err) {
+    console.error(err);
+    alert("Error loading Facility data");
+  }
+}
 async function runFacilityAccessibilityAnalysis() {
   const facilitiesInput = document.getElementById("facilitiesGeojsonInput");
 
-  if (!facilitiesInput || !facilitiesInput.files[0]) {
+  if ((!facilitiesInput || !facilitiesInput.files[0]) && !window._arcgisDataLoaded) {
     alert("Please upload a GeoJSON file with facility points.");
     return;
   }
@@ -2753,6 +2782,57 @@ updateLegend("facility-accessibility", "full");
   }
 }
 /* ---------- Public Transport Analysis - calls backend API ---------- */
+async function loadPublicTransport() {
+  const STATIONS_URL = "https://services3.arcgis.com/UDCw00RKDRKPqASe/arcgis/rest/services/Cairo_Public_Transport_Stops_Json/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson";
+  const AOI_URL = "https://services3.arcgis.com/UDCw00RKDRKPqASe/arcgis/rest/services/cairo_public_transport_polygon/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson";
+
+  try {
+    const [stationsRes, aoiRes] = await Promise.all([
+      fetch(STATIONS_URL),
+      fetch(AOI_URL)
+    ]);
+
+    const stationsData = await stationsRes.json();
+    const aoiData = await aoiRes.json();
+
+    // حط البيانات في الـ inputs
+    const stationsBlob = new Blob([JSON.stringify(stationsData)], { type: "application/json" });
+    const aoiBlob = new Blob([JSON.stringify(aoiData)], { type: "application/json" });
+
+    const stationsFile = new File([stationsBlob], "stations.geojson", { type: "application/json" });
+    const aoiFile = new File([aoiBlob], "aoi.geojson", { type: "application/json" });
+
+    const dt1 = new DataTransfer();
+    dt1.items.add(stationsFile);
+    document.getElementById("stationsInput").files = dt1.files;
+
+    const dt2 = new DataTransfer();
+    dt2.items.add(aoiFile);
+    document.getElementById("aoiInput").files = dt2.files;
+
+    // عرض على الخريطة
+    if (inputLayer) map.removeLayer(inputLayer);
+    inputLayer = L.geoJSON(stationsData, {
+      pointToLayer: function(feature, latlng) {
+        return L.circleMarker(latlng, {
+          radius: 5, fillColor: "#4cc2ff", color: "#1a8fc1",
+          weight: 1.5, opacity: 1, fillOpacity: 0.9,
+        });
+      }
+    }).addTo(map);
+
+    const aoiLayer = L.geoJSON(aoiData, {
+      style: { color: "#f39c12", weight: 2.5, fill: false }
+    }).addTo(map);
+
+    map.fitBounds(aoiLayer.getBounds());
+
+    alert("Loaded " + stationsData.features.length + " stations and AOI successfully!");
+  } catch (err) {
+    console.error(err);
+    alert("Error loading Public Transport data: " + err.message);
+  }
+}
 async function runPublicTransportAnalysis() {
   const stationsInput     = document.getElementById("stationsInput");
   const aoiInput          = document.getElementById("aoiInput");
@@ -5009,6 +5089,36 @@ function renderNDVIResults(stats, inputs) {
 
 
 /* ---------- Render Heat Index Results with stats ---------- */
+async function loadHeatIndex() {
+  const URL = "https://itigeoportal.maps.arcgis.com/sharing/rest/content/items/ec9d6f4a636545eb9ee9ee74d9ae70ec/data";
+  
+  try {
+    const res = await fetch(URL);
+    if (!res.ok) throw new Error("Failed to fetch");
+    const blob = await res.blob();
+    const file = new File([blob], "heatindex.tif", { type: "image/tiff" });
+    
+    const tiffInput = document.getElementById("tiffInput");
+    if (!tiffInput) throw new Error("tiffInput not found");
+    
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    tiffInput.files = dt.files;
+    
+    const arrayBuffer = await file.arrayBuffer();
+    if (inputLayer) map.removeLayer(inputLayer);
+    inputLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+      opacity: 0.7,
+      resolution: 128,
+    });
+    
+    alert("Heat Index data loaded successfully!");
+  } catch (err) {
+    console.error(err);
+    alert("Error loading Heat Index data: " + err.message);
+  }
+}
+
 function renderHeatIndexResults(stats, inputs) {
   lastAnalysisContext = {
     service: "heat-index",
