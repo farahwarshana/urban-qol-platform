@@ -112,8 +112,6 @@ function _dispatchRun(key) {
   _pendingRunKey = null;
   _runAnalysisCore(key);
 }
-// ──────────────────────────────────────────────────────────────
-
 
 // ------------------saveAnalysisToProfile--------------------
 
@@ -822,9 +820,11 @@ const SERVICES = {
     desc: TXT[currentLang].urbanDesc,
     inputs: [
       { type: "file", id: "geoJsonInput", label: TXT[currentLang].uploadBoundary},
-      { type: "text", id: "populationField", label: TXT[currentLang].populationField, placeholder: TXT[currentLang].populationFieldPlaceholder }
+      { type: "text", id: "populationField", label: TXT[currentLang].populationField, placeholder: TXT[currentLang].populationFieldPlaceholder },
+      { type: "button", label: "Load Population Data From ArcGIS online", onclick: "loadPopulation()" }
     ],
   },
+  
   "public-transport": {
     title: TXT[currentLang].transport,
     desc: TXT[currentLang].publicTransportDesc,
@@ -836,6 +836,7 @@ const SERVICES = {
       { type: "number", id: "populationCount",   label: TXT[currentLang].totalPopulationOptional, value: "" },
     ],
   },
+  
   "facility_Accessibility_index": {
     title: TXT[currentLang].facility,
     desc: TXT[currentLang].facilityDesc,
@@ -862,6 +863,7 @@ const SERVICES = {
     inputs: [
       { type: "file",   id: "tiffInput",    label: TXT[currentLang].uploadRaster },
       { type: "number", id: "vegThreshold", label: TXT[currentLang].vegetationThreshold, value: 0.3 },
+      { type: "button", label: "Load Vegetation from ArcGIS", onclick: "loadVegetation()" }
     ],
   },
   "ndvi": {
@@ -869,6 +871,7 @@ const SERVICES = {
     desc: TXT[currentLang].ndviDesc,
     inputs: [
       { type: "file", id: "tiffInput", label: TXT[currentLang].uploadRaster },
+      { type: "button", label: "Load NDVI from ArcGIS online", onclick: "loadNDVI()" } // ← هنا
     ],
   },
   "crime": {
@@ -1001,6 +1004,9 @@ function renderServicePanel(key) {
     }
     if (field.type === "custom") {
       return field.html;
+    }
+    if (field.type === "button") {
+      return `<button class="btn btn-ghost btn-block mt-2" onclick="${field.onclick}">${field.label}</button>`;
     }
     // default: text
     return `
@@ -1883,6 +1889,37 @@ function _runAnalysisCore(key) {
 
 
 /* ---------- NDVI Analysis - calls backend API ---------- */
+async function loadNDVI() {
+  const URL = "https://itigeoportal.maps.arcgis.com/sharing/rest/content/items/5211c182c2ab4323b8441a995fcf8280/data";
+  
+  try {
+    const res = await fetch(URL);
+    if (!res.ok) throw new Error("Failed to fetch");
+    const blob = await res.blob();
+    const file = new File([blob], "ndvi.tif", { type: "image/tiff" });
+    
+    const tiffInput = document.getElementById("tiffInput");
+    if (!tiffInput) throw new Error("tiffInput not found");
+    
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    tiffInput.files = dt.files;
+    
+    const arrayBuffer = await file.arrayBuffer();
+    if (inputLayer) map.removeLayer(inputLayer);
+    inputLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+      opacity: 0.7,
+      resolution: 128,
+    });
+    
+    alert("NDVI data loaded successfully!");
+  } catch (err) {
+    console.error(err);
+    alert("Error loading NDVI data: " + err.message);
+  }
+}
+
+
 async function runNDVIAnalysis() {
   const tiffInput = document.getElementById("tiffInput");
 
@@ -2338,7 +2375,37 @@ captureResultFile(response);
     `;
   }
 }
+// ___________________ url from arcgis online______________
 
+async function loadPopulation() {
+  const ARCGIS_URL = "https://services3.arcgis.com/UDCw00RKDRKPqASe/arcgis/rest/services/egypt_province_Population_Density/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson";
+  
+  try {
+    const res = await fetch(ARCGIS_URL);
+    const data = await res.json();
+    console.log("ArcGIS Data:", data.features);
+    window._arcgisGeoJSON = data;       // ← هنا
+    window._arcgisDataLoaded = true;    // ← وهنا
+    document.getElementById("populationField").value = "TOTPOP_CY"; // ← هنا
+
+    // عرض البيانات على الخريطة
+    if (inputLayer) map.removeLayer(inputLayer);
+    inputLayer = L.geoJSON(data, {
+      style: { color: "#4cc2ff", weight: 1, fillOpacity: 0.3 },
+      onEachFeature: function(feature, layer) {
+        const props = feature.properties;
+        layer.bindPopup(Object.entries(props).map(([k, v]) => `<strong>${k}:</strong> ${v}`).join("<br>"));
+      }
+    }).addTo(map);
+
+    map.fitBounds(inputLayer.getBounds());
+    window._arcgisDataLoaded = true;
+
+  } catch (err) {
+    console.error(err);
+    alert("Error loading data");
+  }
+}
 
 /* ---------- Urban Density Analysis - calls backend API ---------- */
 async function runUrbanDensityAnalysis() {
@@ -2346,9 +2413,11 @@ async function runUrbanDensityAnalysis() {
   const populationField = document.getElementById("populationField");
   
   if (!geoJsonInput || !geoJsonInput.files[0]) {
+  if (!window._arcgisDataLoaded) {
     alert("Please upload a GeoJSON file with boundary data first.");
     return;
   }
+}
 
   const populationFieldValue = populationField ? populationField.value.trim() : "";
 
@@ -2357,15 +2426,22 @@ async function runUrbanDensityAnalysis() {
     return;
   }
 
-  const geoJsonFile = geoJsonInput.files[0];
-  const inputs = {
-    geoJsonFileName: geoJsonFile.name,
-    populationField: populationFieldValue,
-  };
+  let geoJsonFile;
+let inputs;
+const formData = new FormData();
 
-  const formData = new FormData();
-  formData.append("geojson", geoJsonFile);
-  formData.append("population_field", populationFieldValue);
+if (window._arcgisDataLoaded && window._arcgisGeoJSON) {
+  // استخدم البيانات من ArcGIS
+  const blob = new Blob([JSON.stringify(window._arcgisGeoJSON)], { type: "application/json" });
+  geoJsonFile = new File([blob], "arcgis_data.geojson", { type: "application/json" });
+  inputs = { geoJsonFileName: "arcgis_data.geojson", populationField: populationFieldValue };
+} else {
+  geoJsonFile = geoJsonInput.files[0];
+  inputs = { geoJsonFileName: geoJsonFile.name, populationField: populationFieldValue };
+}
+
+formData.append("geojson", geoJsonFile);
+formData.append("population_field", populationFieldValue);
 
   // Show loading state
   analysisPanel.innerHTML = `
@@ -3056,6 +3132,35 @@ let lastVegRasterBuffer = null;   // original uploaded TIFF bytes for raster und
 
 
 /* ---------- Vegetation Analysis — calls backend API ---------- */
+async function loadVegetation() {
+  const URL = "https://itigeoportal.maps.arcgis.com/sharing/rest/content/items/5211c182c2ab4323b8441a995fcf8280/data";
+  
+  try {
+    const res = await fetch(URL);
+    if (!res.ok) throw new Error("Failed to fetch");
+    const blob = await res.blob();
+    const file = new File([blob], "vegetation.tif", { type: "image/tiff" });
+    
+    const tiffInput = document.getElementById("tiffInput");
+    if (!tiffInput) throw new Error("tiffInput not found");
+    
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    tiffInput.files = dt.files;
+    
+    const arrayBuffer = await file.arrayBuffer();
+    if (inputLayer) map.removeLayer(inputLayer);
+    inputLayer = await renderGeoRasterFromArrayBuffer(arrayBuffer, {
+      opacity: 0.7,
+      resolution: 128,
+    });
+    
+    alert("Vegetation data loaded successfully!");
+  } catch (err) {
+    console.error(err);
+    alert("Error loading Vegetation data: " + err.message);
+  }
+}
 async function runVegetationAnalysis() {
   const tiffInput = document.getElementById("tiffInput");
   const threshold = parseFloat(document.getElementById("vegThreshold")?.value ?? 0.2);
